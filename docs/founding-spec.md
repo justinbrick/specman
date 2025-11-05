@@ -76,8 +76,8 @@ Concepts are abstract ideas that describe the functions of a system.
 An implementation is, as the name suggests, an implementation of a specification. 
 
 - An implementation SHOULD use keywords or terms that are specific to the language that it is implementing in, and MAY include more technical details about its structure.
-- An implementation MUST declare its base specification - the specification which it is implementing.
-- An implementation MUST have the same name as its base specification.
+- An implementation MUST declare its targeted specification - the specification which it is implementing.
+- An implementation MUST have the same name as its targeted specification.
 
 ### Implementation Name
 
@@ -112,7 +112,7 @@ Examples:
 - An implementation MUST have one primary implementing language.
 - An implementation MAY have one or more secondary implementing languages.
 - An implementing language SHOULD be either a GPL (general-purpose language) or a DSL (domain-specific language)
-- If the implementing language has multiple versions, an implementation MUST define the language version.
+- If the implementing language has multiple versions, an implementation MUST define the language version in the form of `{language_identifier}@{version}`.
 
 ### References
 
@@ -130,10 +130,8 @@ An implementation MAY have one or more references.
 
 An implementation MAY reference one or more libraries.
 
-- A library reference SHOULD include a justification.
-- A library reference SHOULD include a description of the library's functionality.
-- A library reference MAY include a listed version number or tag (e.g. "1.0.0", "latest")
-- A library reference SHOULD be in the format of `name@version`, but MAY be formatted otherwise to appropriately fit an implementing language's library formats.
+- A library reference MUST include a listed version number or tag (e.g. "1.0.0", "latest")
+- A library reference MUST be in the format of `name@version`.
 
 ### Data Models
 
@@ -148,5 +146,5 @@ An implementation MAY have one or more data models, defining [key entities](#key
 
 An implementation MUST define one or more API stubs.
 
-- Stubs SHOULD define the API signature, including inputs and outputs.
+- Stubs SHOULD define the API signature, including inputs and outputs, in the format appropriate for the implementing language.
 - Stubs MAY include examples to demonstrate intended use.

@@ -52,7 +52,7 @@ A work type can be one of the following:
 
 ### Git Branches
 
-Scratch pads SHOULD have a Git branch associated with them. A branch MAY be excluded if a Git repository is not present in the same directory as the SpecMan workspace.
+Scratch pads SHOULD have a Git branch associated with them. A branch MAY be excluded if a Git repository is not present in the SpecMan workspace.
 
 Git branches MUST follow a naming scheme of:
 ```
@@ -73,24 +73,33 @@ Frontmatter fields MUST be formatted as below.
 - `target`: the target artifact
 - `branch`: the git branch
 
-
-### Workspace Layout
-
-A SpecMan workspace SHOULD contain the following top-level folders:
-
-- `spec`: contains all specifications.
-- `impl`: contains all implementations.
-
-
 ## [Specifications](../../docs/founding-spec.md#specifications)
 
 Specifications MUST be written in Markdown. Compliant specifications and contributors SHOULD author and publish specification documents using the Markdown format so they can be rendered, reviewed, and processed consistently by tooling.
 
-Specifications SHOULD include a top-level heading titled "Terminology & References" placed near the top of the file (immediately below the main title or any YAML frontmatter). That heading SHOULD include a reference to RFC 2119 and a short statement indicating how the RFC 2119 normative keywords (for example, MUST, SHOULD, MAY, etc.) are to be interpreted for that document.
 
-Each specification MUST be stored in a folder named after the specification's short name. The specification document MUST be located in that folder at a path of `spec.md`.
+### Specification Headings
 
-Specification folders MUST NOT be nested inside other specification folders.
+Specifications SHOULD include a top-level heading titled "Terminology & References" placed near the top of the file (immediately below the main title or any YAML frontmatter).
+
+That heading SHOULD include a reference to RFC 2119 and a short statement indicating how the RFC 2119 normative keywords (for example, MUST, SHOULD, MAY, etc.) are to be interpreted for that document.
+
+Other statements or notes SHOULD be added to this heading regarding referenced documents, but MAY be omitted or relocated under other headings as necessary.
+
+### Specification Layout
+
+Each specification MUST be stored in a folder named after the specification's short name.
+
+- Specification folders MUST be stored in a top level directory named `spec`.
+- Specification folders MUST NOT be nested inside other specification folders.
+- The base specification document must be located in that folder, under `spec.md`.
+
+Example:
+
+- [workspace](#specman-workspace)/
+  - spec/
+    - {spec_name}/
+      - spec.md
 
 ### Standalone Specifications
 
@@ -137,29 +146,59 @@ dependencies:
 
 ## [Implementations](../../docs/founding-spec.md#implementation)
 
-Implementations SHOULD be authored as Markdown documents to support consistent rendering, review, and automated processing.
+Implementations MUST be authored as Markdown documents to support consistent rendering, review, and automated processing.
 Implementation documents MUST declare their frontmatter fields, including a `spec` field referencing the implemented specification as either a relative file path string or a URL.
 
 ### Implementation Layout
 
-Implementations MUST reside in the workspace root `impl` directory. Each implementation MUST be stored in its own subdirectory within `impl`, and the implementation document inside that folder MUST be named `spec.md`.
+Implementation documents MUST be stored in folders.
 
-Implementation folders MUST NOT be nested inside other implementation folders; each implementation must live directly under `impl` in its own sibling directory.
+- Implementation folders MUST be stored in a parent folder named `impl`.
+- The root implementation folder MUST be inside of a SpecMan workspace.
+- The base implementation document MUST be stored under `impl.md`.
+- Related documents MAY be stored inside of the implementation folder.
+  - Related documents MUST be human-readable files, with no binary representation. (e.g. markdown, json, yml)
 
-### Implementing Language
+Example:
+- [workspace](#specman-workspace)/
+  - impl/
+    - {impl_name}/
+      - impl.md
 
-Implementation documents MUST declare their implementing languages by using YAML frontmatter fields. When additional languages are used, the frontmatter MAY include a `secondary_languages` field listing them; this field MAY be omitted when no secondary languages are present.
+### [Implementing Language](../../docs/founding-spec.md#implementing-language)
 
-### References
+Each implementing language MUST be formatted as an object.
 
-Implementation frontmatter MAY declare a `references` field capturing external artifacts relied upon by the implementation. This field is functionally equivalent to [specification dependencies](#dependencies) but MUST be expressed exclusively as a list of objects. Each object MUST include a `ref` string identifying the target and a `type` string whose value MUST be either `implementation` or `specification`. Scalar entries MUST NOT appear in the `references` list.
+These objects MUST adhere to the listed fields below.
 
-### Libraries
+- `language`: a string in the format of `language_identifier@language_version`
+- `properties`: a map of values to specify language-specific properties.
+  - this field MAY be omitted if defaults can be assumed or the language has no configurable properties
+- `libraries`: a list of strings to identify [used libraries](../../docs/founding-spec.md#libraries)
+  - this field MAY be omitted if no libraries outside of the language-specific standard library are being used.
 
-Implementation documents SHOULD declare library metadata in their YAML frontmatter using a `libraries` field. The `libraries` field MUST list acceptable version-formatted strings as defined in the founding specification.
+### [References](../../docs/founding-spec.md#references)
 
-### APIs
+Implementations MAY reference capturing external artifacts relied upon by the implementation. This is functionally equivalent to [specification dependencies](#dependencies), but MUST be expressed exclusively as a list of objects. 
+
+These objects MUST adhere to the listed fields below.
+
+- `ref`: local path or URL to target artifact
+- `type`: the type of artifact. MUST be one of ("implementation", "specification").
+- `optional`: a boolean value indicating whether this reference is optional.
+
+
+### [APIs](../../docs/founding-spec.md#apis)
+
+Implementations MUST group API stubs by concept or key entity.
+
 
 ### Implementation Metadata
 
 Implementations MUST specify YAML frontmatter at the top of the document.
+The frontmatter fields MUST be formatted as listed below.
+
+- `spec`: a local path or URL to the target specification
+- `primary_language`: the primary [`language`](#implementing-language)
+- `secondary_languages`: a list of [`language`](#implementing-language)
+  - this field MAY be omitted if no secondary languages are present.
