@@ -14,12 +14,29 @@ Specifications are a set of requirements that must be met for a system or a conc
 
 ### Dependencies
 
-Dependencies MAY define other specifications, to be used as a framework or define concepts.
+A specification MAY define other specifications as dependencies, to be used as a framework or define concepts.
 
-- A specification MAY depend on one or more other specifications.
+- A specification MAY have one or more dependencies.
 - A dependency MAY be marked as optional.
 - Dependencies MUST NOT create a circular dependency graph.
 - The specification MUST NOT mutate, or otherwise contradict, the contents of any dependencies.
+
+### Specification Name
+
+A specification MUST have a friendly name that can be used to refer to the specification.
+
+- The name MUST be four words or less.
+- The name MUST NOT contain verbs (e.g. add, edit, implement).
+- The name SHOULD contain keywords of the feature being defined by the specification.
+- The name SHOULD be in all lowercase.
+- The name MUST be unique.
+
+### Specification Version
+
+A specification MUST have a version that can be used to mark changes.
+
+- The version MUST be a [semantic version](https://semver.org/).
+- The version MUST start at 1.0.0.
 
 ### Specification Content
 
@@ -53,22 +70,14 @@ Concepts are abstract ideas that describe the functions of a system.
 - Concepts MAY have one or more constraints, limiting scope or behavior.
 - Concepts MAY reference other concepts or key entities.
 
-### Specification Name
-
-A specification MUST have a friendly name that can be used to refer to the specification.
-
-- The name MUST be four words or less.
-- The name MUST NOT contain verbs (e.g. add, edit, implement).
-- The name SHOULD contain keywords of the feature being defined by the specification.
-- The name SHOULD be in all lowercase.
 
 ## Implementation
 
 An implementation is, as the name suggests, an implementation of a specification. 
 
 - An implementation SHOULD use keywords or terms that are specific to the language that it is implementing in, and MAY include more technical details about its structure.
-- An implementation MUST declare its base specification - the specification which it is implementing.
-- An implementation MUST have the same name as its base specification.
+- An implementation MUST declare its targeted specification - the specification which it is implementing.
+- An implementation MUST have the same name as its targeted specification.
 
 ### Implementation Name
 
@@ -77,6 +86,14 @@ An implementation MUST have a friendly name that can be used to refer to the imp
 - The implementation name MUST contain the [specification name](#specification-name)
 - The implementation name MUST follow the same formatting guidelines as the specification name.
 - The implementation name MUST append or prepend a keyword representing the [implementing language](#implementing-language) name, or an underlying technology being used in the implementation.
+- Implementation names MUST be unique and MUST NOT collide with any specification or other implementation names.
+
+### Implementation Version
+
+An implementation MUST have a version that can be used to mark changes.
+
+- The version MUST be a [semantic version](https://semver.org/).
+- The version MUST start at 1.0.0.
 
 ### Implementing Language
 
@@ -95,7 +112,7 @@ Examples:
 - An implementation MUST have one primary implementing language.
 - An implementation MAY have one or more secondary implementing languages.
 - An implementing language SHOULD be either a GPL (general-purpose language) or a DSL (domain-specific language)
-- If the implementing language has multiple versions, an implementation MUST define the language version.
+- If the implementing language has multiple versions, an implementation MUST define the language version in the form of `{language_identifier}@{version}`.
 
 ### References
 
@@ -108,20 +125,15 @@ An implementation MAY have one or more references.
     - The implementation of a specification is irrelevant to the current implementation being defined.
     - The specification defines access to the underlying implementation in a format usable by the implementation being defined.
 
-### Content
 
-An implementation MUST have content defining the underlying implementation of a specification.
-
-#### Libraries
+### Libraries
 
 An implementation MAY reference one or more libraries.
 
-- A library reference SHOULD include a justification.
-- A library reference SHOULD include a description of the library's functionality.
-- A library reference MAY include a listed version number or tag (e.g. "1.0.0", "latest")
-- A library reference SHOULD be in the format of `name@version`, but MAY be formatted otherwise to appropriately fit an implementing language's library formats.
+- A library reference MUST include a listed version number or tag (e.g. "1.0.0", "latest")
+- A library reference MUST be in the format of `name@version`.
 
-#### Data Models
+### Data Models
 
 An implementation MAY have one or more data models, defining [key entities](#key-entities) as concrete implementations.
 
@@ -134,5 +146,5 @@ An implementation MAY have one or more data models, defining [key entities](#key
 
 An implementation MUST define one or more API stubs.
 
-- Stubs SHOULD define the API signature, including inputs and outputs.
+- Stubs SHOULD define the API signature, including inputs and outputs, in the format appropriate for the implementing language.
 - Stubs MAY include examples to demonstrate intended use.
