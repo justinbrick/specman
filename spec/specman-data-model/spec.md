@@ -242,6 +242,7 @@ Example:
 ---
 spec: ../path/to/spec.md
 name: implementation-name
+version: "1.0.0"
 location: ../path/to/code
 library:
   name: implementation-library@1.0.0
