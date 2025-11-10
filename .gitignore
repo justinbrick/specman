@@ -1,2 +1,4 @@
 # Ignore Specman dot folder.
 .specman
+
+**/target
