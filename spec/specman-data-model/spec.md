@@ -205,7 +205,11 @@ These objects MUST adhere to the listed fields below.
 
 ### [APIs](../../docs/founding-spec.md#apis)
 
-Implementations MUST group API stubs by concept or key entity.
+- APIs SHOULD have documentation clearly identifying what the code does.
+  - Documentation SHOULD focus on the "what" and the "why," rather than the "how."
+- APIs signatures MUST be contained inside of a [fenced code block](https://spec.commonmark.org/0.31.2/#fenced-code-blocks).
+  - If the implementation language of the code block has language code, it should be provided in the info string of the code block.
+- Each API listed SHOULD contain an inline link to corresponding concepts or key entities, if used.
 
 
 ### Implementation Metadata
