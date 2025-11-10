@@ -52,23 +52,46 @@ A scratch pad MUST have a target artifact associated with it.
   - These are mutually exclusive, as if an implementation is referenced, then its underlying specification can be implicitly retrieved.
 - This artifact MUST be a relative file path, or a URL if the artifact is external.
 
+
+### Scratch Pad Content
+
+There MUST be specific content included inside of a scratch pad, for readability sake.
+- A scratch pad MUST contain a notes section.
+  - This is to allow for any AI to resume from little to no context.
+- A scratch pad SHOULD have a tasks file.
+  - The tasks file will serve as a list of tasks to be completed before the the scratch pad may be considered completed.
+  - If present, the tasks file MUST be located under the directory containing the `scratch.md` file, and MUST be labelled `tasks.md`.
+
 ### Work Type
 
-A scratch pad MUST specify its work type, which specifies what kind of actions are being taken. A scratch pad SHOULD only have one work type.
+A scratch pad MUST specify its work type, which specifies what kind of actions are being taken. 
+- A scratch pad MUST only have one work type.
+- Work types MUST be represented as objects, to store data unique to the work type.
+  - If the work type does not have any data, it SHOULD be represented as an empty object.
+
 A work type can be one of the following:
 
 - `draft`: create an initial specification
   - The target artifact MUST be a specification. The specification MUST NOT be an external reference.
+  - The object representation of this work type MUST follow this form:
+    - 
 - `revision`: a change to the specification
   - The target artifact MUST be a specification. The specification MUST NOT be an external reference.
   - Implies potential refactoring required for all referencing implementations.
   - One or more extra scratch pads MAY be created as a result of a revision.
+  - The object representation of this work type MUST follow this form:
+    - `revised_headings`: a list of headings that have been revised.
+      - each revised heading MUST be represented as a markdown fragment that exists within the specification
 - `feat`: an introduction of a feature
   - The target artifact MUST be an implementation.
   - SHOULD be used to introduce new functionality via implementations.
 - `ref`: a refactor of an implementation
   - The target artifact MUST be an implementation.
   - Implies potential refactoring required for downstream implementations.
+  - The object representation of this work type MUST follow this form:
+    - `refactored_headings`: a list of headings that have been refactored.
+      - each refactored heading MUST be represented as a markdown fragment that exists within the specification
+
 
 
 ### Git Branches
@@ -95,6 +118,8 @@ Frontmatter fields MUST be formatted as below.
 - `target`: the target artifact
 - `branch`: the git branch
   - this field MAY be omitted if there is no Git workspace.
+- `work_type`: the object representing the work type
+  - `draft|revision|feat|ref`: a field on the object representing the work type.
 
 ## [Specifications](../../docs/founding-spec.md#specifications)
 
