@@ -73,8 +73,6 @@ A work type can be one of the following:
 
 - `draft`: create an initial specification
   - The target artifact MUST be a specification. The specification MUST NOT be an external reference.
-  - The object representation of this work type MUST follow this form:
-    - 
 - `revision`: a change to the specification
   - The target artifact MUST be a specification. The specification MUST NOT be an external reference.
   - Implies potential refactoring required for all referencing implementations.
