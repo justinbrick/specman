@@ -10,6 +10,11 @@ primary_language:
   properties: {}
   libraries: []
 secondary_languages: []
+# Add any references as needed.
+references:
+  - ref: ../path/to/related-artifact.md
+    type: specification
+    optional: false
 ---
 
 # Implementation — Replace With Descriptive Title
@@ -27,14 +32,7 @@ Describe the implementation goals, scope, and notable design choices. Link back 
 
 ## References
 
-Replace the YAML list below with actual reference objects or remove the block entirely if no references are required.
-
-```yaml
-references:
-  - ref: ../path/to/related-artifact.md
-    type: specification
-    optional: false
-```
+Describe the references which exist in the YAML front matter. Explain their purpose, as well as a statement regarding what they do.
 
 ## Implementation Details
 
