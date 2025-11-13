@@ -755,7 +755,12 @@ fn derive_target_slug(target: &TargetArtifact) -> Option<String> {
     if is_url(locator.value.as_str()) {
         return Url::parse(locator.value.as_str())
             .ok()
-            .and_then(|url| url.path_segments()?.filter(|seg| !seg.is_empty()).last())
+            .and_then(|url| {
+                url.path_segments()?
+                    .filter(|seg| !seg.is_empty())
+                    .last()
+                    .map(String::from)
+            })
             .map(|segment| segment.trim_end_matches(".md").to_owned());
     }
 
