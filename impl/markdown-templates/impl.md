@@ -1,4 +1,5 @@
-spec: "../../spec/specman-data-model/spec.md"
+---
+spec: "../../spec/specman-templates/spec.md"
 name: markdown-templates
 version: "0.1.0"
 location: "templates"
@@ -14,6 +15,15 @@ This implementation provides a curated set of specification, implementation, and
 - [`templates/spec/spec.md`](../../templates/spec/spec.md) — specification scaffold with required metadata and section placeholders.
 - [`templates/impl/impl.md`](../../templates/impl/impl.md) — implementation scaffold including metadata, reference guidance, and API documentation slots.
 - [`templates/scratch/scratch.md`](../../templates/scratch/scratch.md) — scratch pad scaffold with structured sections for context, notes, and follow-up actions.
+- [`templates/prompts/spec.md`](../../templates/prompts/spec.md) — specification authoring prompt aligned with template requirements.
+- [`templates/prompts/impl.md`](../../templates/prompts/impl.md) — implementation authoring prompt that reinforces metadata and reference expectations.
+- [`templates/prompts/scratch-feat.md`](../../templates/prompts/scratch-feat.md) — feature execution scratch pad prompt.
+- [`templates/prompts/scratch-revision.md`](../../templates/prompts/scratch-revision.md) — revision synthesis scratch pad prompt.
+- [`templates/prompts/scratch-ref.md`](../../templates/prompts/scratch-ref.md) — refactor discovery scratch pad prompt.
+
+## Prompt Templates
+
+The prompt catalog in `templates/prompts/` equips automation with starting points that enforce SpecMan norms. Each prompt instructs the AI to copy its companion Markdown template verbatim, preserve HTML comment directives, and validate the result against `spec/specman-data-model/spec.md` before completion. Scratch pad prompts further call out the appropriate `work_type` object shape and scenario-specific sections so their artifacts remain consistent across discovery, execution, and synthesis workflows.
 
 ## Specification Template
 
