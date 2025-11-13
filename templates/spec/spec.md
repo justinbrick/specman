@@ -8,7 +8,7 @@ dependencies:
 
 # Specification — Replace With Descriptive Title
 
-> Concisely describe the scope of the specification and its intent.
+<!-- Concisely describe the scope of the specification and its intent. -->
 
 ## Terminology & References
 
@@ -18,27 +18,27 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 ### Concept: placeholder-concept-name
 
-> Provide a short description of the concept. Use RFC 2119 requirement levels when listing constraints.
+<!-- Provide a short description of the concept. Use RFC 2119 requirement levels when listing constraints.
 
 - MUST ...
-- SHOULD ...
+- SHOULD ... -->
 
 ## Key Entities
 
 ### Entity: placeholder-entity-name
 
-> Describe the entity at a conceptual level. List relationships to other entities or concepts where relevant.
+<!-- Describe the entity at a conceptual level. List relationships to other entities or concepts where relevant.
 
 - Field or characteristic one
-- Field or characteristic two
+- Field or characteristic two -->
 
 ## Constraints
 
-> Capture cross-cutting requirements that involve multiple concepts or entities.
+<!-- Capture cross-cutting requirements that involve multiple concepts or entities.
 
 - MUST ...
-- SHOULD ...
+- SHOULD ... -->
 
 ## Additional Notes
 
-> Record implementation guidance, open questions, or non-normative context that supports the specification.
+<!-- Record implementation guidance, open questions, or non-normative context that supports the specification. -->
