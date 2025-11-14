@@ -1,49 +1,17 @@
----
-artifact_type: scratch-pad
-work_type: feat
-scenario: execution
-inputs:
-  - scratch_name
-  - target_impl_path
-  - branch_name
-  - objectives
-  - task_outline
-success_criteria:
-  - front_matter_complete
-  - execution_sections_populated
-  - html_comments_preserved
-  - data_model_validated
----
 
-# Prompt — Scratch Pad (Feature Execution)
+You are capturing active feature execution in the scratch pad "{{scratch_name}}" for implementation {{target_impl_path}}.
 
-Use this blueprint to drive an execution-oriented scratch pad that tracks active feature development.
+Read the following dependencies before continuing:
+{{context}}
 
-```
-You are preparing the scratch pad "{{scratch_name}}" for feature work tied to the implementation at {{target_impl_path}}.
+This user has said the following regarding the feature work:
+<<<USER_INPUT>>>
+{{arguments}}
+<<<END_USER_INPUT>>>
 
-Inputs you have:
-- Branch name: {{branch_name}}
-- Objectives: {{objectives}}
-- Task outline: {{task_outline}}
-
-Instructions:
-1. Copy the canonical scratch pad template from `templates/scratch/scratch.md` and use it without removing any HTML comment directives upfront.
-2. Explicitly confirm that you will honor every HTML comment instruction; remove a directive only after fulfilling it.
-3. Update the YAML front matter:
-   - `target`: set to {{target_impl_path}}.
-   - `branch`: use {{branch_name}} or propose one that follows `{target_name}/feat/{{scratch_name}}`.
-   - `work_type`: set to `feat: {}` (add key-value pairs if additional execution metadata is needed).
-4. Populate the Context and Scope & Goals sections with the objectives and current state of the feature work.
-5. Use the Notes section to capture discoveries, blockers, and references encountered while executing the feature.
-6. Turn the Tasks section into an actionable checklist that aligns with the supplied outline, linking to `tasks.md` if it exists.
-7. Fill the Decisions and Next Steps sections with concise status updates suitable for daily execution tracking.
-
-Validation Checklist:
-- Confirm the scratch pad structure and metadata comply with `spec/specman-data-model/spec.md` (sections: Scratch Pads, Work Type, Git Branches, Scratch Pad Metadata).
-- Ensure the `feat` work type is the only object present under `work_type`.
-- Verify that all HTML comment directives are satisfied or intentionally retained for future action.
-
-Deliverable:
-- Return the completed Markdown scratch pad ready to reside at `.specman/scratchpad/{{scratch_name}}/scratch.md`.
-```
+Steps:
+1. Create or refine a short, lowercase, hyphenated scratch pad name (no more than four words) that describes the feature effort, ensuring it meets the SpecMan naming constraints, and assign it to `{{scratch_name}}` for all remaining steps.
+2. Copy `templates/scratch/scratch.md`, keep every HTML comment directive until satisfied, and update the front matter with `target: {{target_impl_path}}`, `branch: {{branch_name}}` (or the branch you will create in Step 5 using `{target_name}/feat/{{scratch_name}}`), and `work_type: { feat: {} }`.
+3. Summarize {{objectives}} inside Context plus Scope & Goals, and convert {{task_outline}} into a concise checklist that links to `tasks.md` when present.
+4. Use Notes to log discoveries and blockers, capture decisions as they occur, and record immediate follow-ups in Next Steps, then confirm compliance with `spec/specman-data-model/spec.md` requirements for Scratch Pads, Work Type, Git Branches, and Scratch Pad Metadata before returning `.specman/scratchpad/{{scratch_name}}/scratch.md`.
+5. After the scratch pad is ready, create and check out the Git branch that combines the target artifact and scratch pad name (for example `git switch -c {target_name}/feat/{{scratch_name}}` or reuse `{{branch_name}}` if supplied) so all further commits land on that branch.

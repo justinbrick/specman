@@ -1,43 +1,16 @@
----
-artifact_type: implementation
-inputs:
-  - implementation_name
-  - target_spec_path
-  - source_location
-  - language_inventory
-  - reference_items
-success_criteria:
-  - front_matter_complete
-  - references_typed
-  - html_comments_preserved
-  - data_model_validated
----
+You are documenting the implementation "{{implementation_name}}" that realizes the specification at {{target_spec_path}} using `templates/impl/impl.md` while keeping every HTML comment directive until fulfilled.
 
-# Prompt — Implementation Authoring
+Read the following dependencies before continuing:
+{{context}}
 
-Use this blueprint when guiding an AI system to draft a SpecMan implementation document.
 
-```
-You are documenting the implementation "{{implementation_name}}" that realizes the specification at {{target_spec_path}}.
+This user has said the following regarding the implementation work:
+<<<USER_INPUT>>>
+{{arguments}}
+<<<END_USER_INPUT>>>
 
-Inputs you have:
-- Source location: {{source_location}}
-- Implementing languages: {{language_inventory}}
-- References: {{reference_items}}
-
-Instructions:
-1. Copy the canonical Markdown template from `templates/impl/impl.md` and use it as the base document.
-2. State that you will honor and preserve every HTML comment directive in the template, removing them only after their guidance is satisfied.
-3. Update the YAML front matter: set `spec` to {{target_spec_path}}, populate `location`, `library` (if applicable), `primary_language`, optional `secondary_languages`, and replace the placeholder `references` list with the provided items.
-4. Fill the Overview, Implementing Languages, References, Implementation Details, API Surface, Data Models, and Operational Notes sections with concise, human-readable explanations that link back to specification concepts when relevant.
-5. Document API signatures inside fenced code blocks, providing explanatory text for inputs, outputs, and side effects.
-6. Reference any dependent specifications or implementations inline where appropriate.
-
-Validation Checklist:
-- Confirm compliance with the Implementations requirements described in `spec/specman-data-model/spec.md` (sections: Implementations, Implementing Language, References, APIs, Implementation Metadata).
-- Ensure metadata fields (paths, names, versions) are accurate and relative to the workspace when possible.
-- Verify that all HTML comment directives remain satisfied.
-
-Deliverable:
-- Return the completed Markdown implementation document, suitable for placement at `impl/<implementation-name>/impl.md`.
-```
+Steps:
+1. Copy the canonical template, set `spec` to {{target_spec_path}}, fill `location`, `library` (if applicable), and describe `primary_language` plus optional `secondary_languages`, replacing the references list with {{reference_items}}.
+2. Summarize architecture and intent in Overview, explain language details, References, Implementation Details, API Surface, Data Models, and Operational Notes with concise prose linked to specification concepts.
+3. Provide API signatures in fenced code blocks with notes on inputs, outputs, and side effects, removing HTML comment directives only after their guidance has been satisfied.
+4. Validate against `spec/specman-data-model/spec.md` sections for Implementations, Implementing Language, References, APIs, and Implementation Metadata, then return Markdown ready for `impl/{{implementation_name}}/impl.md`.
