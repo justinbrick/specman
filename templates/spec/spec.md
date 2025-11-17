@@ -19,7 +19,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 ## Concepts
 
-### Concept: placeholder-concept-name
+### Concept: Placeholder Concept Name
 
 <!-- Provide a short description of the concept. Use RFC 2119 requirement levels when listing constraints.
 
@@ -28,7 +28,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 ## Key Entities
 
-### Entity: placeholder-entity-name
+### Entity: Placeholder Entity Name
 
 <!-- Describe the entity at a conceptual level. List relationships to other entities or concepts where relevant.
 
