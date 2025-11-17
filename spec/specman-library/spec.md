@@ -16,21 +16,21 @@ The SpecMan Library defines the shared function catalog and implementation envel
 
 ## Terminology & References
 
-This document uses the normative keywords defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). Consumers SHOULD review the [SpecMan Data Model](../specman-data-model/spec.md) for canonical entity definitions and serialization rules reused by this library.
+This document uses the normative keywords defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). Consumers SHOULD review the [SpecMan Data Model](../specman-data-model/spec.md) for canonical entity definitions and serialization rules reused throughout this specification.
 
 ## Concepts
 
 ### Concept: SpecMan Library Surface
 
-The library surface captures the stable entry points that project owners depend upon.
+This surface captures the stable entry points that project owners depend upon.
 
-- The library surface MUST expose only functions that operate on types defined in the [SpecMan Data Model](../specman-data-model/spec.md).
+- This surface MUST expose only functions that operate on types defined in the [SpecMan Data Model](../specman-data-model/spec.md).
 - Each exported function MUST declare immutable input contracts and deterministic outputs.
 - The surface SHOULD remain backward compatible within a given major version of this specification.
 
 ### Concept: Data Model Backing Implementation
 
-This concept ties the library’s runtime behavior to the data model’s authoritative structures.
+This concept ties runtime behavior to the data model’s authoritative structures.
 
 - The implementation MUST persist or retrieve entities exactly as defined in the data model specification.
 - Internal storage representations MAY vary, provided they preserve the documented semantics.
@@ -40,7 +40,7 @@ This concept ties the library’s runtime behavior to the data model’s authori
 
 Dependency mapping provides visibility into upstream and downstream relationships across specifications and implementations.
 
-- The library MUST construct dependency trees that enumerate upstream providers, downstream consumers, and full transitive relationships.
+- The implementation MUST construct dependency trees that enumerate upstream providers, downstream consumers, and full transitive relationships.
 - Dependency lookups MUST return results in upstream, downstream, and aggregate forms to support targeted impact analysis.
 - Tree traversal APIs SHOULD expose both hierarchical and flattened views to accommodate varied client needs.
 
@@ -49,9 +49,9 @@ Dependency mapping provides visibility into upstream and downstream relationship
 Template orchestration governs how reusable content is discovered and rendered.
 
 - Templates MUST declare substitution tokens using double braces (`{{token_name}}`).
-- The library MUST accept template locators as absolute filesystem paths or HTTPS URLs targeting Markdown resources.
+- The system MUST accept template locators as absolute filesystem paths or HTTPS URLs targeting Markdown resources.
 - Special-purpose template functions SHOULD exist for common scenarios such as creating specifications, implementations, and scratch pads together with their work-type variants.
-- The library MUST NOT hardcode template content; it MUST resolve templates at runtime via the provided locator.
+- The runtime MUST NOT hardcode template content; it MUST resolve templates at runtime via the provided locator.
 
 ### Concept: Lifecycle Automation
 
@@ -65,23 +65,15 @@ Lifecycle automation standardizes creation and deletion workflows for specificat
 
 ### Entity: SharedFunction
 
-A reusable unit of logic registered by the library.
+A reusable unit of logic registered by this implementation.
 
 - MUST reference a data model entity type as its primary operand.
 - MUST declare input and output schemas derived from data model definitions.
 - SHOULD include metadata describing version compatibility and dependency requirements.
 
-### Entity: LibraryInterface
-
-The boundary object that packages available `SharedFunction` instances.
-
-- MUST provide discovery mechanisms a host environment MUST use to enumerate functions.
-- SHOULD supply invocation semantics including error handling, idempotency, and retry guidance.
-- MUST maintain a changelog that documents breaking and non-breaking updates.
-
 ### Entity: DataModelAdapter
 
-Adapter responsible for translating library interactions to persisted data model instances.
+Adapter responsible for translating runtime interactions to persisted data model instances.
 
 - MUST ensure transformations honor data model invariants.
 - SHOULD provide observability hooks for auditing cross-cutting behaviors.
@@ -121,9 +113,9 @@ Defines the characteristics and template linkages for scratch pad variants.
 
 ## Constraints
 
-- The library MUST depend on a single major version of the [SpecMan Data Model](../specman-data-model/spec.md) at any given time.
+- This implementation MUST depend on a single major version of the [SpecMan Data Model](../specman-data-model/spec.md) at any given time.
 - Consumers MUST treat all functions as pure unless explicitly documented otherwise.
-- Any serialization emitted by the library MUST validate against the schemas mandated by the data model specification.
+- Any serialization emitted here MUST validate against the schemas mandated by the data model specification.
 - Breaking changes to function signatures or behaviors MUST trigger a major version increment of this specification.
 - Dependency inspection APIs MUST produce results that include upstream, downstream, and full dependency sets for any supported artifact.
 - Template rendering routines MUST require callers to supply all `{{}}` token values before materialization.
