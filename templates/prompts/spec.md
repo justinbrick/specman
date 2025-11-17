@@ -1,4 +1,4 @@
-You are creating a SpecMan specification titled "{{spec_name}}" using `templates/spec/spec.md` while preserving each HTML comment directive until its instruction is satisfied.
+You are creating a SpecMan specification whose canonical name (`{{spec_name}}`) you must infer from the provided inputs, ensuring it satisfies `spec/specman-data-model/spec.md` naming requirements, using `templates/spec/spec.md` while preserving each HTML comment directive until its instruction is satisfied.
 
 Read the following dependencies before continuing:
 {{context}}

@@ -1,4 +1,4 @@
-You are documenting the implementation "{{implementation_name}}" that realizes the specification at {{target_spec_path}} using `templates/impl/impl.md` while keeping every HTML comment directive until fulfilled.
+You are documenting an implementation whose canonical name (`{{implementation_name}}`) you must infer from the provided inputs, ensuring it complies with `spec/specman-data-model/spec.md`, as it realizes the specification at {{target_spec_path}} using `templates/impl/impl.md` while keeping every HTML comment directive until fulfilled.
 
 Read the following dependencies before continuing:
 {{context}}
