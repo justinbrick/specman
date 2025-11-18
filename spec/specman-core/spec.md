@@ -1,5 +1,4 @@
----
-name: specman-library
+name: specman-core
 version: "0.1.0"
 dependencies:
   - ref: https://raw.githubusercontent.com/jbrickley-tcs/specman/refs/heads/main/spec/specman-data-model/spec.md
@@ -10,9 +9,9 @@ dependencies:
 
 <!-- Template directives from templates/spec/spec.md were preserved and fulfilled prior to removal. -->
 
-# Specification — SpecMan Library
+# Specification — SpecMan Core
 
-The SpecMan Library specification defines the platform capabilities that guarantee consistent interactions with the [SpecMan Data Model](../specman-data-model/spec.md). It focuses on the behaviors and governance rules implementers MUST honor so downstream specifications MAY rely on a stable, versioned integration experience independent of any concrete delivery mechanism.
+The SpecMan Core specification defines the platform capabilities that guarantee consistent interactions with the [SpecMan Data Model](../specman-data-model/spec.md). It focuses on the behaviors and governance rules implementers MUST honor so downstream specifications MAY rely on a stable, versioned integration experience independent of any concrete delivery mechanism.
 
 ## Terminology & References
 
