@@ -1,5 +1,9 @@
 You are creating a SpecMan specification whose canonical name (`{{spec_name}}`) you must infer from the provided inputs, ensuring it satisfies `spec/specman-data-model/spec.md` naming requirements, using `templates/spec/spec.md` while preserving each HTML comment directive until its instruction is satisfied.
 
+Before interpreting any inputs, complete these reading prerequisites:
+- Open `spec/specman-data-model/spec.md` and every dependency it lists (including `docs/founding-spec.md`) so the governing data-model rules are fresh.
+- Review each dependency referenced for the target specification (from the provided context or prior drafts), opening the local files/URLs so you understand the upstream requirements those documents introduce.
+
 Read the following dependencies before continuing:
 {{context}}
 

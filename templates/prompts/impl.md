@@ -1,5 +1,10 @@
 You are documenting an implementation whose canonical name (`{{implementation_name}}`) you must infer from the provided inputs, ensuring it complies with `spec/specman-data-model/spec.md`, as it realizes the specification at {{target_spec_path}} using `templates/impl/impl.md` while keeping every HTML comment directive until fulfilled.
 
+Before doing anything else, complete these prerequisites:
+- Study `spec/specman-data-model/spec.md` plus its declared dependencies (for example `docs/founding-spec.md`) so you apply the latest implementation rules.
+- Open the governing specification at {{target_spec_path}} and read every dependency listed inside it to understand upstream constraints.
+- Review the existing implementation materials referenced in {{context}} (including source paths under `impl/`), along with every item in the implementation's `references` list, so you know all downstream contracts.
+
 Read the following dependencies before continuing:
 {{context}}
 

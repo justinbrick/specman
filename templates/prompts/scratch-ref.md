@@ -1,5 +1,9 @@
 You are gathering refactor discovery insights in a scratch pad whose name (`{{scratch_name}}`) you must infer from the supplied inputs, keeping it compliant with `spec/specman-data-model/spec.md` naming rules while focusing on implementation {{target_impl_path}}.
 
+Before any analysis, complete these reading prerequisites:
+- Study `spec/specman-data-model/spec.md` along with its dependencies (including `docs/founding-spec.md`) so the refactor aligns with current guidance.
+- Read {{target_impl_path}}, its governing specification, and every dependency/reference declared in those files to ensure the refactor considers all touchpoints.
+
 Read the following dependencies before continuing:
 {{context}}
 

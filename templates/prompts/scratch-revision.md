@@ -1,5 +1,9 @@
 You are applying user suggestions to revise the specification {{target_spec_path}} using a scratch pad whose name (`{{scratch_name}}`) you must infer from the provided inputs while keeping it compliant with `spec/specman-data-model/spec.md` naming guidance.
 
+Before proceeding, satisfy these reading prerequisites:
+- Review `spec/specman-data-model/spec.md` and every dependency it lists (notably `docs/founding-spec.md`) so revision notes stay aligned with the canonical rules.
+- Open {{target_spec_path}} and read each dependency from its front matter to understand all upstream specifications driving the revision.
+
 Read the following dependencies before continuing:
 {{context}}
 
