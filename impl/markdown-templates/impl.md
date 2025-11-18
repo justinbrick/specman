@@ -25,6 +25,11 @@ This implementation provides a curated set of specification, implementation, and
 
 The prompt catalog in `templates/prompts/` equips automation with starting points that enforce SpecMan norms. Each prompt instructs the AI to copy its companion Markdown template verbatim, preserve HTML comment directives, and validate the result against `spec/specman-data-model/spec.md` before completion. Scratch pad prompts further call out the appropriate `work_type` object shape and scenario-specific sections so their artifacts remain consistent across discovery, execution, and synthesis workflows.
 
+Interactive guardrails ensure upstream requirements stay visible:
+- `templates/prompts/spec.md` now performs an adversarial requirement review, intentionally misinterpreting inputs to surface ambiguities and returning the resulting issues/questions to the user before finalizing prose.
+- `templates/prompts/scratch-revision.md` introduces a conflict audit that enumerates existing statements (with headings and RFC 2119 levels) that might contradict the requested revision so authors can explicitly confirm overrides or alignments.
+- `templates/prompts/scratch-ref.md` and `templates/prompts/scratch-feat.md` require an "Entity & Concept" breakdown that inventories every affected module/API, outlines the planned change, and produces a staged plan future scratch pads can execute.
+
 ## Specification Template
 
 Authors MAY copy `templates/spec/spec.md` into a new spec directory under `spec/` (for example `spec/new-feature/spec.md`). Replace the placeholder front matter with the canonical `name`, semantic `version`, and dependency list. The template pre-populates a "Terminology & References" section with the RFC 2119 guidance that specs SHOULD include. Subsequent headings provide space to document concepts, entities, and cross-cutting constraints while maintaining unique headings, as required by the data model.
