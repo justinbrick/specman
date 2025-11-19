@@ -47,7 +47,8 @@ Dependency mapping provides visibility into upstream and downstream relationship
 - Dependency lookups MUST return results in upstream, downstream, and aggregate forms to support targeted impact analysis.
 - Tree traversal APIs SHOULD expose both hierarchical and flattened views to accommodate varied client needs.
 - Dependency tree construction MUST accept a target path pointing to either a specification or implementation Markdown artifact and MUST normalize that path relative to the active workspace root before traversal begins.
-- The resolver MUST support workspace-local identifiers of the form `spec://{spec-name}` and `impl://{impl-name}`, mapping them to `{workspace}/spec/{spec-name}/spec.md` and `{workspace}/impl/{impl-name}/impl.md` respectively.
+- Resolvers MUST support filesystem paths (absolute or workspace-relative) and HTTPS URLs that point to Markdown specifications or implementations and MUST reuse workspace discovery results to normalize those inputs.
+- Requests that supply unsupported locator schemes (including deprecated `spec://` and `impl://` identifiers) MUST fail fast with a descriptive error that directs callers to use filesystem or HTTPS references instead of attempting implicit rewrites.
 - Requests that reference targets outside of the detected workspace MUST fail with an error that explains the workspace boundary violation.
 
 ### Concept: Template Orchestration
@@ -64,8 +65,12 @@ Template orchestration governs how reusable content is discovered and rendered.
 Lifecycle automation standardizes creation and deletion workflows for specifications, implementations, and scratch pads.
 
 - Automated creation flows MUST require an associated template locator and MUST validate that required tokens are supplied.
+- Creation tooling MUST cover all three artifact types (specifications, implementations, scratch pads) and MUST enforce the naming and metadata rules defined by the [SpecMan Data Model](../specman-data-model/spec.md) and [founding specification](../../docs/founding-spec.md).
+- Creation workflows MUST persist generated Markdown artifacts and supporting metadata into the canonical workspace locations (`spec/{name}/spec.md`, `impl/{name}/impl.md`, `.specman/scratchpad/{slug}/scratch.md`) using the paths returned by workspace discovery.
+- Persistence helpers MUST write the rendered template output (with all required tokens populated) together with its front matter or metadata; persisting additional representations of entities, concepts, or other runtime data structures is out of scope for this specification.
 - Deletion workflows MUST refuse to proceed when dependent artifacts exist and MUST return a dependency tree describing all impacted consumers.
 - Scratch pad creation SHOULD support selectable profiles aligned with defined scratch pad types and MUST leverage corresponding templates.
+- Lifecycle controllers MUST expose a persistence interface that can round-trip newly created artifacts back onto disk and SHOULD surface explicit errors if the filesystem write fails so callers can remediate workspace permissions.
 
 ## Key Entities
 
@@ -123,7 +128,9 @@ Defines the characteristics and template linkages for scratch pad variants.
 - Scratch pad creation workflows MUST offer selectable profiles and MUST apply the template associated with the chosen profile.
 - Deletion workflows MUST fail when dependencies exist and MUST include the complete dependency tree in the failure response.
 - Dependency traversal MUST reject target paths that fall outside the active workspace root and MUST describe the violation.
-- `spec://` and `impl://` identifiers MUST resolve to `{workspace}/spec/{name}/spec.md` and `{workspace}/impl/{name}/impl.md` respectively; missing targets MUST surface an error that callers MAY relay to users.
+- Dependency traversal inputs MUST be limited to filesystem paths (absolute or workspace-relative) and HTTPS URLs pointing to Markdown specifications or implementations; unsupported schemes MUST trigger descriptive errors that instruct callers to use supported locators.
+- Creation workflows for specifications, implementations, and scratch pads MUST persist the rendered template artifacts (with populated tokens and required front matter) into the canonical workspace directories defined by the [SpecMan Data Model](../specman-data-model/spec.md), leveraging workspace discovery results to determine destinations; persisting additional entity or concept data structures is out of scope for this specification.
+- Lifecycle controllers MUST surface errors when filesystem persistence fails (for example, permissions, missing directories) so callers can remediate without corrupting the workspace.
 
 ## Additional Notes
 
