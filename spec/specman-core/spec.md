@@ -48,7 +48,7 @@ Dependency mapping provides visibility into upstream and downstream relationship
 - Tree traversal APIs SHOULD expose both hierarchical and flattened views to accommodate varied client needs.
 - Dependency tree construction MUST accept a target path pointing to either a specification or implementation Markdown artifact and MUST normalize that path relative to the active workspace root before traversal begins.
 - Resolvers MUST support filesystem paths (absolute or workspace-relative) and HTTPS URLs that point to Markdown specifications or implementations and MUST reuse workspace discovery results to normalize those inputs.
-- Requests that supply unsupported locator schemes (including deprecated `spec://` and `impl://` identifiers) MUST fail fast with a descriptive error that directs callers to use filesystem or HTTPS references instead of attempting implicit rewrites.
+- Requests that supply unsupported locator schemes MUST fail fast with a descriptive error that directs callers to use filesystem or HTTPS references instead of attempting implicit rewrites.
 - Requests that reference targets outside of the detected workspace MUST fail with an error that explains the workspace boundary violation.
 
 ### Concept: Template Orchestration
