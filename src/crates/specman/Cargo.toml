@@ -1,0 +1,19 @@
+[package]
+name = "specman"
+version = "0.1.0"
+edition = "2024"
+authors = ["SpecMan Authors"]
+description = "SpecMan runtime library for dependency mapping, templating, and lifecycle automation."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = { version = "0.8", features = ["derive", "semver"] }
+markdown = "0.3"
+thiserror = "1.0"
+parking_lot = "0.12"
+semver = { version = "1.0", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.10"

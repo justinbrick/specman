@@ -23,32 +23,73 @@ Implementations SHOULD treat the nearest ancestor directory containing a `.specm
 
 ## Scratch Pads
 
-Scratch pads are working documents that track in-progress efforts for SpecMan-aware tooling. Implementations MUST store scratch pads under `.specman/scratch/`. 
+Scratch pads are working documents that track in-progress efforts for SpecMan-aware tooling. 
 
-Each scratch pad MUST reside in its own subdirectory whose name is all lowercase, uses hyphen separators, contains no more than four words, and MAY include verbs. This will act as the **scratch pad name**.
+- Each scratch pad MUST reside in its own subdirectory whose name is all lowercase, uses hyphen separators, contains no more than four words, and MAY include verbs.
+  - This will act as the **scratch pad name**.
+- Scratch pads MAY be deleted when they are no longer being used.
 
-The primary scratch pad document inside each subdirectory MUST be named `scratch.md`. Scratch pads MAY be deleted when they are no longer being used.
+### Scratch Pad Location
+
+- Each scratch pad MUST be stored in it's own folder.
+- Scratch pad folders MUST NOT be nested within eachother.
+- Each scratch pad folder MUST be stored in a root folder, `scratchpad`.
+  - This root folder MUST be located under the [Specman dot folder](#specman-dot-folder).
+- The primary scratch pad document inside each subdirectory MUST be named `scratch.md`.
+- Each scratch pad folder MAY contain various other documents or files, to assist in making changes.
+
+Example:
+
+- .specman/
+  - scratchpad/
+    - scratch-pad-name/
+      - scratch.md
 
 ### Target Artifact
 
-A scratch pad MUST have a target artifact, in the form of either a specification or an implementation, associated with it. This artifact MUST be a relative file path, or a URL if the artifact is external.
-These are mutually exclusive, as if an implementation is referenced, then its underlying specification can be implicitly retrieved.
+A scratch pad MUST have a target artifact associated with it.
+- The artifact MUST be either a specification or dependency. 
+  - These are mutually exclusive, as if an implementation is referenced, then its underlying specification can be implicitly retrieved.
+- This artifact MUST be a relative file path, or a URL if the artifact is external.
+
+
+### Scratch Pad Content
+
+There MUST be specific content included inside of a scratch pad, for readability sake.
+- A scratch pad MUST contain a notes section.
+  - This is to allow for any AI to resume from little to no context.
+- A scratch pad SHOULD have a tasks file.
+  - The tasks file will serve as a list of tasks to be completed before the the scratch pad may be considered completed.
+  - If present, the tasks file MUST be located under the directory containing the `scratch.md` file, and MUST be labelled `tasks.md`.
 
 ### Work Type
 
-A scratch pad MUST specify its work type, which specifies what kind of actions are being taken. A scratch pad SHOULD only have one work type.
+A scratch pad MUST specify its work type, which specifies what kind of actions are being taken. 
+- A scratch pad MUST only have one work type.
+- Work types MUST be represented as objects, to store data unique to the work type.
+  - If the work type does not have any data, it SHOULD be represented as an empty object.
+
 A work type can be one of the following:
 
+- `draft`: create an initial specification
+  - The target artifact MUST be a specification. The specification MUST NOT be an external reference.
 - `revision`: a change to the specification
-  - If used, the target artifact MUST be a specification. The specification MUST NOT be an external reference.
+  - The target artifact MUST be a specification. The specification MUST NOT be an external reference.
   - Implies potential refactoring required for all referencing implementations.
   - One or more extra scratch pads MAY be created as a result of a revision.
+  - The object representation of this work type MUST follow this form:
+    - `revised_headings`: a list of headings that have been revised.
+      - each revised heading MUST be represented as a markdown fragment that exists within the specification
 - `feat`: an introduction of a feature
   - The target artifact MUST be an implementation.
-  - SHOULD be used to introduce new functionality to an implementation.
+  - SHOULD be used to introduce new functionality via implementations.
 - `ref`: a refactor of an implementation
   - The target artifact MUST be an implementation.
   - Implies potential refactoring required for downstream implementations.
+  - The object representation of this work type MUST follow this form:
+    - `refactored_headings`: a list of headings that have been refactored.
+      - each refactored heading MUST be represented as a markdown fragment that exists within the specification
+
 
 
 ### Git Branches
@@ -75,6 +116,8 @@ Frontmatter fields MUST be formatted as below.
 - `target`: the target artifact
 - `branch`: the git branch
   - this field MAY be omitted if there is no Git workspace.
+- `work_type`: the object representing the work type
+  - `draft|revision|feat|ref`: a field on the object representing the work type.
 
 ## [Specifications](../../docs/founding-spec.md#specifications)
 
@@ -87,6 +130,10 @@ Each specification MUST categorize their content into [headings](https://spec.co
 - Specifications SHOULD include a top-level heading titled "Terminology & References" placed near the top of the file (immediately below the main title or any YAML frontmatter).
   - This heading SHOULD include a reference to RFC 2119 and a short statement indicating how the RFC 2119 normative keywords (for example, MUST, SHOULD, MAY, etc.) are to be interpreted for that document.
   - Other statements or notes SHOULD be added to this heading regarding referenced documents, but MAY be omitted or relocated under other headings as necessary.
+
+### Specification [Concepts](../../docs/founding-spec.md#concepts) and [Entities](../../docs/founding-spec.md#key-entities)
+
+- Each concept or key entity SHOULD have its own [heading](#specification-headings).
 
 ### Specification Layout
 
@@ -151,16 +198,14 @@ dependencies:
 
 ## [Implementations](../../docs/founding-spec.md#implementation)
 
-Implementations MUST be authored as Markdown documents to support consistent rendering, review, and automated processing.
-Implementation documents MUST declare their frontmatter fields, including a `spec` field referencing the implemented specification as either a relative file path string or a URL.
+- Implementations MUST be authored as Markdown documents to support consistent rendering, review, and automated processing.
+- Implementations MUST contain human-readable content.
 
 ### Implementation Headings
 
 Each implementation MUST categorize their content into [headings](https://spec.commonmark.org/0.31.2/#atx-headings).
 - A heading SHOULD be a link if it is a direct reference to a specification concept or key entity.
-- Implementations SHOULD include a top-level heading titled "Terminology & References" placed near the top of the file (immediately below the main title or any YAML frontmatter).
-  - This heading SHOULD include a reference to RFC 2119 and a short statement indicating how the RFC 2119 normative keywords (for example, MUST, SHOULD, MAY, etc.) are to be interpreted for that document.
-  - Other statements or notes SHOULD be added to this heading regarding referenced documents, but MAY be omitted or relocated under other headings as necessary.
+- If multiple concepts or key entities are related, they SHOULD be linked directly under the heading in an unordered list that provides inline links to the concepts / entities.
 
 ### Implementation Layout
 

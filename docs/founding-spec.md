@@ -84,7 +84,6 @@ An implementation is, as the name suggests, an implementation of a specification
 
 An implementation MUST have a friendly name that can be used to refer to the implementation.
 
-- The implementation name MUST contain the [specification name](#specification-name)
 - The implementation name MUST follow the same formatting guidelines as the specification name.
 - The implementation name MUST append or prepend a keyword representing the [implementing language](#implementing-language) name, or an underlying technology being used in the implementation.
 - Implementation names MUST be unique and MUST NOT collide with any specification or other implementation names.
