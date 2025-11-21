@@ -1,7 +1,9 @@
 pub mod adapter;
 pub mod dependency_tree;
 pub mod error;
+pub mod front_matter;
 pub mod lifecycle;
+pub mod metadata;
 pub mod persistence;
 pub mod scratchpad;
 pub mod shared_function;
@@ -17,6 +19,9 @@ pub use error::SpecmanError;
 pub use lifecycle::{
     CreationPlan, CreationRequest, DefaultLifecycleController, DeletionPlan, LifecycleController,
     ScratchPadPlan,
+};
+pub use metadata::{
+    MetadataMutationRequest, MetadataMutationResult, MetadataMutator, ReferenceAddition,
 };
 pub use persistence::{PersistedArtifact, WorkspacePersistence};
 pub use scratchpad::ScratchPadProfile;

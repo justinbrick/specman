@@ -11,6 +11,9 @@ pub trait DataModelAdapter: Send + Sync {
         &self,
         root: &ArtifactId,
     ) -> Result<Option<DependencyTree>, SpecmanError>;
+    fn invalidate_dependency_tree(&self, _root: &ArtifactId) -> Result<(), SpecmanError> {
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -37,5 +40,10 @@ impl DataModelAdapter for InMemoryAdapter {
         root: &ArtifactId,
     ) -> Result<Option<DependencyTree>, SpecmanError> {
         Ok(self.dependency_trees.lock().get(root).cloned())
+    }
+
+    fn invalidate_dependency_tree(&self, root: &ArtifactId) -> Result<(), SpecmanError> {
+        self.dependency_trees.lock().remove(root);
+        Ok(())
     }
 }

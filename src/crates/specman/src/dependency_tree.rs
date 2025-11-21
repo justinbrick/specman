@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::error::SpecmanError;
+use crate::front_matter::{self, DependencyEntry, RawFrontMatter};
 use crate::shared_function::SemVer;
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
 
@@ -403,7 +404,7 @@ impl ArtifactDocument {
         let mut metadata = BTreeMap::new();
         metadata.insert("locator".into(), locator.describe());
 
-        let (frontmatter, status) = parse_front_matter(&raw);
+        let (frontmatter, status) = front_matter::optional_front_matter(&raw);
         if let Some(status) = status {
             metadata.insert("metadata_status".into(), status);
         }
@@ -445,44 +446,6 @@ impl ArtifactDocument {
             dependencies,
         })
     }
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct RawFrontMatter {
-    name: Option<String>,
-    version: Option<String>,
-    spec: Option<String>,
-    target: Option<String>,
-    work_type: Option<serde_yaml::Value>,
-    #[serde(default)]
-    dependencies: Vec<DependencyEntry>,
-    #[serde(default)]
-    references: Vec<ReferenceEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum DependencyEntry {
-    Simple(String),
-    Detailed(DependencyObject),
-}
-
-#[derive(Debug, Deserialize)]
-struct DependencyObject {
-    #[serde(rename = "ref")]
-    reference: String,
-    #[serde(default, rename = "optional")]
-    _optional: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReferenceEntry {
-    #[serde(rename = "ref")]
-    reference: String,
-    #[serde(rename = "type")]
-    _type: Option<String>,
-    #[serde(default, rename = "optional")]
-    _optional: Option<bool>,
 }
 
 fn resolve_dependencies(
@@ -592,27 +555,6 @@ fn resolve_dependency_locator(
 
     let base_dir = parent.base_dir();
     ArtifactLocator::from_path(reference, workspace, base_dir.as_deref())
-}
-
-fn parse_front_matter(content: &str) -> (Option<&str>, Option<String>) {
-    let stripped = content.trim_start_matches('\u{feff}');
-    let Some(rest) = stripped.strip_prefix("---") else {
-        return (None, Some("missing".into()));
-    };
-
-    let rest = rest
-        .strip_prefix("\r\n")
-        .or_else(|| rest.strip_prefix('\n'));
-    let Some(remainder) = rest else {
-        return (None, Some("missing".into()));
-    };
-
-    if let Some(idx) = remainder.find("\n---") {
-        let front = &remainder[..idx];
-        (Some(front.trim()), None)
-    } else {
-        (None, Some("missing".into()))
-    }
 }
 
 fn path_contains_segment(path: &Path, needle: &str) -> bool {
@@ -926,7 +868,7 @@ version: "0.1.0"
     #[test]
     fn parse_front_matter_handles_bom_and_crlf() {
         let doc = "\u{feff}---\r\nname: alpha\r\nversion: \"1.0.0\"\r\n---\r\n# Body";
-        let (front, status) = parse_front_matter(doc);
+        let (front, status) = front_matter::optional_front_matter(doc);
         assert!(status.is_none(), "unexpected status: {:?}", status);
         let normalized = front.unwrap().replace('\r', "");
         assert_eq!(normalized, "name: alpha\nversion: \"1.0.0\"");
@@ -935,7 +877,7 @@ version: "0.1.0"
     #[test]
     fn parse_front_matter_reports_missing_when_absent() {
         let doc = "# Heading only\ncontent";
-        let (front, status) = parse_front_matter(doc);
+        let (front, status) = front_matter::optional_front_matter(doc);
         assert!(front.is_none());
         assert_eq!(status.as_deref(), Some("missing"));
     }
