@@ -29,6 +29,8 @@ Interactive guardrails ensure upstream requirements stay visible:
 - `templates/prompts/spec.md` now performs an adversarial requirement review, intentionally misinterpreting inputs to surface ambiguities and returning the resulting issues/questions to the user before finalizing prose.
 - `templates/prompts/scratch-revision.md` introduces a conflict audit that enumerates existing statements (with headings and RFC 2119 levels) that might contradict the requested revision so authors can explicitly confirm overrides or alignments.
 - `templates/prompts/scratch-ref.md` and `templates/prompts/scratch-feat.md` require an "Entity & Concept" breakdown that inventories every affected module/API, outlines the planned change, and produces a staged plan future scratch pads can execute.
+- `templates/prompts/scratch-ref.md` and `templates/prompts/scratch-feat.md` now add a numbered step that verifies every affected structure or function has updated code comments describing what changed and why; experiments are explicitly covered so exploratory branches stay documented. These prompts also require teams to track unresolved questions (tasks or inline bullets) **and** repeat the entire question list in their chat response alongside the batched decision block so reviewers can respond in one pass.
+- `templates/prompts/scratch-revision.md` extends its conflict audit to record each conflicting statement as a task while reiterating the whole set in the chat response as one consolidated decision block, keeping reviewers focused on a single confirmation thread.
 
 ## Specification Template
 
