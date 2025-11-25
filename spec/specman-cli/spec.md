@@ -22,7 +22,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 - The CLI MUST be executable as a standalone binary; installation, PATH configuration, or shell-integration steps are explicitly out of scope for this specification.
 - Every command MUST provide structured stdout/stderr suitable for automation, and SHOULD exit with non-zero codes on validation failures so scripts can detect errors deterministically.
 - Commands MUST accept positional arguments and flags that can be scripted without interactive prompts; optional interactive flows MAY exist but MUST have equivalent flag-driven variants.
-- The CLI MUST emit human-readable help text describing each command, argument, and related specification reference, and this help text MUST be accessible via `--help` for every command level.
+- The CLI MUST emit human-readable help text describing each command, argument, and related specification reference. A `--help` flag MUST be available on the root command plus every subcommand and subcommand group, and invoking it at any level MUST list the commands available at that scope while the formatting of the help output remains out of scope for this specification.
 - Exit statuses MUST map to the POSIX constants defined in [`sysexits.h`](https://man7.org/linux/man-pages/man3/sysexits.h.3head.html); successful executions MUST use `EX_OK`, and failure scenarios MUST choose the closest matching constant (for example `EX_DATAERR` for validation failures) so automation can rely on consistent semantics across commands.
 
 ### Concept: Workspace Context Resolution
