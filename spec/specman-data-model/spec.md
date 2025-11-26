@@ -27,7 +27,7 @@ Scratch pads are working documents that track in-progress efforts for SpecMan-aw
 
 - Each scratch pad MUST reside in its own subdirectory whose name is all lowercase, uses hyphen separators, contains no more than four words, and MAY include verbs.
   - This will act as the **scratch pad name**.
-- Scratch pads MAY be deleted when they are no longer being used.
+- Scratch pads MAY be deleted when they are no longer being used, but MUST first confirm that no other scratch pads declare a dependency on them.
 
 ### Scratch Pad Location
 
@@ -48,9 +48,14 @@ Example:
 ### Target Artifact
 
 A scratch pad MUST have a target artifact associated with it.
-- The artifact MUST be either a specification or dependency. 
-  - These are mutually exclusive, as if an implementation is referenced, then its underlying specification can be implicitly retrieved.
+- The artifact MUST be either a specification or an implementation.
 - This artifact MUST be a relative file path, or a URL if the artifact is external.
+
+### Scratch Pad Dependencies
+
+- Scratch pads MAY declare dependencies on other scratch pads when the downstream work requires the upstream analysis (for example, a refactor scratch pad depending on a revision scratch pad).
+- Scratch pad dependencies MUST reference other scratch pads only; specifications and implementations continue to be expressed through the `target` field.
+- A scratch pad MUST NOT be deleted while another scratch pad depends on it.
 
 
 ### Scratch Pad Content
@@ -118,6 +123,14 @@ Frontmatter fields MUST be formatted as below.
   - this field MAY be omitted if there is no Git workspace.
 - `work_type`: the object representing the work type
   - `draft|revision|feat|ref`: a field on the object representing the work type.
+- `dependencies`: a list of [dependencies](#scratch-pad-dependencies).
+  - this field MAY be omitted if this scratch pad does not depend on other scratch pads.
+
+### Dependency Graph Integrity
+
+- The combined dependency graph spanning specifications, implementations, and scratch pads MUST remain acyclic.
+- Tooling SHOULD validate the dependency graph whenever artifacts are added or updated, and MUST reject or flag any change that would introduce a cycle.
+- Authors SHOULD restructure work or adjust dependencies to remove cycles before publishing updates.
 
 ## [Specifications](../../docs/founding-spec.md#specifications)
 
@@ -163,6 +176,7 @@ When a specification does not require an implementation, this SHOULD be recorded
 - Dependencies MUST be either another specification or an external resource that contains documentation detailing a specification.
   - If the dependency is an external resource, it MUST be available in a plaintext format, in such a way that it could be read through a code editor.
   - Tooling MAY omit processing external dependencies outside of presenting the content if they are not formatted in markdown.
+- Specifications MUST NOT declare implementations as dependencies. Referencing an implementation would leak technical details into the specification layer and violates the separation between requirements and execution.
 - Each dependency item MUST be represented as one of the following forms:
   - A string: a local file path or a URL to another specification document.
   - An object with two fields:
@@ -200,6 +214,13 @@ dependencies:
 
 - Implementations MUST be authored as Markdown documents to support consistent rendering, review, and automated processing.
 - Implementations MUST contain human-readable content.
+
+### Specification Coverage
+
+- Each implementation MUST declare exactly one core specification that it implements. This contract is represented by the REQUIRED `spec` field in the implementation's front matter.
+- Implementations MAY implement multiple specifications. Every additional specification MUST be listed in the implementation `references` array with `type: specification`, and each entry MUST correspond to functionality the implementation actively plans to deliver.
+- When a core specification references other specifications, the implementation MUST either implement the referenced specifications itself or determine whether compliant implementations already exist. If such an implementation exists, it SHOULD be referenced and reused as the implementation model instead of reinventing it.
+- Specifications included in the implementation references list MUST be intended for implementation. Specifications needed only for background context SHOULD remain in the specification dependency graph rather than the implementation's references.
 
 ### Implementation Headings
 
