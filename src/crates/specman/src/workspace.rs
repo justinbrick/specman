@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::error::SpecmanError;
 
@@ -82,6 +82,15 @@ impl WorkspaceLocator for FilesystemWorkspaceLocator {
         let discovered = self.refresh()?;
         *self.cache.lock().unwrap() = Some(discovered.clone());
         Ok(discovered)
+    }
+}
+
+impl<L> WorkspaceLocator for Arc<L>
+where
+    L: WorkspaceLocator,
+{
+    fn workspace(&self) -> Result<WorkspacePaths, SpecmanError> {
+        (**self).workspace()
     }
 }
 

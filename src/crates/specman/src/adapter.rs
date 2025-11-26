@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use parking_lot::Mutex;
+use std::sync::Arc;
 
 use crate::dependency_tree::{ArtifactId, DependencyTree};
 use crate::error::SpecmanError;
@@ -45,5 +46,25 @@ impl DataModelAdapter for InMemoryAdapter {
     fn invalidate_dependency_tree(&self, root: &ArtifactId) -> Result<(), SpecmanError> {
         self.dependency_trees.lock().remove(root);
         Ok(())
+    }
+}
+
+impl<A> DataModelAdapter for Arc<A>
+where
+    A: DataModelAdapter,
+{
+    fn save_dependency_tree(&self, tree: DependencyTree) -> Result<(), SpecmanError> {
+        (**self).save_dependency_tree(tree)
+    }
+
+    fn load_dependency_tree(
+        &self,
+        root: &ArtifactId,
+    ) -> Result<Option<DependencyTree>, SpecmanError> {
+        (**self).load_dependency_tree(root)
+    }
+
+    fn invalidate_dependency_tree(&self, root: &ArtifactId) -> Result<(), SpecmanError> {
+        (**self).invalidate_dependency_tree(root)
     }
 }

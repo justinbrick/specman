@@ -25,6 +25,7 @@ pub enum CommandResult {
         summary: spec::SpecSummary,
         forced: bool,
         tree: spec::DeletionTree,
+        removed_path: String,
     },
     ImplList {
         implementations: Vec<implementation::ImplSummary>,
@@ -37,6 +38,7 @@ pub enum CommandResult {
         summary: implementation::ImplSummary,
         forced: bool,
         tree: implementation::DeletionTree,
+        removed_path: String,
     },
     ScratchList {
         pads: Vec<scratch::ScratchSummary>,
@@ -50,6 +52,7 @@ pub enum CommandResult {
         summary: scratch::ScratchSummary,
         forced: bool,
         tree: scratch::DeletionTree,
+        removed_path: String,
     },
 }
 

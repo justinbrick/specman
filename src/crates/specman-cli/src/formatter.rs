@@ -49,11 +49,18 @@ fn print_text(result: &CommandResult) {
             summary,
             forced,
             tree,
+            removed_path,
         } => {
             if *forced {
-                println!("Deleted specification '{}' with --force", summary.name);
+                println!(
+                    "Deleted specification '{}' with --force (removed: {})",
+                    summary.name, removed_path
+                );
             } else {
-                println!("Deleted specification '{}'", summary.name);
+                println!(
+                    "Deleted specification '{}' (removed: {})",
+                    summary.name, removed_path
+                );
             }
             print_dependency_tree(tree);
         }
@@ -80,11 +87,18 @@ fn print_text(result: &CommandResult) {
             summary,
             forced,
             tree,
+            removed_path,
         } => {
             if *forced {
-                println!("Deleted implementation '{}' with --force", summary.name);
+                println!(
+                    "Deleted implementation '{}' with --force (removed: {})",
+                    summary.name, removed_path
+                );
             } else {
-                println!("Deleted implementation '{}'", summary.name);
+                println!(
+                    "Deleted implementation '{}' (removed: {})",
+                    summary.name, removed_path
+                );
             }
             print_dependency_tree(tree);
         }
@@ -123,11 +137,18 @@ fn print_text(result: &CommandResult) {
             summary,
             forced,
             tree,
+            removed_path,
         } => {
             if *forced {
-                println!("Deleted scratch pad '{}' with --force", summary.name);
+                println!(
+                    "Deleted scratch pad '{}' with --force (removed: {})",
+                    summary.name, removed_path
+                );
             } else {
-                println!("Deleted scratch pad '{}'", summary.name);
+                println!(
+                    "Deleted scratch pad '{}' (removed: {})",
+                    summary.name, removed_path
+                );
             }
             print_dependency_tree(tree);
         }

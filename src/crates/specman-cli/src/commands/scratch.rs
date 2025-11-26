@@ -4,8 +4,9 @@ use std::path::Path;
 use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum, builder::EnumValueParser};
 use serde::Serialize;
 use serde_yaml::Mapping;
-use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyMapping, DependencyTree};
+use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyTree};
 use specman::front_matter::{self, RawFrontMatter};
+use specman::lifecycle::LifecycleController;
 use specman::template::{TemplateEngine, TokenMap};
 
 use crate::commands::CommandResult;
@@ -151,11 +152,21 @@ fn delete_scratchpad(
         kind: ArtifactKind::ScratchPad,
         name: name.clone(),
     };
-    let tree = session
-        .dependency_mapper
-        .dependency_tree(&artifact)
+    let folder = session.workspace_paths.scratchpad_dir().join(&name);
+    if !folder.exists() {
+        return Err(CliError::new(
+            format!("scratch pad {} does not exist", name),
+            ExitStatus::Usage,
+        ));
+    }
+
+    // Planning through the lifecycle controller keeps scratch deletions consistent with
+    // the shared dependency guard rails and force semantics.
+    let plan = session
+        .lifecycle
+        .plan_deletion(artifact.clone())
         .map_err(CliError::from)?;
-    if !forced && !tree.downstream.is_empty() {
+    if plan.blocked && !forced {
         return Err(CliError::new(
             format!(
                 "refusing to delete {}; downstream artifacts detected (use --force)",
@@ -164,14 +175,7 @@ fn delete_scratchpad(
             ExitStatus::Data,
         ));
     }
-
-    let folder = session.workspace_paths.scratchpad_dir().join(&name);
-    if !folder.exists() {
-        return Err(CliError::new(
-            format!("scratch pad {} does not exist", name),
-            ExitStatus::Usage,
-        ));
-    }
+    let tree = plan.dependencies.clone();
 
     let scratch_file = folder.join("scratch.md");
     let summary = if scratch_file.is_file() {
@@ -186,12 +190,22 @@ fn delete_scratchpad(
         }
     };
 
-    fs::remove_dir_all(&folder)?;
+    let removed = session
+        .lifecycle
+        .execute_deletion(
+            artifact.clone(),
+            Some(plan),
+            session.persistence.as_ref(),
+            forced,
+        )
+        .map_err(CliError::from)?;
+    let removed_path = util::workspace_relative(session.workspace_paths.root(), &removed.directory);
 
     Ok(CommandResult::ScratchDeleted {
         summary,
         forced,
         tree,
+        removed_path,
     })
 }
 

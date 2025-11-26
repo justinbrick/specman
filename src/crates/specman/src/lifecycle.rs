@@ -45,6 +45,7 @@ pub trait LifecycleController: Send + Sync {
         target: ArtifactId,
         existing_plan: Option<DeletionPlan>,
         persistence: &dyn ArtifactRemovalStore,
+        force: bool,
     ) -> Result<RemovedArtifact, SpecmanError>;
 }
 
@@ -111,6 +112,7 @@ where
         target: ArtifactId,
         existing_plan: Option<DeletionPlan>,
         persistence: &dyn ArtifactRemovalStore,
+        force: bool,
     ) -> Result<RemovedArtifact, SpecmanError> {
         let plan = match existing_plan {
             Some(plan) => {
@@ -125,7 +127,7 @@ where
             None => self.plan_deletion(target.clone())?,
         };
 
-        if plan.blocked {
+        if plan.blocked && !force {
             return Err(SpecmanError::Dependency(format!(
                 "cannot delete {}; downstream dependents detected",
                 target.name
@@ -334,7 +336,7 @@ mod tests {
         assert!(!plan.blocked);
 
         let removed = controller
-            .execute_deletion(artifact.clone(), Some(plan), &persistence)
+            .execute_deletion(artifact.clone(), Some(plan), &persistence, false)
             .expect("execute deletion");
 
         assert_eq!(removed.artifact, artifact);
@@ -369,9 +371,47 @@ mod tests {
         };
 
         let err = controller
-            .execute_deletion(artifact.clone(), Some(plan), &persistence)
+            .execute_deletion(artifact.clone(), Some(plan), &persistence, false)
             .expect_err("blocked deletion");
         assert!(matches!(err, SpecmanError::Dependency(_)));
         assert!(adapter.invalidated_ids().is_empty());
+    }
+
+    #[test]
+    fn lifecycle_force_override_allows_blocked_deletion() {
+        let temp = tempdir().unwrap();
+        let workspace_root = temp.path().join("ws");
+        let dot_specman = workspace_root.join(".specman");
+        fs::create_dir_all(dot_specman.join("scratchpad")).unwrap();
+        let impl_dir = workspace_root.join("impl");
+        fs::create_dir_all(&impl_dir).unwrap();
+        let locator = FilesystemWorkspaceLocator::new(impl_dir.clone());
+        let persistence = WorkspacePersistence::new(locator);
+
+        let (controller, adapter) = controller();
+        let artifact = ArtifactId {
+            kind: ArtifactKind::Implementation,
+            name: "force-delete".into(),
+        };
+        let artifact_dir = impl_dir.join(&artifact.name);
+        fs::create_dir_all(&artifact_dir).unwrap();
+        fs::write(artifact_dir.join("impl.md"), "body").unwrap();
+
+        let plan = DeletionPlan {
+            dependencies: DependencyTree::empty(ArtifactSummary {
+                id: artifact.clone(),
+                ..Default::default()
+            }),
+            blocked: true,
+        };
+
+        let removed = controller
+            .execute_deletion(artifact.clone(), Some(plan), &persistence, true)
+            .expect("forced deletion succeeds");
+
+        assert_eq!(removed.artifact, artifact);
+        assert!(!artifact_dir.exists());
+        let invalidated = adapter.invalidated_ids();
+        assert_eq!(invalidated, vec![artifact]);
     }
 }

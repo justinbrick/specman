@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::dependency_tree::{ArtifactId, ArtifactKind};
 use crate::error::SpecmanError;
@@ -88,6 +89,15 @@ pub trait ArtifactRemovalStore: Send + Sync {
 impl<L: WorkspaceLocator> ArtifactRemovalStore for WorkspacePersistence<L> {
     fn remove_artifact(&self, artifact: &ArtifactId) -> Result<RemovedArtifact, SpecmanError> {
         self.remove(artifact)
+    }
+}
+
+impl<S> ArtifactRemovalStore for Arc<S>
+where
+    S: ArtifactRemovalStore,
+{
+    fn remove_artifact(&self, artifact: &ArtifactId) -> Result<RemovedArtifact, SpecmanError> {
+        (**self).remove_artifact(artifact)
     }
 }
 

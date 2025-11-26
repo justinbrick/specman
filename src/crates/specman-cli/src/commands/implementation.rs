@@ -5,9 +5,10 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
 use serde_yaml::Value;
 use specman::dependency_tree::{
-    ArtifactId, ArtifactKind, ArtifactSummary, DependencyMapping, DependencyTree,
+    ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree,
 };
 use specman::front_matter::{self, RawFrontMatter};
+use specman::lifecycle::LifecycleController;
 use specman::template::{TemplateEngine, TokenMap};
 
 use crate::commands::CommandResult;
@@ -137,11 +138,20 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         kind: ArtifactKind::Implementation,
         name: name.clone(),
     };
-    let tree = session
-        .dependency_mapper
-        .dependency_tree(&artifact)
+    let folder = session.workspace_paths.impl_dir().join(&name);
+    if !folder.exists() {
+        return Err(CliError::new(
+            format!("implementation {} does not exist", name),
+            ExitStatus::Usage,
+        ));
+    }
+
+    // Reuse the shared lifecycle controller so dependency and deletion rules stay centralized.
+    let plan = session
+        .lifecycle
+        .plan_deletion(artifact.clone())
         .map_err(CliError::from)?;
-    if !forced && !tree.downstream.is_empty() {
+    if plan.blocked && !forced {
         return Err(CliError::new(
             format!(
                 "refusing to delete {}; downstream artifacts detected (use --force)",
@@ -150,16 +160,18 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
             ExitStatus::Data,
         ));
     }
+    let tree = plan.dependencies.clone();
 
-    let folder = session.workspace_paths.impl_dir().join(&name);
-    if folder.exists() {
-        fs::remove_dir_all(&folder)?;
-    } else {
-        return Err(CliError::new(
-            format!("implementation {} does not exist", name),
-            ExitStatus::Usage,
-        ));
-    }
+    let removed = session
+        .lifecycle
+        .execute_deletion(
+            artifact.clone(),
+            Some(plan),
+            session.persistence.as_ref(),
+            forced,
+        )
+        .map_err(CliError::from)?;
+    let removed_path = util::workspace_relative(session.workspace_paths.root(), &removed.directory);
 
     let spec_locator = tree.root.metadata.get("spec").cloned();
     let spec_identifier = spec_locator
@@ -178,6 +190,7 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         summary,
         forced,
         tree,
+        removed_path,
     })
 }
 

@@ -226,6 +226,23 @@ impl<L: WorkspaceLocator> DependencyMapping for FilesystemDependencyMapper<L> {
     }
 }
 
+impl<M> DependencyMapping for Arc<M>
+where
+    M: DependencyMapping,
+{
+    fn dependency_tree(&self, root: &ArtifactId) -> Result<DependencyTree, SpecmanError> {
+        (**self).dependency_tree(root)
+    }
+
+    fn upstream(&self, root: &ArtifactId) -> Result<Vec<DependencyEdge>, SpecmanError> {
+        (**self).upstream(root)
+    }
+
+    fn downstream(&self, root: &ArtifactId) -> Result<Vec<DependencyEdge>, SpecmanError> {
+        (**self).downstream(root)
+    }
+}
+
 #[derive(Clone, Debug)]
 struct ArtifactDocument {
     summary: ArtifactSummary,
@@ -478,7 +495,7 @@ fn resolve_dependencies(
         }
         ArtifactKind::ScratchPad => {
             if let Some(target) = &front.target {
-                let locator = resolve_dependency_locator(target, locator, workspace)?;
+                let locator = resolve_scratch_target_locator(target, workspace)?;
                 deps.push(ArtifactDependency { locator });
             }
         }
@@ -557,6 +574,23 @@ fn resolve_dependency_locator(
     ArtifactLocator::from_path(reference, workspace, base_dir.as_deref())
 }
 
+fn resolve_scratch_target_locator(
+    reference: &str,
+    workspace: &WorkspacePaths,
+) -> Result<ArtifactLocator, SpecmanError> {
+    if reference.starts_with("http://") {
+        return Err(SpecmanError::Dependency(format!(
+            "unsupported url scheme in {reference}; use https"
+        )));
+    }
+    if reference.starts_with("https://") {
+        return ArtifactLocator::from_url(reference);
+    }
+
+    let base_dir = Some(workspace.root());
+    ArtifactLocator::from_path(reference, workspace, base_dir)
+}
+
 fn path_contains_segment(path: &Path, needle: &str) -> bool {
     path.iter().any(|component| component == OsStr::new(needle))
 }
@@ -578,10 +612,7 @@ fn parse_version(raw: Option<&str>, metadata: &mut BTreeMap<String, String>) -> 
 
 fn infer_name(locator: &ArtifactLocator) -> String {
     match locator {
-        ArtifactLocator::File(path) => path
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.display().to_string()),
+        ArtifactLocator::File(path) => infer_name_from_file(path),
         ArtifactLocator::Url(url) => url
             .path_segments()
             .and_then(|segments| segments.last())
@@ -589,6 +620,24 @@ fn infer_name(locator: &ArtifactLocator) -> String {
             .map(|segment| segment.replace(",", "_"))
             .unwrap_or_else(|| url.host_str().unwrap_or("remote").to_string()),
     }
+}
+
+fn infer_name_from_file(path: &Path) -> String {
+    if let Some(file_name) = path.file_name().and_then(|name| name.to_str()) {
+        if matches!(file_name, "spec.md" | "impl.md" | "scratch.md") {
+            if let Some(dir_name) = path
+                .parent()
+                .and_then(|dir| dir.file_name())
+                .and_then(|s| s.to_str())
+            {
+                return dir_name.to_string();
+            }
+        }
+    }
+
+    path.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string())
 }
 
 #[cfg(test)]
@@ -890,5 +939,62 @@ version: "0.1.0"
             SpecmanError::Dependency(msg) => assert!(msg.contains("unsupported url scheme")),
             other => panic!("unexpected error type: {other:?}"),
         }
+    }
+
+    #[test]
+    fn scratch_dependency_resolves_relative_to_workspace_root() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join(".specman/scratchpad/deletion-lifecycle-apis")).unwrap();
+        fs::create_dir_all(root.join("impl/specman-library")).unwrap();
+        fs::create_dir_all(root.join("spec/specman-core")).unwrap();
+
+        fs::write(
+            root.join("spec/specman-core/spec.md"),
+            "---\nname: specman-core\nversion: \"1.0.0\"\n---\n",
+        )
+        .unwrap();
+
+        fs::write(
+            root.join("impl/specman-library/impl.md"),
+            r#"---
+spec: ../../spec/specman-core/spec.md
+name: specman-library
+version: "0.1.0"
+references: []
+---
+# Impl
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            root.join(".specman/scratchpad/deletion-lifecycle-apis/scratch.md"),
+            r#"---
+name: deletion-lifecycle-apis
+target: impl/specman-library/impl.md
+work_type:
+  feat: {}
+---
+# Scratch
+"#,
+        )
+        .unwrap();
+
+        let locator = FilesystemWorkspaceLocator::new(root.join("impl"));
+        let mapper = FilesystemDependencyMapper::new(locator);
+        let scratch_file = root.join(".specman/scratchpad/deletion-lifecycle-apis/scratch.md");
+        let tree = mapper
+            .dependency_tree_from_path(&scratch_file)
+            .expect("scratch dependency tree");
+
+        assert_eq!(tree.root.id.name, "deletion-lifecycle-apis");
+        let upstream: BTreeSet<_> = tree
+            .upstream
+            .iter()
+            .map(|edge| edge.to.id.name.clone())
+            .collect();
+        assert!(upstream.contains("specman-library"));
     }
 }

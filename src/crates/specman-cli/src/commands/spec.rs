@@ -3,9 +3,8 @@ use std::path::Path;
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
-use specman::dependency_tree::{
-    ArtifactId, ArtifactKind, ArtifactSummary, DependencyMapping, DependencyTree,
-};
+use specman::dependency_tree::{ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree};
+use specman::lifecycle::LifecycleController;
 use specman::front_matter::{self, RawFrontMatter};
 use specman::template::{TemplateEngine, TokenMap};
 
@@ -118,11 +117,21 @@ fn delete_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         kind: ArtifactKind::Specification,
         name: name.clone(),
     };
-    let tree = session
-        .dependency_mapper
-        .dependency_tree(&artifact)
+    let folder = session.workspace_paths.spec_dir().join(&name);
+    if !folder.exists() {
+        return Err(CliError::new(
+            format!("specification {} does not exist", name),
+            ExitStatus::Usage,
+        ));
+    }
+
+    // Delegate dependency checks to the shared lifecycle controller so CLI deletions
+    // remain aligned with the library's guard rails.
+    let plan = session
+        .lifecycle
+        .plan_deletion(artifact.clone())
         .map_err(CliError::from)?;
-    if !forced && !tree.downstream.is_empty() {
+    if plan.blocked && !forced {
         return Err(CliError::new(
             format!(
                 "refusing to delete {}; downstream artifacts detected (use --force)",
@@ -131,16 +140,18 @@ fn delete_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
             ExitStatus::Data,
         ));
     }
+    let tree = plan.dependencies.clone();
 
-    let folder = session.workspace_paths.spec_dir().join(&name);
-    if folder.exists() {
-        fs::remove_dir_all(&folder)?;
-    } else {
-        return Err(CliError::new(
-            format!("specification {} does not exist", name),
-            ExitStatus::Usage,
-        ));
-    }
+    let removed = session
+        .lifecycle
+        .execute_deletion(
+            artifact.clone(),
+            Some(plan),
+            session.persistence.as_ref(),
+            forced,
+        )
+        .map_err(CliError::from)?;
+    let removed_path = util::workspace_relative(session.workspace_paths.root(), &removed.directory);
 
     let summary = SpecSummary {
         name,
@@ -152,6 +163,7 @@ fn delete_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         summary,
         forced,
         tree,
+        removed_path,
     })
 }
 
