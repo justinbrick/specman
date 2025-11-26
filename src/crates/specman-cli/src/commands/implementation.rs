@@ -4,9 +4,7 @@ use std::path::{Path, PathBuf};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
 use serde_yaml::Value;
-use specman::dependency_tree::{
-    ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree,
-};
+use specman::dependency_tree::{ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree};
 use specman::front_matter::{self, RawFrontMatter};
 use specman::lifecycle::LifecycleController;
 use specman::template::{TemplateEngine, TokenMap};

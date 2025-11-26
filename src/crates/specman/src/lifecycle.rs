@@ -93,7 +93,7 @@ where
 
     fn plan_deletion(&self, target: ArtifactId) -> Result<DeletionPlan, SpecmanError> {
         let dependencies = self.mapping.dependency_tree(&target)?;
-        let blocked = !dependencies.downstream.is_empty();
+        let blocked = dependencies.has_blocking_dependents();
         Ok(DeletionPlan {
             dependencies,
             blocked,
@@ -144,7 +144,9 @@ where
 mod tests {
     use super::*;
     use crate::adapter::DataModelAdapter;
-    use crate::dependency_tree::{ArtifactKind, ArtifactSummary, DependencyEdge};
+    use crate::dependency_tree::{
+        ArtifactKind, ArtifactSummary, DependencyEdge, DependencyRelation,
+    };
     use crate::persistence::WorkspacePersistence;
     use crate::scratchpad::ScratchPadProfile;
     use crate::template::{TemplateScenario, TokenMap};
@@ -174,6 +176,25 @@ mod tests {
 
         fn downstream(&self, _root: &ArtifactId) -> Result<Vec<DependencyEdge>, SpecmanError> {
             Ok(Vec::new())
+        }
+    }
+
+    #[derive(Clone)]
+    struct StaticTreeMapping {
+        tree: DependencyTree,
+    }
+
+    impl DependencyMapping for StaticTreeMapping {
+        fn dependency_tree(&self, _root: &ArtifactId) -> Result<DependencyTree, SpecmanError> {
+            Ok(self.tree.clone())
+        }
+
+        fn upstream(&self, _root: &ArtifactId) -> Result<Vec<DependencyEdge>, SpecmanError> {
+            Ok(self.tree.upstream.clone())
+        }
+
+        fn downstream(&self, _root: &ArtifactId) -> Result<Vec<DependencyEdge>, SpecmanError> {
+            Ok(self.tree.downstream.clone())
         }
     }
 
@@ -413,5 +434,119 @@ mod tests {
         assert!(!artifact_dir.exists());
         let invalidated = adapter.invalidated_ids();
         assert_eq!(invalidated, vec![artifact]);
+    }
+
+    #[test]
+    fn scratchpad_deletion_ignores_target_edges() {
+        let root_artifact = ArtifactId {
+            kind: ArtifactKind::ScratchPad,
+            name: "notes".into(),
+        };
+        let root_summary = ArtifactSummary {
+            id: root_artifact.clone(),
+            ..Default::default()
+        };
+        let target_summary = ArtifactSummary {
+            id: ArtifactId {
+                kind: ArtifactKind::Implementation,
+                name: "impl-target".into(),
+            },
+            ..Default::default()
+        };
+        let mut tree = DependencyTree::empty(root_summary.clone());
+        tree.downstream.push(DependencyEdge {
+            from: target_summary,
+            to: root_summary.clone(),
+            relation: DependencyRelation::Downstream,
+        });
+
+        let adapter = RecordingAdapter::default();
+        let controller = DefaultLifecycleController::new(
+            StaticTreeMapping { tree: tree.clone() },
+            FakeTemplateEngine::default(),
+            adapter,
+        );
+
+        let plan = controller
+            .plan_deletion(root_artifact.clone())
+            .expect("plan deletion");
+        assert!(!plan.blocked, "scratch pad should ignore target edge");
+    }
+
+    #[test]
+    fn scratchpad_deletion_blocks_when_dependent_scratchpads_exist() {
+        let root_artifact = ArtifactId {
+            kind: ArtifactKind::ScratchPad,
+            name: "notes".into(),
+        };
+        let root_summary = ArtifactSummary {
+            id: root_artifact.clone(),
+            ..Default::default()
+        };
+        let dependent_summary = ArtifactSummary {
+            id: ArtifactId {
+                kind: ArtifactKind::ScratchPad,
+                name: "dependent".into(),
+            },
+            ..Default::default()
+        };
+        let mut tree = DependencyTree::empty(root_summary.clone());
+        tree.downstream.push(DependencyEdge {
+            from: dependent_summary,
+            to: root_summary.clone(),
+            relation: DependencyRelation::Downstream,
+        });
+
+        let adapter = RecordingAdapter::default();
+        let controller = DefaultLifecycleController::new(
+            StaticTreeMapping { tree: tree.clone() },
+            FakeTemplateEngine::default(),
+            adapter,
+        );
+
+        let plan = controller
+            .plan_deletion(root_artifact.clone())
+            .expect("plan deletion");
+        assert!(plan.blocked, "dependent scratch pad should block deletion");
+    }
+
+    #[test]
+    fn implementations_still_block_on_any_downstream_edges() {
+        let root_artifact = ArtifactId {
+            kind: ArtifactKind::Implementation,
+            name: "impl".into(),
+        };
+        let root_summary = ArtifactSummary {
+            id: root_artifact.clone(),
+            ..Default::default()
+        };
+        let dependent_summary = ArtifactSummary {
+            id: ArtifactId {
+                kind: ArtifactKind::Specification,
+                name: "spec".into(),
+            },
+            ..Default::default()
+        };
+        let mut tree = DependencyTree::empty(root_summary.clone());
+        tree.downstream.push(DependencyEdge {
+            from: dependent_summary,
+            to: root_summary.clone(),
+            relation: DependencyRelation::Downstream,
+        });
+
+        let adapter = RecordingAdapter::default();
+        let controller = DefaultLifecycleController::new(
+            StaticTreeMapping { tree: tree.clone() },
+            FakeTemplateEngine::default(),
+            adapter,
+        );
+
+        let plan = controller
+            .plan_deletion(root_artifact.clone())
+            .expect("plan deletion");
+        assert!(
+            plan.blocked,
+            "non-scratch artifacts should block on downstream edges"
+        );
     }
 }

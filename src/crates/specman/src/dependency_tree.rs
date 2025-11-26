@@ -119,6 +119,18 @@ impl DependencyTree {
             aggregate: Vec::new(),
         }
     }
+
+    /// Returns true when the dependency tree contains downstream artifacts that should block
+    /// deletion of the root artifact.
+    pub fn has_blocking_dependents(&self) -> bool {
+        match self.root.id.kind {
+            ArtifactKind::ScratchPad => self
+                .downstream
+                .iter()
+                .any(|edge| edge.from.id.kind == ArtifactKind::ScratchPad),
+            _ => !self.downstream.is_empty(),
+        }
+    }
 }
 
 /// Contract for dependency traversal services.
@@ -170,17 +182,30 @@ impl<L: WorkspaceLocator> FilesystemDependencyMapper<L> {
     ) -> Result<DependencyTree, SpecmanError> {
         let mut traversal = Traversal::new(workspace, self.fetcher.clone());
         let root = traversal.visit(&root_locator)?;
-        let aggregate: Vec<_> = traversal.edges.iter().cloned().collect();
-        let upstream = aggregate
+        let mut aggregate: Vec<_> = traversal.edges.iter().cloned().collect();
+        let upstream: Vec<DependencyEdge> = aggregate
             .iter()
             .filter(|edge| matches!(edge.relation, DependencyRelation::Upstream))
             .cloned()
             .collect();
-        let downstream = aggregate
+        let mut downstream: Vec<DependencyEdge> = aggregate
             .iter()
             .filter(|edge| matches!(edge.relation, DependencyRelation::Downstream))
             .cloned()
             .collect();
+
+        if root.id.kind == ArtifactKind::ScratchPad {
+            let dependents = collect_scratchpad_dependents(&root, &traversal.workspace)?;
+            for dependent in dependents {
+                let edge = DependencyEdge {
+                    from: dependent,
+                    to: root.clone(),
+                    relation: DependencyRelation::Downstream,
+                };
+                aggregate.push(edge.clone());
+                downstream.push(edge);
+            }
+        }
 
         Ok(DependencyTree {
             root,
@@ -498,6 +523,14 @@ fn resolve_dependencies(
                 let locator = resolve_scratch_target_locator(target, workspace)?;
                 deps.push(ArtifactDependency { locator });
             }
+            for entry in &front.dependencies {
+                let reference = match entry {
+                    DependencyEntry::Simple(value) => value.as_str(),
+                    DependencyEntry::Detailed(obj) => obj.reference.as_str(),
+                };
+                let locator = resolve_scratch_dependency_locator(reference, workspace)?;
+                deps.push(ArtifactDependency { locator });
+            }
         }
     }
     Ok(deps)
@@ -589,6 +622,152 @@ fn resolve_scratch_target_locator(
 
     let base_dir = Some(workspace.root());
     ArtifactLocator::from_path(reference, workspace, base_dir)
+}
+
+fn resolve_scratch_dependency_locator(
+    reference: &str,
+    workspace: &WorkspacePaths,
+) -> Result<ArtifactLocator, SpecmanError> {
+    if reference.starts_with("http://") {
+        return Err(SpecmanError::Dependency(format!(
+            "unsupported url scheme in {reference}; use https"
+        )));
+    }
+    if reference.starts_with("https://") {
+        return ArtifactLocator::from_url(reference);
+    }
+
+    if reference.contains('/') || reference.contains('\\') {
+        return ArtifactLocator::from_path(reference, workspace, Some(workspace.root()));
+    }
+
+    let slug_path = workspace
+        .scratchpad_dir()
+        .join(reference)
+        .join("scratch.md");
+    ArtifactLocator::from_path(slug_path, workspace, Some(workspace.root()))
+}
+
+fn collect_scratchpad_dependents(
+    root: &ArtifactSummary,
+    workspace: &WorkspacePaths,
+) -> Result<Vec<ArtifactSummary>, SpecmanError> {
+    if root.id.kind != ArtifactKind::ScratchPad {
+        return Ok(Vec::new());
+    }
+
+    let scratchpad_dir = workspace.scratchpad_dir();
+    if !scratchpad_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut dependents = Vec::new();
+    let root_path = scratchpad_dir.join(&root.id.name).join("scratch.md");
+    let root_canonical = fs::canonicalize(&root_path).ok();
+
+    for entry in fs::read_dir(&scratchpad_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+
+        let scratch_file = entry.path().join("scratch.md");
+        if !scratch_file.is_file() {
+            continue;
+        }
+
+        let contents = fs::read_to_string(&scratch_file)?;
+        let (frontmatter, _) = front_matter::optional_front_matter(&contents);
+        let Some(frontmatter) = frontmatter else {
+            continue;
+        };
+
+        let raw: RawFrontMatter = match serde_yaml::from_str(frontmatter) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        if raw.work_type.is_none() {
+            continue;
+        }
+
+        let mut metadata = BTreeMap::new();
+        metadata.insert("locator".into(), scratch_file.display().to_string());
+        let version = parse_version(raw.version.as_deref(), &mut metadata);
+        let dependent_name = raw
+            .name
+            .clone()
+            .or_else(|| {
+                entry
+                    .path()
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .map(String::from)
+            })
+            .unwrap_or_else(|| scratch_file.display().to_string());
+
+        if dependent_name == root.id.name {
+            continue;
+        }
+
+        if references_scratchpad(
+            &raw.dependencies,
+            &root.id.name,
+            root_canonical.as_deref(),
+            workspace,
+        )? {
+            dependents.push(ArtifactSummary {
+                id: ArtifactId {
+                    kind: ArtifactKind::ScratchPad,
+                    name: dependent_name,
+                },
+                version,
+                metadata,
+            });
+        }
+    }
+
+    Ok(dependents)
+}
+
+fn references_scratchpad(
+    dependencies: &[DependencyEntry],
+    root_slug: &str,
+    root_canonical: Option<&Path>,
+    workspace: &WorkspacePaths,
+) -> Result<bool, SpecmanError> {
+    for entry in dependencies {
+        let reference = match entry {
+            DependencyEntry::Simple(value) => value.as_str(),
+            DependencyEntry::Detailed(obj) => obj.reference.as_str(),
+        };
+
+        if reference == root_slug {
+            return Ok(true);
+        }
+
+        let locator = match resolve_scratch_dependency_locator(reference, workspace) {
+            Ok(locator) => locator,
+            Err(_) => continue,
+        };
+
+        if let ArtifactLocator::File(path) = locator {
+            if let Some(root_path) = root_canonical {
+                if path == root_path {
+                    return Ok(true);
+                }
+            } else if path
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|s| s.to_str())
+                == Some(root_slug)
+            {
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 fn path_contains_segment(path: &Path, needle: &str) -> bool {
@@ -996,5 +1175,161 @@ work_type:
             .map(|edge| edge.to.id.name.clone())
             .collect();
         assert!(upstream.contains("specman-library"));
+    }
+
+    #[test]
+    fn scratch_dependencies_resolve_named_and_path_variants() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join(".specman/scratchpad/base")).unwrap();
+        fs::create_dir_all(root.join(".specman/scratchpad/slug-upstream")).unwrap();
+        fs::create_dir_all(root.join(".specman/scratchpad/path-upstream")).unwrap();
+        fs::create_dir_all(root.join("impl/specman-library")).unwrap();
+        fs::create_dir_all(root.join("spec/specman-core")).unwrap();
+
+        fs::write(
+            root.join("spec/specman-core/spec.md"),
+            r#"---
+name: specman-core
+version: "1.0.0"
+---
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            root.join("impl/specman-library/impl.md"),
+            r#"---
+spec: ../../spec/specman-core/spec.md
+name: specman-library
+version: "0.1.0"
+references: []
+---
+# Impl
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            root.join(".specman/scratchpad/slug-upstream/scratch.md"),
+            r#"---
+name: slug-upstream
+work_type:
+    ref: {}
+---
+# Scratch
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            root.join(".specman/scratchpad/path-upstream/scratch.md"),
+            r#"---
+name: path-upstream
+work_type:
+    ref: {}
+---
+# Scratch
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            root.join(".specman/scratchpad/base/scratch.md"),
+            r#"---
+name: base
+target: impl/specman-library/impl.md
+dependencies:
+    - slug-upstream
+    - .specman/scratchpad/path-upstream/scratch.md
+work_type:
+    ref: {}
+---
+# Scratch
+"#,
+        )
+        .unwrap();
+
+        let locator = FilesystemWorkspaceLocator::new(root.join("impl"));
+        let mapper = FilesystemDependencyMapper::new(locator);
+        let scratch_file = root.join(".specman/scratchpad/base/scratch.md");
+        let tree = mapper
+            .dependency_tree_from_path(&scratch_file)
+            .expect("scratch dependency tree");
+
+        let upstream: BTreeSet<_> = tree
+            .upstream
+            .iter()
+            .map(|edge| edge.to.id.name.clone())
+            .collect();
+        assert!(upstream.contains("slug-upstream"));
+        assert!(upstream.contains("path-upstream"));
+    }
+
+    #[test]
+    fn downstream_scratchpads_are_discovered() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join(".specman/scratchpad/target")).unwrap();
+        fs::create_dir_all(root.join(".specman/scratchpad/slug-dependent")).unwrap();
+        fs::create_dir_all(root.join(".specman/scratchpad/path-dependent")).unwrap();
+
+        fs::write(
+            root.join(".specman/scratchpad/target/scratch.md"),
+            r#"---
+name: target
+work_type:
+    ref: {}
+---
+# Target Scratch
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            root.join(".specman/scratchpad/slug-dependent/scratch.md"),
+            r#"---
+name: slug-dependent
+dependencies:
+    - target
+work_type:
+    ref: {}
+---
+# Dependent Scratch
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            root.join(".specman/scratchpad/path-dependent/scratch.md"),
+            r#"---
+name: path-dependent
+dependencies:
+    - .specman/scratchpad/target/scratch.md
+work_type:
+    ref: {}
+---
+# Dependent Scratch
+"#,
+        )
+        .unwrap();
+
+        let locator = FilesystemWorkspaceLocator::new(root.join(".specman"));
+        let mapper = FilesystemDependencyMapper::new(locator);
+        let scratch_file = root.join(".specman/scratchpad/target/scratch.md");
+        let tree = mapper
+            .dependency_tree_from_path(&scratch_file)
+            .expect("scratch dependency tree");
+
+        let downstream: BTreeSet<_> = tree
+            .downstream
+            .iter()
+            .map(|edge| edge.from.id.name.clone())
+            .collect();
+        assert!(downstream.contains("slug-dependent"));
+        assert!(downstream.contains("path-dependent"));
+        assert!(tree.has_blocking_dependents());
     }
 }
