@@ -2,12 +2,17 @@
 
 Specification Manager is a CLI tool that helps AI agents and teams create, read, and follow clear, code-friendly specifications. It favors concise, implementable constraints over task-tracking or corporate jargon.
 
-## Dependency Mapping
+## About SpecMan
 
-The `specman` Rust crate (under `src/crates/specman`) now ships `FilesystemDependencyMapper`, a workspace-aware traversal engine that:
-- Normalizes filesystem/HTTPS locators through `WorkspaceLocator` before parsing Markdown front matter.
-- Builds upstream, downstream, and aggregate `DependencyTree` views while annotating artifacts whose metadata was inferred from paths.
-- Detects cycles and workspace boundary violations early, returning `SpecmanError` diagnostics that lifecycle tooling can surface directly.
+SpecMan exists because tools like GitHub's Speckit optimize for shareholder optics, mushy prompts, and approvals rather than for engineers who need executable behaviors. SpecMan rejects that path and keeps everything in-repo, deterministic, and auditable:
+
+- **Data-first contracts:** The [SpecMan Data Model](spec/specman-data-model/spec.md) nails down YAML schemas for workspaces, specs, implementations, and scratch pads so nothing depends on vibes.
+- **Deterministic platform services:** [SpecMan Core](spec/specman-core/spec.md) handles workspace discovery, dependency trees, lifecycle automation, and metadata mutation so commands behave the same everywhere.
+- **Template & prompt governance:** [SpecMan Templates](spec/specman-templates/spec.md) provide HTML-guarded scaffolds and prompts that force AI systems to satisfy every directive instead of hand-waving.
+- **Operator-focused CLI:** The [SpecMan CLI](spec/specman-cli/spec.md) code paths (implemented in `impl/specman-cli-rust/impl.md`) prioritize spec authors and implementers, not bureaucrats.
+
+Read the extended background in `docs/about.md` if you want the full manifesto.
+
 
 ## Testing
 
@@ -19,4 +24,8 @@ cargo test -p specman
 ```
 
 CI should also run `cargo fmt` and `cargo clippy` to keep formatting and lint gates aligned with Rust 1.91.
+
+## Documentation Index
+- `docs/about.md` — philosophy, goals, and why SpecMan replaces Speckit's poor prompting.
+- `docs/getting-started.md` — installation, workspace setup, CLI walkthrough.
 
