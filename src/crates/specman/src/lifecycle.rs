@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::adapter::DataModelAdapter;
 use crate::dependency_tree::{ArtifactId, DependencyMapping, DependencyTree};
 use crate::error::SpecmanError;
+use crate::persistence::{ArtifactRemovalStore, RemovedArtifact};
 use crate::scratchpad::ScratchPadProfile;
 use crate::template::{RenderedTemplate, TemplateDescriptor, TemplateEngine, TokenMap};
 
@@ -36,6 +37,15 @@ pub trait LifecycleController: Send + Sync {
     fn plan_creation(&self, request: CreationRequest) -> Result<CreationPlan, SpecmanError>;
     fn plan_deletion(&self, target: ArtifactId) -> Result<DeletionPlan, SpecmanError>;
     fn plan_scratchpad(&self, profile: ScratchPadProfile) -> Result<ScratchPadPlan, SpecmanError>;
+    /// Executes a deletion by validating (or recomputing) the plan, ensuring the artifact is
+    /// unblocked, invoking workspace persistence to remove the artifact directory, and
+    /// invalidating cached dependency graphs.
+    fn execute_deletion(
+        &self,
+        target: ArtifactId,
+        existing_plan: Option<DeletionPlan>,
+        persistence: &dyn ArtifactRemovalStore,
+    ) -> Result<RemovedArtifact, SpecmanError>;
 }
 
 pub struct DefaultLifecycleController<M, T, A>
@@ -95,6 +105,37 @@ where
             .render(&profile.template, &profile.token_map())?;
         Ok(ScratchPadPlan { rendered, profile })
     }
+
+    fn execute_deletion(
+        &self,
+        target: ArtifactId,
+        existing_plan: Option<DeletionPlan>,
+        persistence: &dyn ArtifactRemovalStore,
+    ) -> Result<RemovedArtifact, SpecmanError> {
+        let plan = match existing_plan {
+            Some(plan) => {
+                if plan.dependencies.root.id != target {
+                    return Err(SpecmanError::Dependency(format!(
+                        "deletion plan target mismatch for {}",
+                        target.name
+                    )));
+                }
+                plan
+            }
+            None => self.plan_deletion(target.clone())?,
+        };
+
+        if plan.blocked {
+            return Err(SpecmanError::Dependency(format!(
+                "cannot delete {}; downstream dependents detected",
+                target.name
+            )));
+        }
+
+        let removed = persistence.remove_artifact(&target)?;
+        self.adapter.invalidate_dependency_tree(&target)?;
+        Ok(removed)
+    }
 }
 
 #[cfg(test)]
@@ -108,7 +149,7 @@ mod tests {
     use crate::workspace::FilesystemWorkspaceLocator;
     use std::collections::BTreeMap;
     use std::fs;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use tempfile::tempdir;
 
     #[derive(Clone)]
@@ -134,9 +175,10 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
+    #[derive(Clone, Default)]
     struct RecordingAdapter {
-        saved: Mutex<Vec<DependencyTree>>,
+        saved: Arc<Mutex<Vec<DependencyTree>>>,
+        invalidated: Arc<Mutex<Vec<ArtifactId>>>,
     }
 
     impl DataModelAdapter for RecordingAdapter {
@@ -150,6 +192,17 @@ mod tests {
             _root: &ArtifactId,
         ) -> Result<Option<DependencyTree>, SpecmanError> {
             Ok(None)
+        }
+
+        fn invalidate_dependency_tree(&self, root: &ArtifactId) -> Result<(), SpecmanError> {
+            self.invalidated.lock().unwrap().push(root.clone());
+            Ok(())
+        }
+    }
+
+    impl RecordingAdapter {
+        fn invalidated_ids(&self) -> Vec<ArtifactId> {
+            self.invalidated.lock().unwrap().clone()
         }
     }
 
@@ -169,13 +222,17 @@ mod tests {
         }
     }
 
-    fn controller() -> DefaultLifecycleController<MockMapping, FakeTemplateEngine, RecordingAdapter>
-    {
-        DefaultLifecycleController::new(
+    fn controller() -> (
+        DefaultLifecycleController<MockMapping, FakeTemplateEngine, RecordingAdapter>,
+        RecordingAdapter,
+    ) {
+        let adapter = RecordingAdapter::default();
+        let controller = DefaultLifecycleController::new(
             MockMapping,
             FakeTemplateEngine::default(),
-            RecordingAdapter::default(),
-        )
+            adapter.clone(),
+        );
+        (controller, adapter)
     }
 
     #[test]
@@ -186,7 +243,7 @@ mod tests {
         let start = workspace_root.join("impl");
         fs::create_dir_all(&start).unwrap();
 
-        let controller = controller();
+        let (controller, _adapter) = controller();
         let artifact = ArtifactId {
             kind: ArtifactKind::Implementation,
             name: "specman-library".into(),
@@ -223,7 +280,7 @@ mod tests {
         fs::create_dir_all(dot_specman.join("scratchpad")).unwrap();
         let start = dot_specman.join("scratchpad");
 
-        let controller = controller();
+        let (controller, _adapter) = controller();
         let profile = ScratchPadProfile {
             name: "workspace-template-persist".into(),
             template: TemplateDescriptor {
@@ -249,5 +306,72 @@ mod tests {
         )));
         let contents = fs::read_to_string(persisted.path).unwrap();
         assert!(contents.contains("scenario"));
+    }
+
+    #[test]
+    fn lifecycle_deletion_executes_and_invalidates_cache() {
+        let temp = tempdir().unwrap();
+        let workspace_root = temp.path().join("ws");
+        let dot_specman = workspace_root.join(".specman");
+        fs::create_dir_all(dot_specman.join("scratchpad")).unwrap();
+        let impl_dir = workspace_root.join("impl");
+        fs::create_dir_all(&impl_dir).unwrap();
+        let locator = FilesystemWorkspaceLocator::new(impl_dir.clone());
+        let persistence = WorkspacePersistence::new(locator);
+
+        let artifact = ArtifactId {
+            kind: ArtifactKind::Implementation,
+            name: "specman-library".into(),
+        };
+        let artifact_dir = impl_dir.join(&artifact.name);
+        fs::create_dir_all(&artifact_dir).unwrap();
+        fs::write(artifact_dir.join("impl.md"), "body").unwrap();
+
+        let (controller, adapter) = controller();
+        let plan = controller
+            .plan_deletion(artifact.clone())
+            .expect("deletion plan");
+        assert!(!plan.blocked);
+
+        let removed = controller
+            .execute_deletion(artifact.clone(), Some(plan), &persistence)
+            .expect("execute deletion");
+
+        assert_eq!(removed.artifact, artifact);
+        assert_eq!(removed.directory, artifact_dir);
+        assert!(!removed.directory.exists());
+        let invalidated = adapter.invalidated_ids();
+        assert_eq!(invalidated, vec![artifact]);
+    }
+
+    #[test]
+    fn lifecycle_deletion_blocks_when_plan_marked_blocked() {
+        let temp = tempdir().unwrap();
+        let workspace_root = temp.path().join("ws");
+        let dot_specman = workspace_root.join(".specman");
+        fs::create_dir_all(dot_specman.join("scratchpad")).unwrap();
+        let impl_dir = workspace_root.join("impl");
+        fs::create_dir_all(&impl_dir).unwrap();
+        let persistence = WorkspacePersistence::new(FilesystemWorkspaceLocator::new(impl_dir));
+
+        let (controller, adapter) = controller();
+        let artifact = ArtifactId {
+            kind: ArtifactKind::Specification,
+            name: "has-dependents".into(),
+        };
+
+        let plan = DeletionPlan {
+            dependencies: DependencyTree::empty(ArtifactSummary {
+                id: artifact.clone(),
+                ..Default::default()
+            }),
+            blocked: true,
+        };
+
+        let err = controller
+            .execute_deletion(artifact.clone(), Some(plan), &persistence)
+            .expect_err("blocked deletion");
+        assert!(matches!(err, SpecmanError::Dependency(_)));
+        assert!(adapter.invalidated_ids().is_empty());
     }
 }

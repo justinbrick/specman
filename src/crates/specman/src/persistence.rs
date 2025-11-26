@@ -14,6 +14,14 @@ pub struct PersistedArtifact {
     pub workspace: WorkspacePaths,
 }
 
+/// Result of removing an artifact directory from the workspace filesystem.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RemovedArtifact {
+    pub artifact: ArtifactId,
+    pub directory: PathBuf,
+    pub workspace: WorkspacePaths,
+}
+
 /// Writes rendered templates into canonical workspace locations.
 pub struct WorkspacePersistence<L: WorkspaceLocator> {
     locator: L,
@@ -42,6 +50,44 @@ impl<L: WorkspaceLocator> WorkspacePersistence<L> {
             path: target_path,
             workspace,
         })
+    }
+
+    /// Recursively removes the canonical artifact directory when dependency guards permit deletion.
+    pub fn remove(&self, artifact: &ArtifactId) -> Result<RemovedArtifact, SpecmanError> {
+        ensure_safe_name(&artifact.name)?;
+        let workspace = self.locator.workspace()?;
+        let target_file = resolve_target_path(artifact, &workspace)?;
+        let directory = target_file.parent().ok_or_else(|| {
+            SpecmanError::Workspace(format!(
+                "unable to compute artifact directory for {}",
+                artifact.name
+            ))
+        })?;
+
+        if !directory.exists() {
+            return Err(SpecmanError::Workspace(format!(
+                "artifact directory does not exist: {}",
+                directory.display()
+            )));
+        }
+
+        fs::remove_dir_all(directory)?;
+        Ok(RemovedArtifact {
+            artifact: artifact.clone(),
+            directory: directory.to_path_buf(),
+            workspace,
+        })
+    }
+}
+
+/// Trait abstraction for components capable of removing artifact directories.
+pub trait ArtifactRemovalStore: Send + Sync {
+    fn remove_artifact(&self, artifact: &ArtifactId) -> Result<RemovedArtifact, SpecmanError>;
+}
+
+impl<L: WorkspaceLocator> ArtifactRemovalStore for WorkspacePersistence<L> {
+    fn remove_artifact(&self, artifact: &ArtifactId) -> Result<RemovedArtifact, SpecmanError> {
+        self.remove(artifact)
     }
 }
 
@@ -101,6 +147,7 @@ mod tests {
 
     fn setup_workspace() -> (
         tempfile::TempDir,
+        PathBuf,
         WorkspacePersistence<FilesystemWorkspaceLocator>,
     ) {
         let temp = tempdir().unwrap();
@@ -109,7 +156,7 @@ mod tests {
         let start = root.join("impl").join("services");
         fs::create_dir_all(&start).unwrap();
         let locator = FilesystemWorkspaceLocator::new(start);
-        (temp, WorkspacePersistence::new(locator))
+        (temp, root, WorkspacePersistence::new(locator))
     }
 
     fn rendered(body: &str) -> RenderedTemplate {
@@ -128,7 +175,7 @@ mod tests {
 
     #[test]
     fn persist_specification_creates_directories_and_writes_file() {
-        let (_temp, persistence) = setup_workspace();
+        let (_temp, _root, persistence) = setup_workspace();
         let target = artifact(ArtifactKind::Specification, "feature-one");
         let rendered = rendered("---\nname: feature\n---\nbody");
 
@@ -146,7 +193,7 @@ mod tests {
 
     #[test]
     fn persist_scratchpad_targets_dot_folder() {
-        let (_temp, persistence) = setup_workspace();
+        let (_temp, _root, persistence) = setup_workspace();
         let target = artifact(ArtifactKind::ScratchPad, "workspace-template-persist");
         let rendered = rendered("scratch content");
 
@@ -158,11 +205,51 @@ mod tests {
 
     #[test]
     fn persist_rejects_unresolved_tokens() {
-        let (_temp, persistence) = setup_workspace();
+        let (_temp, _root, persistence) = setup_workspace();
         let target = artifact(ArtifactKind::Implementation, "specman-library");
         let rendered = rendered("value: {{missing}}");
 
         let err = persistence.persist(&target, &rendered).unwrap_err();
         assert!(matches!(err, SpecmanError::Template(_)));
+    }
+
+    #[test]
+    fn remove_specification_deletes_directory() {
+        let (_temp, root, persistence) = setup_workspace();
+        let folder = root.join("spec").join("feature-one");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("spec.md"), "contents").unwrap();
+
+        let target = artifact(ArtifactKind::Specification, "feature-one");
+        let removed = persistence.remove(&target).expect("remove spec");
+
+        assert_eq!(removed.directory, folder);
+        assert!(!folder.exists());
+    }
+
+    #[test]
+    fn remove_missing_directory_errors() {
+        let (_temp, _root, persistence) = setup_workspace();
+        let target = artifact(ArtifactKind::Implementation, "unknown");
+
+        let err = persistence.remove(&target).expect_err("missing directory");
+        assert!(matches!(err, SpecmanError::Workspace(_)));
+    }
+
+    #[test]
+    fn remove_scratchpad_deletes_dot_folder() {
+        let (_temp, root, persistence) = setup_workspace();
+        let folder = root
+            .join(".specman")
+            .join("scratchpad")
+            .join("demo-scratch");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("scratch.md"), "notes").unwrap();
+
+        let target = artifact(ArtifactKind::ScratchPad, "demo-scratch");
+        let removed = persistence.remove(&target).expect("remove scratchpad");
+
+        assert_eq!(removed.directory, folder);
+        assert!(!folder.exists());
     }
 }

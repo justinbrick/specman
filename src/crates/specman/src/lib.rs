@@ -23,7 +23,9 @@ pub use lifecycle::{
 pub use metadata::{
     MetadataMutationRequest, MetadataMutationResult, MetadataMutator, ReferenceAddition,
 };
-pub use persistence::{PersistedArtifact, WorkspacePersistence};
+pub use persistence::{
+    ArtifactRemovalStore, PersistedArtifact, RemovedArtifact, WorkspacePersistence,
+};
 pub use scratchpad::ScratchPadProfile;
 pub use shared_function::{EntityKind, SchemaRef, SemVer};
 pub use template::{
