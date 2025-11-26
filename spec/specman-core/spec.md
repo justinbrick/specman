@@ -80,11 +80,13 @@ Lifecycle automation standardizes creation and deletion workflows for specificat
 
 - Automated creation flows MUST require an associated template locator and MUST validate that required tokens are supplied.
 - Lifecycle operations MUST enforce template usage for all new specifications, implementations, and scratch pads so generated artifacts remain data-model compliant.
+- Implementations MUST expose user-facing deletion workflows for specifications, implementations, and scratch pads so that every artifact type can be removed with the same rigor applied to creation.
 - Creation tooling MUST cover all three artifact types (specifications, implementations, scratch pads) and MUST enforce the naming and metadata rules defined by the [SpecMan Data Model](../specman-data-model/spec.md) and [founding specification](../../docs/founding-spec.md).
 - Creation workflows MUST persist generated Markdown artifacts and supporting metadata into the canonical workspace locations (`spec/{name}/spec.md`, `impl/{name}/impl.md`, `.specman/scratchpad/{slug}/scratch.md`) using the paths returned by workspace discovery.
 - Persistence helpers MUST write the rendered template output (with all required tokens populated) together with its front matter or metadata; persisting additional representations of entities, concepts, or other runtime data structures is out of scope for this specification.
 - Lifecycle automation MUST provide direct integrations with the metadata mutation capabilities described in [Concept: Metadata Mutation](#concept-metadata-mutation).
-- Deletion workflows MUST refuse to proceed when dependent artifacts exist and MUST return a dependency tree describing all impacted consumers.
+- Deletion workflows MUST reuse dependency mapping services, refuse to proceed when dependent artifacts exist, and MUST return a dependency tree describing all impacted consumers whenever a removal is blocked.
+- Deletion workflows MUST ensure the targeted artifact and any associated metadata or scratch pad directories are removed from their canonical workspace locations once safety checks pass.
 - Scratch pad creation workflows MUST offer selectable profiles aligned with defined scratch pad types and MUST leverage corresponding templates.
 - Lifecycle controllers MUST expose a persistence interface that can round-trip newly created artifacts back onto disk and SHOULD surface explicit errors if the filesystem write fails so callers can remediate workspace permissions.
 
@@ -128,10 +130,11 @@ Metadata describing how templates are located and rendered.
 
 ### Entity: LifecycleController
 
-Controller responsible for enforcing lifecycle policies across specifications and implementations.
+Controller responsible for enforcing lifecycle policies across specifications, implementations, and scratch pads.
 
-- MUST orchestrate create and delete operations, delegating to dependency mapping and templating subsystems.
+- MUST orchestrate create and delete operations for every artifact type, delegating to dependency mapping and templating subsystems.
 - MUST terminate deletion attempts that would orphan dependents and MUST return the blocking dependency tree to the caller.
+- MUST expose deletion entry points that mirror creation workflows so operators have symmetrical controls for specifications, implementations, and scratch pads.
 - SHOULD integrate auditing hooks that capture lifecycle events for compliance tracking.
 - MUST surface explicit errors when filesystem persistence fails (for example, permissions or missing directories) so callers can remediate issues without corrupting the workspace.
 
