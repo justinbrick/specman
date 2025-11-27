@@ -38,6 +38,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 - Creation commands MUST invoke the dependency mapping and template orchestration behaviors defined by `specman-core`, ensuring that generated artifacts include compliant front matter and section scaffolding.
 - Delete commands MUST refuse to proceed when dependency analysis reveals downstream consumers unless the operator explicitly supplies `--force`; forced deletions MUST still print the blocking dependency tree, require explicit confirmation (flag or prompt), and MUST record in the command result that dependencies were overridden.
 - All lifecycle commands MUST persist results to the canonical workspace paths (`spec/`, `impl/`, `.specman/scratchpad/`) returned by workspace discovery, and MUST error when filesystem writes fail.
+- Every command group (`spec`, `impl`, `scratch`) MUST expose a read-only `dependencies` subcommand that invokes the `specman-core` dependency tree builder for the addressed artifact. These subcommands MUST default to rendering the downstream tree, MUST support mutually exclusive `--upstream`, `--downstream`, and `--all` flags (failing with `EX_USAGE` when callers combine them), and MUST return deterministic tree-formatted output suitable for parsing or display. Output MUST include the root artifact, indentation that conveys parent-child relationships, and MAY use ASCII characters for branches when ANSI is unavailable. Success MUST exit with `EX_OK`; unsupported locators, workspace violations, or traversal failures MUST bubble the closest matching `sysexits` constant surfaced by the dependency builder.
 
 #### Command Catalog
 
@@ -72,6 +73,15 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 - All `--dependencies` values MUST be validated for locator support (workspace-relative path or HTTPS URL) before writing them.
 
+###### `spec dependencies`
+
+- Purpose: render the dependency tree for a specification rooted under `spec/` or addressed via a workspace-relative path/HTTPS URL.
+- MUST reuse workspace discovery to resolve the target artifact and MUST fail with `EX_USAGE` when the locator points outside the workspace or uses an unsupported scheme.
+- MUST call the `specman-core` dependency tree builder and default to downstream traversal when no direction flag is present.
+- MUST expose mutually exclusive flags `--downstream`, `--upstream`, and `--all`; combining more than one flag MUST raise `EX_USAGE` while omitting all flags MUST behave the same as `--downstream`.
+- Output MUST be a deterministic tree (ASCII is acceptable) that includes the root specification, indentation showing parent-child links, and per-node identifiers (at minimum the path or URL). When `--json` is supplied, output MAY switch to structured JSON provided the hierarchical data matches the tree shown in plaintext.
+- Successful traversals MUST exit with `EX_OK`. Missing artifacts, workspace violations, or traversal errors returned by the dependency builder MUST map to the closest `sysexits` constant (`EX_UNAVAILABLE`, `EX_DATAERR`, etc.) so automation can react consistently.
+
 ##### `impl` command group
 
 - Scope: operations governing implementation artifacts stored under `impl/`.
@@ -95,6 +105,15 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 - MUST require `--language <identifier@version>` so the resulting front matter can satisfy the data-model implementing-language constraints. The flag MUST NOT have a default value.
 - Creation MUST validate that the supplied name satisfies implementation naming rules (≤4 words, hyphenated, includes the implementing language identifier) and MUST invoke template rendering only after resolving all template tokens, including HTML comment directives.
 
+###### `impl dependencies`
+
+- Purpose: display the dependency tree for an implementation located under `impl/` (or referenced via workspace-relative path/HTTPS URL) together with all upstream specifications and downstream consumers.
+- MUST resolve the target implementation using workspace discovery and MUST surface `EX_USAGE` when the locator is invalid, outside the workspace, or references a non-implementation artifact.
+- MUST invoke the `specman-core` dependency tree builder with implementation context so the traversal accounts for both the implementation’s `spec` front matter and any additional `references` entries.
+- Directional flags `--downstream`, `--upstream`, and `--all` MUST behave identically to the `spec dependencies` command: mutually exclusive, defaulting to downstream when omitted, and raising `EX_USAGE` when combined.
+- Output MUST be a deterministic tree (plaintext and optional JSON) that identifies each node’s artifact type (implementation vs specification) so operators can distinguish cross-layer edges.
+- Exit codes MUST mirror traversal success: `EX_OK` on success, and the closest matching `sysexits` constant (for example `EX_DATAERR` for malformed front matter or `EX_UNAVAILABLE` when artifacts cannot be located) when failures occur.
+
 ##### `scratch` command group
 
 - Scope: scratch pad lifecycle operations rooted at `.specman/scratchpad/`.
@@ -116,6 +135,15 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
   - `--type <feat|ref|revision>`: selects the work type; the CLI MUST reject unknown values and MUST populate the `work_type` object accordingly.
 - The command MUST persist the scratch pad front matter with the resolved branch name using the `{target_name}/revision|feat|ref/{scratch_name}` pattern and MUST leave template HTML comments intact until satisfied, matching the `specman-templates` governance rules.
 - Workspace discovery MUST be used to determine the destination `.specman` folder, and the command MUST fail when the folder is missing rather than attempting to create a workspace implicitly.
+
+###### `scratch dependencies`
+
+- Purpose: inspect the dependency tree for a scratch pad stored under `.specman/scratchpad/{slug}` or referenced via workspace-relative locator.
+- MUST require callers to supply a scratch pad slug or path that resolves to an existing pad; non-existent pads MUST raise `EX_DATAERR` with guidance to run `scratch ls`.
+- MUST load the scratch pad front matter, extract its `target`, and invoke the `specman-core` dependency tree builder starting from that target while annotating the scratch pad node as the root descriptor in the rendered output.
+- Directional flags `--downstream`, `--upstream`, and `--all` MUST be mutually exclusive, default to downstream when omitted, and raise `EX_USAGE` when combined or unknown values are provided.
+- Output MUST show the scratch pad as the root plus the resolved specification or implementation dependencies underneath using the same deterministic tree formatting as other command groups; an optional `--json` flag MAY emit structured output that mirrors the tree content.
+- Successful runs MUST exit with `EX_OK`. Failures resolving the pad, its target, or dependencies MUST bubble the closest `sysexits` constant returned by the dependency builder (for example `EX_NOINPUT` when the target file is missing).
 
 ### Concept: Data Model Activation
 
