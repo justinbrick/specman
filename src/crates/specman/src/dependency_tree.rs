@@ -688,7 +688,7 @@ fn resolve_dependencies(
         }
         ArtifactKind::ScratchPad => {
             if let Some(target) = &front.target {
-                let locator = match resolve_scratch_target_locator(target, workspace) {
+                let locator = match resolve_scratch_target_locator(target, locator, workspace) {
                     Ok(locator) => Some(locator),
                     Err(err) => {
                         if mode.is_strict() {
@@ -805,6 +805,7 @@ fn resolve_dependency_locator(
 
 fn resolve_scratch_target_locator(
     reference: &str,
+    scratch_locator: &ArtifactLocator,
     workspace: &WorkspacePaths,
 ) -> Result<ArtifactLocator, SpecmanError> {
     if reference.starts_with("http://") {
@@ -816,8 +817,11 @@ fn resolve_scratch_target_locator(
         return ArtifactLocator::from_url(reference);
     }
 
-    let base_dir = Some(workspace.root());
-    ArtifactLocator::from_path(reference, workspace, base_dir)
+    if let Some(base_dir) = scratch_locator.base_dir() {
+        return ArtifactLocator::from_path(reference, workspace, Some(base_dir.as_path()));
+    }
+
+    ArtifactLocator::from_path(reference, workspace, Some(workspace.root()))
 }
 
 fn resolve_scratch_dependency_locator(
