@@ -91,14 +91,12 @@ A prompt template is a Markdown document or snippet that instructs an AI system 
 
 A scratch pad prompt describes how an AI system should assemble a scratch pad tailored to a specific work scenario.
 
-- Scratch pad prompt templates MUST specify their work type (`feat`, `ref`, or `revision`).
+- Scratch pad prompt templates MUST specify their work type (`feat`, `ref`, `revision`, or `fix`).
 - Scratch pad prompt templates MUST instruct the AI to include front matter capturing target artifact, work type, and branch information required by the data model specification.
 - Scratch pad prompt templates SHOULD suggest section layouts suited to their scenario (for example, notes for feat/revision, checklist for ref/feat, and summary for revision).
 
 ## Constraints
 
-- Markdown templates for specifications MUST reside in `templates/spec/`, implementation templates MUST reside in `templates/impl/`, and scratch pad templates MUST reside in `templates/scratch/`.
-- Prompt templates MUST be stored under `templates/prompts/` with filenames that match their artifact type or scenario.
 - Template files MUST retain HTML comment instructions verbatim when copied; downstream automation MAY delete comment blocks only after satisfying their directives.
 - Specification, implementation, and scratch pad templates MUST NOT remove or reword the RFC 2119 guidance included in their static sections.
 - Prompt templates MUST instruct AI systems to acknowledge and respect any HTML comment instructions present in the target template before generating content.
