@@ -25,6 +25,7 @@ The template catalog provides the canonical scaffolding for specifications, impl
 - The template catalog MUST define one Markdown template for each artifact type mandated by the SpecMan data model: specification, implementation, and scratch pad.
 - Each template MUST guarantee that the headings, sections, and required metadata needed for data-model compliance are present by default.
 - Template updates MUST remain backward compatible with previously generated artifacts unless the `specman-data-model` specification introduces conflicting requirements.
+- Implementation templates MUST enumerate every concept and entity from their governing specification under dedicated headings that link back to the source spec and include localized API signatures (and entity data models) so relationship graphs can be derived from the Markdown itself.
 
 ### Concept: AI Instruction Channel
 
@@ -38,7 +39,7 @@ Template guidance for automated agents is conveyed exclusively through non-rende
 
 The template catalog includes prompt blueprints that equip AI systems to create compliant artifacts for common workflows.
 
-- The prompt catalog MUST expose one prompt template for generating a specification, one prompt template for generating an implementation, and three prompt templates for generating scratch pads.
+- The prompt catalog MUST expose one prompt template for generating a specification, one prompt template for generating an implementation, and four prompt templates for generating scratch pads (discovery, execution, synthesis, and fix).
 - Prompt templates MUST direct the AI to honor template instructions, preserve HTML comment guidance, and reference the `specman-data-model` specification when validating output.
 - Scratch pad prompt templates MUST target distinct scenarios: discovery (early research), execution (active task tracking), and synthesis (handoff or retrospective work).
 

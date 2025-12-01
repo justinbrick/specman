@@ -21,6 +21,9 @@ Scratch Pad Requirement (Feature Work):
 
 Steps:
 1. Copy the canonical template, set `spec` to {{target_spec_path}}, fill `location`, `library` (if applicable), and describe `primary_language` plus optional `secondary_languages`, replacing the references list with {{reference_items}}.
-2. Summarize architecture and intent in Overview, explain language details, References, Implementation Details, API Surface, Data Models, and Operational Notes with concise prose linked to specification concepts.
-3. Provide API signatures in fenced code blocks with notes on inputs, outputs, and side effects, removing HTML comment directives only after their guidance has been satisfied.
-4. Validate against `spec/specman-data-model/spec.md` sections for Implementations, Implementing Language, References, APIs, and Implementation Metadata, then return Markdown ready for `impl/{{implementation_name}}/impl.md`.
+2. Summarize architecture and intent in Overview, explain language details, References, Implementation Details, and Operational Notes with concise prose that cites specification headings via inline links.
+3. In `## Concept & Entity Breakdown`, enumerate every concept and entity from the governing specification that this implementation covers. Each heading MUST include an inline link to the originating spec fragment (for example `[Concept: Lifecycle](../spec/spec.md#concept-lifecycle)`) and contain:
+	- A narrative describing how the concept/entity is realized, with additional inline links to related headings.
+	- API signatures scoped to that concept/entity (fenced code blocks with notes on inputs, outputs, invariants, and dependencies).
+	- For entities, an embedded Data Model snippet plus any constraints.
+4. Remove HTML comment directives only after their guidance is satisfied and validate against `spec/specman-data-model/spec.md` sections for Implementations, Implementing Language, References, APIs, and Implementation Metadata before returning Markdown ready for `impl/{{implementation_name}}/impl.md`.

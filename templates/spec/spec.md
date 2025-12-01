@@ -21,7 +21,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 ### Concept: Placeholder Concept Name
 
-<!-- Provide a short description of the concept. Use RFC 2119 requirement levels when listing constraints.
+<!-- Provide a short description of the concept plus its constraints right here. Use RFC 2119 requirement levels when listing constraints so they remain co-located with the owning concept.
 
 - MUST ...
 - SHOULD ... -->
@@ -30,17 +30,10 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 ### Entity: Placeholder Entity Name
 
-<!-- Describe the entity at a conceptual level. List relationships to other entities or concepts where relevant.
+<!-- Describe the entity at a conceptual level. List relationships to other entities or concepts where relevant, and capture constraints inline instead of using a shared constraints section.
 
-- Field or characteristic one
-- Field or characteristic two -->
-
-## Constraints
-
-<!-- Capture cross-cutting requirements that involve multiple concepts or entities.
-
-- MUST ...
-- SHOULD ... -->
+- Constraint or invariant one (MUST ...)
+- Constraint or invariant two (SHOULD ...) -->
 
 ## Additional Notes
 
