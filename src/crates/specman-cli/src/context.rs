@@ -12,6 +12,11 @@ use crate::error::CliError;
 use crate::templates::TemplateCatalog;
 use crate::util::Verbosity;
 
+/// Aggregates the workspace context, adapters, and shared services required by the
+/// SpecMan CLI. This keeps Workspace Context Resolution deterministic and ensures
+/// every command reuses the same dependency mapper, template engine, and lifecycle
+/// controller for the duration of a single invocation (see
+/// spec/specman-cli/spec.md#concept-workspace-context-resolution).
 pub struct CliSession {
     pub workspace_paths: WorkspacePaths,
     pub dependency_mapper: Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
@@ -29,6 +34,10 @@ pub struct CliSession {
 }
 
 impl CliSession {
+    /// Creates a new session by resolving the workspace root (optionally honoring
+    /// `--workspace`), instantiating the default adapter stack, and wiring lifecycle
+    /// automation so downstream commands can satisfy the Workspace Context Resolution
+    /// and Data Model Activation concepts.
     pub fn bootstrap(
         workspace_override: Option<String>,
         verbosity: Verbosity,

@@ -13,6 +13,9 @@ pub enum OutputFormat {
     Json,
 }
 
+/// Renders a `CommandResult` as either human-readable text or newline-delimited JSON,
+/// satisfying the Observability & Error Surfacing concept while converting outcomes into
+/// deterministic exit codes.
 pub fn emit_result(result: CommandResult, format: OutputFormat) -> Result<ExitCode, CliError> {
     match format {
         OutputFormat::Text => print_text(&result),

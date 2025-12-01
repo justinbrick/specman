@@ -22,6 +22,9 @@ pub fn run() -> ExitCode {
     }
 }
 
+/// Parses CLI arguments, resolves the workspace, and dispatches to the appropriate
+/// command while enforcing the CLI Invocation Model (spec/specman-cli/spec.md#concept-cli-invocation-model).
+/// Returns a POSIX `sysexits`-compatible `ExitCode` so automation can react deterministically.
 pub fn run_cli<I, S>(args: I) -> Result<ExitCode, CliError>
 where
     I: IntoIterator<Item = S>,
@@ -62,6 +65,9 @@ fn init_tracing() {
         .try_init();
 }
 
+/// Defines the root `clap::Command` tree, including global flags and subcommands for
+/// `status`, `spec`, `impl`, and `scratch`. Keeping the tree centralized ensures every
+/// command advertises its help text per the CLI Invocation Model requirements.
 fn build_cli() -> Command {
     Command::new(NAME)
         .about("SpecMan CLI")
@@ -90,6 +96,9 @@ fn build_cli() -> Command {
         .subcommand(commands::scratch::command())
 }
 
+/// Delegates parsed subcommands to their respective modules, ensuring the Lifecycle
+/// Command Surface stays thin and predictable. Unknown subcommands map to `EX_USAGE` so
+/// callers receive actionable feedback.
 fn dispatch(
     session: &CliSession,
     matches: &ArgMatches,
