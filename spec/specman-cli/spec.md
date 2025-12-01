@@ -154,14 +154,11 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 ### Concept: Template Integration & Token Handling
 
-- Creation commands MUST load the appropriate Markdown template from `templates/spec/`, `templates/impl/`, or `templates/scratch/` (or workspace overrides) before rendering artifacts.
-- The CLI MUST require callers to supply every declared `{{token}}` before rendering; missing tokens MUST result in descriptive errors that reference the originating template and token name.
-- Template rendering MUST respect HTML comment directives embedded in templates and MUST only remove a directive after its instruction has been satisfied or explicitly recorded in the generated artifact.
-- The CLI SHOULD cache template metadata (required tokens, scenario type) for the duration of a command invocation to avoid redundant filesystem reads, but MUST NOT cache it across workspaces unless the template version is part of the cache key.
-- Workspaces MAY override the default templates by adding plaintext pointer files inside `.specman/templates/` whose filenames are all uppercase and describe the artifact type (for example, `SPEC`, `IMPL`, `SCRATCH`). Each pointer file MUST contain either a workspace-relative path (resolved from the workspace root) or an HTTPS URL to the desired Markdown template.
-- When a pointer file exists, the CLI MUST resolve its locator, verify the referenced resource is readable Markdown, and surface an actionable error if the locator is missing, outside the workspace (for filesystem paths), or uses an unsupported scheme.
-- When a pointer file is absent, the CLI MUST fall back to the catalog defaults under `templates/spec/`, `templates/impl/`, or `templates/scratch/` to remain aligned with the `specman-templates` specification.
-- Pointer files MUST be re-read on each command invocation so operators can change template sources without restarting the CLI, and their resolved locations MUST feed directly into `TemplateRenderPlan` creation.
+- Creation commands MUST invoke the SpecMan Core Template Orchestration capabilities defined in [spec/specman-core/spec.md](spec/specman-core/spec.md#concept-template-orchestration) to obtain a `TemplateDescriptor` before rendering artifacts. The CLI MUST treat the descriptor (including locator precedence, pointer resolution, and packaged-default fallbacks) as authoritative and MUST NOT reimplement those behaviors locally.
+- The CLI MUST require callers to supply every declared `{{token}}` before rendering; missing tokens MUST result in descriptive errors that reference the originating template and token name, and the CLI MUST surface any validation errors returned by Template Orchestration verbatim.
+- Template rendering MUST respect HTML comment directives embedded in templates and MUST only remove a directive after its instruction has been satisfied or explicitly recorded in the generated artifact, matching the requirements in SpecMan Core.
+- The CLI MAY cache descriptor metadata (required tokens, scenario type) for the duration of a single command invocation, but any cache MUST include the workspace root, descriptor hash, and template version so entries are never shared across workspaces or template revisions.
+- When Template Orchestration returns a descriptor backed by `.specman/cache/templates/`, the CLI MUST read from that cache location and MUST NOT attempt alternative cache directories. Likewise, remote refresh logic MUST be left to SpecMan Core; the CLI MUST simply propagate refresh results and corresponding error messages.
 
 ### Concept: Observability & Error Surfacing
 
@@ -199,6 +196,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 - Contains the template locator, token map, resolved output path, and any post-processing steps (such as removing satisfied HTML comments).
 - MUST ensure every required token is supplied, and MUST record whether default values were injected.
 - SHOULD expose dry-run output for tooling that wants to preview generated artifacts.
+- MUST embed the `TemplateDescriptor` provided by SpecMan Core Template Orchestration (including cache metadata when present) so downstream components can trace which precedence path produced the rendered artifact.
 
 ## Constraints
 
