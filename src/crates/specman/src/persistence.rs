@@ -2,7 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::dependency_tree::{ArtifactId, ArtifactKind};
+use crate::adapter::DataModelAdapter;
+use crate::dependency_tree::{ArtifactId, ArtifactKind, DependencyInventory, DependencyTree};
 use crate::error::SpecmanError;
 use crate::front_matter::split_front_matter;
 use crate::template::{RenderedTemplate, TemplateProvenance};
@@ -27,11 +28,58 @@ pub struct RemovedArtifact {
 /// Writes rendered templates into canonical workspace locations.
 pub struct WorkspacePersistence<L: WorkspaceLocator> {
     locator: L,
+    dependency_inventory: Option<Arc<dyn DependencyInventory>>,
+    data_adapter: Option<Arc<dyn DataModelAdapter>>,
 }
 
 impl<L: WorkspaceLocator> WorkspacePersistence<L> {
     pub fn new(locator: L) -> Self {
-        Self { locator }
+        Self {
+            locator,
+            dependency_inventory: None,
+            data_adapter: None,
+        }
+    }
+
+    pub fn with_inventory(locator: L, dependency_inventory: Arc<dyn DependencyInventory>) -> Self {
+        Self {
+            locator,
+            dependency_inventory: Some(dependency_inventory),
+            data_adapter: None,
+        }
+    }
+
+    pub fn with_adapter(locator: L, data_adapter: Arc<dyn DataModelAdapter>) -> Self {
+        Self {
+            locator,
+            dependency_inventory: None,
+            data_adapter: Some(data_adapter),
+        }
+    }
+
+    pub fn with_inventory_and_adapter(
+        locator: L,
+        dependency_inventory: Arc<dyn DependencyInventory>,
+        data_adapter: Arc<dyn DataModelAdapter>,
+    ) -> Self {
+        Self {
+            locator,
+            dependency_inventory: Some(dependency_inventory),
+            data_adapter: Some(data_adapter),
+        }
+    }
+
+    /// Persists the rendered template and registers the accompanying dependency tree
+    /// through the configured data model adapter when present.
+    pub fn persist_with_dependency_tree(
+        &self,
+        artifact: &ArtifactId,
+        rendered: &RenderedTemplate,
+        dependencies: &DependencyTree,
+    ) -> Result<PersistedArtifact, SpecmanError> {
+        let persisted = self.persist(artifact, rendered)?;
+        self.save_dependency_tree(artifact, dependencies)?;
+        Ok(persisted)
     }
 
     /// Persists the rendered template to the canonical path defined by the artifact kind.
@@ -51,6 +99,9 @@ impl<L: WorkspaceLocator> WorkspacePersistence<L> {
             rendered.body.clone()
         };
         write_body(&target_path, &output)?;
+        if let Some(inventory) = &self.dependency_inventory {
+            inventory.invalidate();
+        }
 
         Ok(PersistedArtifact {
             artifact: artifact.clone(),
@@ -79,11 +130,45 @@ impl<L: WorkspaceLocator> WorkspacePersistence<L> {
         }
 
         fs::remove_dir_all(directory)?;
+        if let Some(inventory) = &self.dependency_inventory {
+            inventory.invalidate();
+        }
+        self.invalidate_tree_in_adapter(artifact)?;
+
         Ok(RemovedArtifact {
             artifact: artifact.clone(),
             directory: directory.to_path_buf(),
             workspace,
         })
+    }
+
+    /// Saves the provided dependency tree via the configured data-model adapter.
+    pub fn save_dependency_tree(
+        &self,
+        artifact: &ArtifactId,
+        dependencies: &DependencyTree,
+    ) -> Result<(), SpecmanError> {
+        ensure_dependency_root_matches(artifact, dependencies)?;
+        self.save_tree_in_adapter(dependencies)
+    }
+
+    /// Invalidates cached dependency data for the specified artifact through the adapter.
+    pub fn invalidate_dependency_tree(&self, artifact: &ArtifactId) -> Result<(), SpecmanError> {
+        self.invalidate_tree_in_adapter(artifact)
+    }
+
+    fn save_tree_in_adapter(&self, dependencies: &DependencyTree) -> Result<(), SpecmanError> {
+        if let Some(adapter) = &self.data_adapter {
+            adapter.save_dependency_tree(dependencies.clone())?;
+        }
+        Ok(())
+    }
+
+    fn invalidate_tree_in_adapter(&self, artifact: &ArtifactId) -> Result<(), SpecmanError> {
+        if let Some(adapter) = &self.data_adapter {
+            adapter.invalidate_dependency_tree(artifact)?;
+        }
+        Ok(())
     }
 }
 
@@ -126,6 +211,19 @@ fn write_body(path: &Path, body: &str) -> Result<(), SpecmanError> {
         fs::create_dir_all(dir)?;
     }
     fs::write(path, body)?;
+    Ok(())
+}
+
+fn ensure_dependency_root_matches(
+    artifact: &ArtifactId,
+    dependencies: &DependencyTree,
+) -> Result<(), SpecmanError> {
+    if &dependencies.root.id != artifact {
+        return Err(SpecmanError::Dependency(format!(
+            "dependency tree root {} does not match artifact {}",
+            dependencies.root.id.name, artifact.name
+        )));
+    }
     Ok(())
 }
 
@@ -181,8 +279,11 @@ fn ensure_safe_name(name: &str) -> Result<(), SpecmanError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapter::DataModelAdapter;
+    use crate::dependency_tree::ArtifactSummary;
     use crate::template::TemplateDescriptor;
     use crate::workspace::FilesystemWorkspaceLocator;
+    use std::sync::{Arc, Mutex};
     use tempfile::tempdir;
 
     fn setup_workspace() -> (
@@ -199,6 +300,16 @@ mod tests {
         (temp, root, WorkspacePersistence::new(locator))
     }
 
+    fn workspace_with_locator() -> (tempfile::TempDir, PathBuf, FilesystemWorkspaceLocator) {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        let start = root.join("impl").join("services");
+        fs::create_dir_all(&start).unwrap();
+        let locator = FilesystemWorkspaceLocator::new(start);
+        (temp, root, locator)
+    }
+
     fn rendered(body: &str) -> RenderedTemplate {
         RenderedTemplate {
             body: body.to_string(),
@@ -211,6 +322,53 @@ mod tests {
         ArtifactId {
             kind,
             name: name.to_string(),
+        }
+    }
+
+    fn dependency_tree_for(target: &ArtifactId) -> DependencyTree {
+        DependencyTree::empty(ArtifactSummary {
+            id: target.clone(),
+            ..Default::default()
+        })
+    }
+
+    #[derive(Default)]
+    struct RecordingAdapter {
+        saved: Arc<Mutex<Vec<DependencyTree>>>,
+        invalidated: Arc<Mutex<Vec<ArtifactId>>>,
+    }
+
+    impl RecordingAdapter {
+        fn saved_roots(&self) -> Vec<ArtifactId> {
+            self.saved
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|tree| tree.root.id.clone())
+                .collect()
+        }
+
+        fn invalidated(&self) -> Vec<ArtifactId> {
+            self.invalidated.lock().unwrap().clone()
+        }
+    }
+
+    impl DataModelAdapter for RecordingAdapter {
+        fn save_dependency_tree(&self, tree: DependencyTree) -> Result<(), SpecmanError> {
+            self.saved.lock().unwrap().push(tree);
+            Ok(())
+        }
+
+        fn load_dependency_tree(
+            &self,
+            _root: &ArtifactId,
+        ) -> Result<Option<DependencyTree>, SpecmanError> {
+            Ok(None)
+        }
+
+        fn invalidate_dependency_tree(&self, root: &ArtifactId) -> Result<(), SpecmanError> {
+            self.invalidated.lock().unwrap().push(root.clone());
+            Ok(())
         }
     }
 
@@ -292,5 +450,62 @@ mod tests {
 
         assert_eq!(removed.directory, folder);
         assert!(!folder.exists());
+    }
+
+    #[test]
+    fn persist_with_dependency_tree_registers_adapter() {
+        let (_temp, _root, locator) = workspace_with_locator();
+        let adapter = Arc::new(RecordingAdapter::default());
+        let adapter_handle: Arc<dyn DataModelAdapter> = adapter.clone();
+        let persistence = WorkspacePersistence::with_adapter(locator, adapter_handle);
+        let target = artifact(ArtifactKind::Implementation, "specman-library");
+        let rendered = rendered("---\nname: demo\n---\nbody");
+        let dependencies = dependency_tree_for(&target);
+
+        let result = persistence
+            .persist_with_dependency_tree(&target, &rendered, &dependencies)
+            .expect("persist with dependencies");
+
+        assert!(result.path.exists());
+        let saved = adapter.saved_roots();
+        assert_eq!(saved, vec![target]);
+    }
+
+    #[test]
+    fn persist_with_dependency_tree_rejects_mismatched_root() {
+        let (_temp, _root, locator) = workspace_with_locator();
+        let adapter = Arc::new(RecordingAdapter::default());
+        let adapter_handle: Arc<dyn DataModelAdapter> = adapter.clone();
+        let persistence = WorkspacePersistence::with_adapter(locator, adapter_handle);
+
+        let target = artifact(ArtifactKind::Implementation, "specman-library");
+        let rendered = rendered("---\nname: demo\n---\nbody");
+        let dependencies = dependency_tree_for(&ArtifactId {
+            kind: ArtifactKind::Implementation,
+            name: "other".into(),
+        });
+
+        let err = persistence
+            .persist_with_dependency_tree(&target, &rendered, &dependencies)
+            .expect_err("mismatched dependency root");
+        assert!(matches!(err, SpecmanError::Dependency(_)));
+        assert!(adapter.saved_roots().is_empty());
+    }
+
+    #[test]
+    fn remove_triggers_dependency_invalidation_when_adapter_configured() {
+        let (_temp, root, locator) = workspace_with_locator();
+        let adapter = Arc::new(RecordingAdapter::default());
+        let adapter_handle: Arc<dyn DataModelAdapter> = adapter.clone();
+        let persistence = WorkspacePersistence::with_adapter(locator, adapter_handle);
+
+        let target = artifact(ArtifactKind::Implementation, "specman-library");
+        let folder = root.join("impl").join(&target.name);
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("impl.md"), "body").unwrap();
+
+        let removed = persistence.remove(&target).expect("remove with adapter");
+        assert_eq!(removed.artifact, target);
+        assert_eq!(adapter.invalidated(), vec![target.clone()]);
     }
 }

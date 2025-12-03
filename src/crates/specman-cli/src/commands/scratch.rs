@@ -3,9 +3,8 @@ use std::path::Path;
 
 use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum, builder::EnumValueParser};
 use serde::Serialize;
-use serde_yaml::Mapping;
 use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyMapping, DependencyTree};
-use specman::front_matter::{self, RawFrontMatter};
+use specman::front_matter::{self, ScratchFrontMatter};
 use specman::lifecycle::LifecycleController;
 use specman::template::{TemplateEngine, TokenMap};
 
@@ -134,6 +133,9 @@ fn create_scratchpad(
     let persisted = session
         .persistence
         .persist(&artifact, &rendered)
+        .map_err(CliError::from)?;
+    session
+        .record_dependency_tree(&artifact)
         .map_err(CliError::from)?;
     let summary = read_scratch_summary(session.workspace_paths.root(), &persisted.path)?;
 
@@ -323,19 +325,13 @@ fn read_scratch_summary(root: &Path, path: &Path) -> Result<ScratchSummary, CliE
     let content = fs::read_to_string(path)?;
     let split = front_matter::split_front_matter(&content)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    let fm: RawFrontMatter = serde_yaml::from_str(split.yaml)
+    let fm: ScratchFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    let mapping: Mapping = serde_yaml::from_str(split.yaml)
-        .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    let branch = mapping
-        .get("branch")
-        .and_then(|value| value.as_str().map(String::from));
-    let work_type = mapping
-        .get("work_type")
-        .and_then(|value| value.as_mapping())
-        .and_then(|map| map.keys().next())
-        .and_then(|key| key.as_str())
-        .map(String::from);
+    let branch = fm.branch.clone();
+    let work_type = fm
+        .work_type
+        .as_ref()
+        .map(|ty| ty.kind().as_str().to_string());
     let target = fm.target.clone().and_then(|value| {
         if value.trim().is_empty() {
             None
@@ -345,6 +341,7 @@ fn read_scratch_summary(root: &Path, path: &Path) -> Result<ScratchSummary, CliE
     });
     Ok(ScratchSummary {
         name: fm
+            .identity
             .name
             .clone()
             .unwrap_or_else(|| infer_name_from_path(path)),

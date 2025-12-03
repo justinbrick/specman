@@ -3,11 +3,10 @@ use std::path::{Path, PathBuf};
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
-use serde_yaml::Value;
 use specman::dependency_tree::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyMapping, DependencyTree,
 };
-use specman::front_matter::{self, RawFrontMatter};
+use specman::front_matter::{self, ImplementationFrontMatter, SpecificationFrontMatter};
 use specman::lifecycle::LifecycleController;
 use specman::template::{TemplateEngine, TokenMap};
 
@@ -123,6 +122,9 @@ fn create_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
     let persisted = session
         .persistence
         .persist(&artifact, &rendered)
+        .map_err(CliError::from)?;
+    session
+        .record_dependency_tree(&artifact)
         .map_err(CliError::from)?;
     let summary = read_impl_summary(session.workspace_paths.root(), &persisted.path)?;
 
@@ -306,27 +308,25 @@ fn read_impl_summary(root: &Path, path: &Path) -> Result<ImplSummary, CliError> 
     let content = fs::read_to_string(path)?;
     let split = front_matter::split_front_matter(&content)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    let fm: RawFrontMatter = serde_yaml::from_str(split.yaml)
+    let fm: ImplementationFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    let value: Value = serde_yaml::from_str(split.yaml)
-        .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    let language = value
-        .get("primary_language")
-        .and_then(|lang| lang.get("language"))
-        .and_then(Value::as_str)
-        .map(|s| s.to_string());
+    let language = fm
+        .primary_language
+        .as_ref()
+        .map(|lang| lang.language.clone());
     let spec_locator = fm.spec.clone();
     let spec_identifier = spec_locator
         .as_deref()
         .and_then(|locator| spec_identifier_from_locator(root, locator));
     Ok(ImplSummary {
         name: fm
+            .identity
             .name
             .clone()
             .unwrap_or_else(|| infer_name_from_path(path)),
         spec_locator,
         spec_identifier,
-        version: fm.version.clone(),
+        version: fm.identity.version.clone(),
         language,
         path: util::workspace_relative(root, path),
     })
@@ -410,8 +410,8 @@ fn spec_identifier_from_locator(root: &Path, locator: &str) -> Option<String> {
     }
     let content = fs::read_to_string(&resolved).ok()?;
     let split = front_matter::split_front_matter(&content).ok()?;
-    let fm: RawFrontMatter = serde_yaml::from_str(split.yaml).ok()?;
-    match (fm.name, fm.version) {
+    let fm: SpecificationFrontMatter = serde_yaml::from_str(split.yaml).ok()?;
+    match (fm.identity.name, fm.identity.version) {
         (Some(name), Some(version)) => Some(format!("{name}@{version}")),
         (Some(name), None) => Some(name),
         (None, Some(version)) => Some(format!("(unknown)@{version}")),

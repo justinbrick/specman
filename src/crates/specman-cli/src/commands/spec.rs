@@ -6,7 +6,7 @@ use serde::Serialize;
 use specman::dependency_tree::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyMapping, DependencyTree,
 };
-use specman::front_matter::{self, RawFrontMatter};
+use specman::front_matter::{self, SpecificationFrontMatter};
 use specman::lifecycle::LifecycleController;
 use specman::template::{TemplateEngine, TokenMap};
 
@@ -104,6 +104,9 @@ fn create_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
     let persisted = session
         .persistence
         .persist(&artifact, &rendered)
+        .map_err(CliError::from)?;
+    session
+        .record_dependency_tree(&artifact)
         .map_err(CliError::from)?;
     let summary = read_spec_summary(&persisted.path)?;
 
@@ -290,13 +293,14 @@ fn read_spec_summary(path: &Path) -> Result<SpecSummary, CliError> {
     let content = fs::read_to_string(path)?;
     let split = front_matter::split_front_matter(&content)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    let fm: RawFrontMatter = serde_yaml::from_str(split.yaml)
+    let fm: SpecificationFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
     let name = fm
+        .identity
         .name
         .clone()
         .unwrap_or_else(|| infer_name_from_path(path));
-    let version = fm.version.clone();
+    let version = fm.identity.version.clone();
     Ok(SpecSummary {
         name,
         version,

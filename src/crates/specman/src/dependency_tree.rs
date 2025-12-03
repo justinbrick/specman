@@ -2,14 +2,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::error::SpecmanError;
-use crate::front_matter::{self, DependencyEntry, RawFrontMatter};
+use crate::front_matter::{self, ArtifactFrontMatter, DependencyEntry, FrontMatterKind};
 use crate::shared_function::SemVer;
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
 
@@ -143,20 +143,40 @@ pub trait DependencyMapping: Send + Sync {
 
 /// Filesystem-backed implementation of the `DependencyMapping` trait.
 pub struct FilesystemDependencyMapper<L: WorkspaceLocator> {
-    workspace: L,
-    fetcher: Arc<dyn ContentFetcher>,
+    graph: Arc<DependencyGraphServices<L>>,
 }
 
 impl<L: WorkspaceLocator> FilesystemDependencyMapper<L> {
     pub fn new(workspace: L) -> Self {
         Self {
-            workspace,
-            fetcher: Arc::new(HttpFetcher::default()),
+            graph: Arc::new(DependencyGraphServices::new(workspace)),
         }
     }
 
     pub fn with_fetcher(workspace: L, fetcher: Arc<dyn ContentFetcher>) -> Self {
-        Self { workspace, fetcher }
+        Self {
+            graph: Arc::new(DependencyGraphServices::with_fetcher(workspace, fetcher)),
+        }
+    }
+
+    /// Returns the shared dependency graph services so callers can opt into
+    /// read-only snapshots without rebuilding traversal state.
+    pub fn dependency_graph(&self) -> &DependencyGraphServices<L> {
+        self.graph.as_ref()
+    }
+
+    /// Provides an `Arc` handle to the underlying graph services so other
+    /// components (e.g., persistence) can observe or invalidate inventories.
+    pub fn graph_handle(&self) -> Arc<DependencyGraphServices<L>> {
+        self.graph.clone()
+    }
+
+    /// Exposes a trait-object handle suitable for dependency inventory invalidation.
+    pub fn inventory_handle(&self) -> Arc<dyn DependencyInventory>
+    where
+        L: 'static,
+    {
+        self.graph.clone() as Arc<dyn DependencyInventory>
     }
 
     /// Builds a dependency tree by reading the artifact located at the provided filesystem path.
@@ -164,29 +184,94 @@ impl<L: WorkspaceLocator> FilesystemDependencyMapper<L> {
         &self,
         path: impl AsRef<Path>,
     ) -> Result<DependencyTree, SpecmanError> {
-        let workspace = self.workspace.workspace()?;
-        let locator = ArtifactLocator::from_path(path.as_ref(), &workspace, None)?;
-        self.build_tree(locator, workspace)
+        self.graph.dependency_tree_from_path(path)
     }
 
     /// Builds a dependency tree by fetching the artifact from the provided HTTPS URL.
     pub fn dependency_tree_from_url(&self, url: &str) -> Result<DependencyTree, SpecmanError> {
-        let workspace = self.workspace.workspace()?;
-        let locator = ArtifactLocator::from_url(url)?;
-        self.build_tree(locator, workspace)
+        self.graph.dependency_tree_from_url(url)
+    }
+}
+
+/// Trait representing cache or inventory layers that need invalidation whenever
+/// workspace artifacts mutate.
+pub trait DependencyInventory: Send + Sync {
+    fn invalidate(&self);
+}
+
+/// Shared dependency graph + workspace inventory services that other modules
+/// can use without depending on filesystem-specific mapper wiring.
+pub struct DependencyGraphServices<L: WorkspaceLocator> {
+    workspace: L,
+    fetcher: Arc<dyn ContentFetcher>,
+    inventory_cache: Mutex<Option<WorkspaceInventorySnapshot>>,
+}
+
+impl<L: WorkspaceLocator> DependencyGraphServices<L> {
+    pub fn new(workspace: L) -> Self {
+        Self {
+            workspace,
+            fetcher: Arc::new(HttpFetcher::default()),
+            inventory_cache: Mutex::new(None),
+        }
     }
 
-    fn build_tree(
+    pub fn with_fetcher(workspace: L, fetcher: Arc<dyn ContentFetcher>) -> Self {
+        Self {
+            workspace,
+            fetcher,
+            inventory_cache: Mutex::new(None),
+        }
+    }
+
+    pub fn dependency_tree_from_path(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<DependencyTree, SpecmanError> {
+        let workspace = self.workspace_paths()?;
+        let locator = ArtifactLocator::from_path(path.as_ref(), &workspace, None)?;
+        self.build_tree_with_workspace(locator, workspace)
+    }
+
+    pub fn dependency_tree_from_url(&self, url: &str) -> Result<DependencyTree, SpecmanError> {
+        let workspace = self.workspace_paths()?;
+        let locator = ArtifactLocator::from_url(url)?;
+        self.build_tree_with_workspace(locator, workspace)
+    }
+
+    pub fn dependency_tree_for_artifact(
+        &self,
+        root: &ArtifactId,
+    ) -> Result<DependencyTree, SpecmanError> {
+        let workspace = self.workspace_paths()?;
+        let locator = self.locator_for_artifact(root, &workspace)?;
+        self.build_tree_with_workspace(locator, workspace)
+    }
+
+    pub fn inventory_snapshot(&self) -> Result<WorkspaceInventorySnapshot, SpecmanError> {
+        let workspace = self.workspace_paths()?;
+        self.inventory_with_workspace(&workspace)
+    }
+
+    pub fn invalidate_inventory(&self) {
+        self.inventory_cache.lock().unwrap().take();
+    }
+
+    fn workspace_paths(&self) -> Result<WorkspacePaths, SpecmanError> {
+        self.workspace.workspace()
+    }
+
+    fn build_tree_with_workspace(
         &self,
         root_locator: ArtifactLocator,
         workspace: WorkspacePaths,
     ) -> Result<DependencyTree, SpecmanError> {
-        let mut traversal = Traversal::new(workspace, self.fetcher.clone());
+        let mut traversal = Traversal::new(workspace.clone(), self.fetcher.clone());
         let root = traversal.visit(&root_locator)?;
         let mut aggregate: BTreeSet<_> = traversal.edges.clone();
 
         if let Some(root_path) = root_locator.workspace_path().map(Path::to_path_buf) {
-            let inventory = WorkspaceInventory::build(&traversal.workspace, self.fetcher.clone())?;
+            let inventory = self.inventory_with_workspace(&workspace)?;
             for dependent in inventory.dependents_of(&root_path) {
                 let edge = DependencyEdge {
                     from: dependent.summary,
@@ -234,13 +319,46 @@ impl<L: WorkspaceLocator> FilesystemDependencyMapper<L> {
 
         ArtifactLocator::from_path(base, workspace, None)
     }
+
+    fn inventory_with_workspace(
+        &self,
+        workspace: &WorkspacePaths,
+    ) -> Result<WorkspaceInventorySnapshot, SpecmanError> {
+        if let Some(snapshot) = self.inventory_cache.lock().unwrap().clone() {
+            return Ok(snapshot);
+        }
+
+        let built = WorkspaceInventorySnapshot::build(workspace, self.fetcher.clone())?;
+        *self.inventory_cache.lock().unwrap() = Some(built.clone());
+        Ok(built)
+    }
+}
+
+impl<L: WorkspaceLocator> DependencyInventory for DependencyGraphServices<L> {
+    fn invalidate(&self) {
+        self.invalidate_inventory();
+    }
 }
 
 impl<L: WorkspaceLocator> DependencyMapping for FilesystemDependencyMapper<L> {
     fn dependency_tree(&self, root: &ArtifactId) -> Result<DependencyTree, SpecmanError> {
-        let workspace = self.workspace.workspace()?;
-        let locator = self.locator_for_artifact(root, &workspace)?;
-        self.build_tree(locator, workspace)
+        self.graph.dependency_tree_for_artifact(root)
+    }
+
+    fn upstream(&self, root: &ArtifactId) -> Result<Vec<DependencyEdge>, SpecmanError> {
+        let tree = self.dependency_tree(root)?;
+        Ok(tree.upstream)
+    }
+
+    fn downstream(&self, root: &ArtifactId) -> Result<Vec<DependencyEdge>, SpecmanError> {
+        let tree = self.dependency_tree(root)?;
+        Ok(tree.downstream)
+    }
+}
+
+impl<L: WorkspaceLocator> DependencyMapping for DependencyGraphServices<L> {
+    fn dependency_tree(&self, root: &ArtifactId) -> Result<DependencyTree, SpecmanError> {
+        self.dependency_tree_for_artifact(root)
     }
 
     fn upstream(&self, root: &ArtifactId) -> Result<Vec<DependencyEdge>, SpecmanError> {
@@ -459,11 +577,12 @@ impl Traversal {
     }
 }
 
-struct WorkspaceInventory {
-    entries: Vec<InventoryEntry>,
+#[derive(Clone)]
+pub struct WorkspaceInventorySnapshot {
+    entries: Arc<Vec<InventoryEntry>>,
 }
 
-impl WorkspaceInventory {
+impl WorkspaceInventorySnapshot {
     fn build(
         workspace: &WorkspacePaths,
         fetcher: Arc<dyn ContentFetcher>,
@@ -487,12 +606,14 @@ impl WorkspaceInventory {
             });
         }
 
-        Ok(Self { entries })
+        Ok(Self {
+            entries: Arc::new(entries),
+        })
     }
 
-    fn dependents_of(&self, target: &Path) -> Vec<InventoryDependent> {
+    pub fn dependents_of(&self, target: &Path) -> Vec<InventoryDependent> {
         let mut dependents = Vec::new();
-        for entry in &self.entries {
+        for entry in self.entries.iter() {
             let mut match_optional = None;
             for dependency in &entry.dependencies {
                 if let ArtifactLocator::File(path) = &dependency.locator {
@@ -521,10 +642,10 @@ struct InventoryEntry {
     dependencies: Vec<ArtifactDependency>,
 }
 
-#[derive(Clone)]
-struct InventoryDependent {
-    summary: ArtifactSummary,
-    optional: bool,
+#[derive(Clone, Debug)]
+pub struct InventoryDependent {
+    pub summary: ArtifactSummary,
+    pub optional: bool,
 }
 
 fn gather_workspace_artifacts(workspace: &WorkspacePaths) -> Result<Vec<PathBuf>, SpecmanError> {
@@ -573,7 +694,7 @@ impl ArtifactDocument {
             metadata.insert("metadata_status".into(), status);
         }
 
-        let parsed = frontmatter.and_then(|fm| match serde_yaml::from_str::<RawFrontMatter>(fm) {
+        let parsed = frontmatter.and_then(|fm| match ArtifactFrontMatter::from_yaml_str(fm) {
             Ok(value) => Some(value),
             Err(err) => {
                 metadata.insert(
@@ -585,16 +706,19 @@ impl ArtifactDocument {
         });
 
         let (name, version, kind, dependencies) = if let Some(front) = parsed.as_ref() {
-            let kind = infer_kind(front, locator);
-            let version = parse_version(front.version.as_deref(), &mut metadata);
-            let name = front.name.clone().unwrap_or_else(|| infer_name(locator));
-            let deps = resolve_dependencies(front, kind, locator, workspace, &mut metadata, mode)?;
+            let kind = artifact_kind_from_front(front);
+            let version = parse_version(front.version(), &mut metadata);
+            let name = front
+                .name()
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| infer_name(locator));
+            let deps = resolve_dependencies(front, locator, workspace, &mut metadata, mode)?;
             (name, version, kind, deps)
         } else {
             (
                 infer_name(locator),
                 None,
-                infer_kind(&RawFrontMatter::default(), locator),
+                infer_kind_from_locator(locator),
                 Vec::new(),
             )
         };
@@ -613,17 +737,16 @@ impl ArtifactDocument {
 }
 
 fn resolve_dependencies(
-    front: &RawFrontMatter,
-    kind: ArtifactKind,
+    front: &ArtifactFrontMatter,
     locator: &ArtifactLocator,
     workspace: &WorkspacePaths,
     metadata: &mut BTreeMap<String, String>,
     mode: DependencyResolutionMode,
 ) -> Result<Vec<ArtifactDependency>, SpecmanError> {
     let mut deps = Vec::new();
-    match kind {
-        ArtifactKind::Specification => {
-            for entry in &front.dependencies {
+    match front {
+        ArtifactFrontMatter::Specification(spec) => {
+            for entry in &spec.dependencies {
                 let (reference, optional) = match entry {
                     DependencyEntry::Simple(value) => (value.as_str(), false),
                     DependencyEntry::Detailed(obj) => {
@@ -646,8 +769,8 @@ fn resolve_dependencies(
                 deps.push(ArtifactDependency { locator, optional });
             }
         }
-        ArtifactKind::Implementation => {
-            if let Some(spec_ref) = &front.spec {
+        ArtifactFrontMatter::Implementation(implementation) => {
+            if let Some(spec_ref) = implementation.spec.as_deref() {
                 let locator = match resolve_dependency_locator(spec_ref, locator, workspace) {
                     Ok(locator) => Some(locator),
                     Err(err) => {
@@ -665,7 +788,7 @@ fn resolve_dependencies(
                     });
                 }
             }
-            for reference in &front.references {
+            for reference in &implementation.references {
                 let locator =
                     match resolve_dependency_locator(&reference.reference, locator, workspace) {
                         Ok(locator) => Some(locator),
@@ -686,8 +809,8 @@ fn resolve_dependencies(
                 });
             }
         }
-        ArtifactKind::ScratchPad => {
-            if let Some(target) = &front.target {
+        ArtifactFrontMatter::Scratch(scratch) => {
+            if let Some(target) = scratch.target.as_deref() {
                 let locator = match resolve_scratch_target_locator(target, locator, workspace) {
                     Ok(locator) => Some(locator),
                     Err(err) => {
@@ -705,7 +828,7 @@ fn resolve_dependencies(
                     });
                 }
             }
-            for entry in &front.dependencies {
+            for entry in &scratch.dependencies {
                 let (reference, optional) = match entry {
                     DependencyEntry::Simple(value) => (value.as_str(), false),
                     DependencyEntry::Detailed(obj) => {
@@ -732,13 +855,15 @@ fn resolve_dependencies(
     Ok(deps)
 }
 
-fn infer_kind(front: &RawFrontMatter, locator: &ArtifactLocator) -> ArtifactKind {
-    if front.work_type.is_some() {
-        return ArtifactKind::ScratchPad;
+fn artifact_kind_from_front(front: &ArtifactFrontMatter) -> ArtifactKind {
+    match front.kind() {
+        FrontMatterKind::Specification => ArtifactKind::Specification,
+        FrontMatterKind::Implementation => ArtifactKind::Implementation,
+        FrontMatterKind::ScratchPad => ArtifactKind::ScratchPad,
     }
-    if front.spec.is_some() {
-        return ArtifactKind::Implementation;
-    }
+}
+
+fn infer_kind_from_locator(locator: &ArtifactLocator) -> ArtifactKind {
     if let ArtifactLocator::File(path) = locator {
         if path_contains_segment(path, "impl") {
             return ArtifactKind::Implementation;
@@ -772,6 +897,28 @@ fn resolve_workspace_path(
         )));
     }
     Ok(canonical)
+}
+
+/// Verifies that a workspace-relative reference stays within the workspace
+/// boundaries or points to an HTTPS URL.
+pub fn validate_workspace_reference(
+    reference: &str,
+    parent: &Path,
+    workspace: &WorkspacePaths,
+) -> Result<(), SpecmanError> {
+    if reference.starts_with("http://") {
+        return Err(SpecmanError::Dependency(format!(
+            "unsupported url scheme in {reference}; use https"
+        )));
+    }
+
+    if reference.starts_with("https://") {
+        return Ok(());
+    }
+
+    let candidate = Path::new(reference);
+    resolve_workspace_path(candidate, Some(parent), workspace)?;
+    Ok(())
 }
 
 fn resolve_dependency_locator(

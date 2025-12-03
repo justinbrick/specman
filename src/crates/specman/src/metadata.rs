@@ -5,9 +5,9 @@ use std::sync::Arc;
 use serde_yaml::{Mapping, Value};
 
 use crate::adapter::DataModelAdapter;
-use crate::dependency_tree::{ArtifactId, ArtifactKind};
+use crate::dependency_tree::{ArtifactId, ArtifactKind, validate_workspace_reference};
 use crate::error::SpecmanError;
-use crate::front_matter::{self, RawFrontMatter};
+use crate::front_matter::{self, ArtifactFrontMatter, FrontMatterKind};
 use crate::persistence::PersistedArtifact;
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
 
@@ -67,29 +67,31 @@ impl<L: WorkspaceLocator> MetadataMutator<L> {
 
         let mut yaml_value: Value = serde_yaml::from_str(&yaml_segment)
             .map_err(|err| SpecmanError::Serialization(err.to_string()))?;
-        let raw_front: RawFrontMatter = serde_yaml::from_value(yaml_value.clone())
-            .map_err(|err| SpecmanError::Serialization(err.to_string()))?;
+        let typed_front = ArtifactFrontMatter::from_yaml_value(&yaml_value)?;
         let mapping = yaml_value
             .as_mapping_mut()
             .ok_or_else(|| SpecmanError::Template("front matter must be a YAML mapping".into()))?;
-        let artifact_kind = infer_kind(&raw_front);
-        let artifact_name = infer_name(&raw_front, &canonical_path);
+        let artifact_kind = artifact_kind_from_front(&typed_front);
+        let artifact_name = infer_name(typed_front.name(), &canonical_path);
         let artifact = ArtifactId {
             kind: artifact_kind,
             name: artifact_name,
         };
 
+        let context = MetadataContext {
+            parent_dir: dir,
+            workspace: &workspace_paths,
+        };
+
         let mut mutated = false;
-        for dependency in &request.add_dependencies {
-            ensure_spec_kind(&artifact.kind)?;
-            validate_reference(dependency, dir, &workspace_paths)?;
-            mutated |= insert_dependency(mapping, dependency)?;
+        if !request.add_dependencies.is_empty() {
+            let handler = SpecificationMetadataHandler::new(&request.add_dependencies);
+            mutated |= handler.apply(&artifact, mapping, &context)?;
         }
 
-        for reference in &request.add_references {
-            ensure_impl_kind(&artifact.kind)?;
-            validate_reference(&reference.locator, dir, &workspace_paths)?;
-            mutated |= insert_reference(mapping, reference)?;
+        if !request.add_references.is_empty() {
+            let handler = ImplementationMetadataHandler::new(&request.add_references);
+            mutated |= handler.apply(&artifact, mapping, &context)?;
         }
 
         let mut updated_document = raw;
@@ -132,19 +134,17 @@ fn compose_document(yaml: &str, body: &str) -> String {
     output
 }
 
-fn infer_kind(front: &RawFrontMatter) -> ArtifactKind {
-    if front.work_type.is_some() {
-        ArtifactKind::ScratchPad
-    } else if front.spec.is_some() {
-        ArtifactKind::Implementation
-    } else {
-        ArtifactKind::Specification
+fn artifact_kind_from_front(front: &ArtifactFrontMatter) -> ArtifactKind {
+    match front.kind() {
+        FrontMatterKind::Specification => ArtifactKind::Specification,
+        FrontMatterKind::Implementation => ArtifactKind::Implementation,
+        FrontMatterKind::ScratchPad => ArtifactKind::ScratchPad,
     }
 }
 
-fn infer_name(front: &RawFrontMatter, path: &Path) -> String {
-    if let Some(name) = &front.name {
-        return name.clone();
+fn infer_name(name: Option<&str>, path: &Path) -> String {
+    if let Some(name) = name {
+        return name.to_string();
     }
     path.parent()
         .and_then(|dir| dir.file_name())
@@ -174,33 +174,6 @@ fn ensure_impl_kind(kind: &ArtifactKind) -> Result<(), SpecmanError> {
             "references can only be added to implementations".into(),
         ))
     }
-}
-
-fn validate_reference(
-    reference: &str,
-    parent: &Path,
-    workspace: &WorkspacePaths,
-) -> Result<(), SpecmanError> {
-    if reference.starts_with("http://") {
-        return Err(SpecmanError::Dependency(format!(
-            "unsupported url scheme in {reference}; use https"
-        )));
-    }
-
-    if reference.starts_with("https://") {
-        return Ok(());
-    }
-
-    let candidate = parent.join(reference);
-    let canonical = fs::canonicalize(&candidate)?;
-    if !canonical.starts_with(workspace.root()) {
-        return Err(SpecmanError::Workspace(format!(
-            "reference {} escapes workspace {}",
-            canonical.display(),
-            workspace.root().display()
-        )));
-    }
-    Ok(())
 }
 
 fn insert_dependency(mapping: &mut Mapping, locator: &str) -> Result<bool, SpecmanError> {
@@ -339,6 +312,74 @@ pub struct MetadataMutationResult {
     pub artifact: ArtifactId,
     pub updated_document: String,
     pub persisted: Option<PersistedArtifact>,
+}
+
+struct MetadataContext<'a> {
+    parent_dir: &'a Path,
+    workspace: &'a WorkspacePaths,
+}
+
+trait MetadataHandler {
+    fn apply(
+        &self,
+        artifact: &ArtifactId,
+        mapping: &mut Mapping,
+        ctx: &MetadataContext,
+    ) -> Result<bool, SpecmanError>;
+}
+
+struct SpecificationMetadataHandler<'a> {
+    dependencies: &'a [String],
+}
+
+impl<'a> SpecificationMetadataHandler<'a> {
+    fn new(dependencies: &'a [String]) -> Self {
+        Self { dependencies }
+    }
+}
+
+impl<'a> MetadataHandler for SpecificationMetadataHandler<'a> {
+    fn apply(
+        &self,
+        artifact: &ArtifactId,
+        mapping: &mut Mapping,
+        ctx: &MetadataContext,
+    ) -> Result<bool, SpecmanError> {
+        ensure_spec_kind(&artifact.kind)?;
+        let mut mutated = false;
+        for dependency in self.dependencies {
+            validate_workspace_reference(dependency, ctx.parent_dir, ctx.workspace)?;
+            mutated |= insert_dependency(mapping, dependency)?;
+        }
+        Ok(mutated)
+    }
+}
+
+struct ImplementationMetadataHandler<'a> {
+    references: &'a [ReferenceAddition],
+}
+
+impl<'a> ImplementationMetadataHandler<'a> {
+    fn new(references: &'a [ReferenceAddition]) -> Self {
+        Self { references }
+    }
+}
+
+impl<'a> MetadataHandler for ImplementationMetadataHandler<'a> {
+    fn apply(
+        &self,
+        artifact: &ArtifactId,
+        mapping: &mut Mapping,
+        ctx: &MetadataContext,
+    ) -> Result<bool, SpecmanError> {
+        ensure_impl_kind(&artifact.kind)?;
+        let mut mutated = false;
+        for reference in self.references {
+            validate_workspace_reference(&reference.locator, ctx.parent_dir, ctx.workspace)?;
+            mutated |= insert_reference(mapping, reference)?;
+        }
+        Ok(mutated)
+    }
 }
 
 #[cfg(test)]

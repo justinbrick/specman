@@ -370,6 +370,14 @@ pub struct MetadataMutationResult {
 - Persisted mutations invalidate cached dependency trees through the optional adapter hook; schemars output is reused instead of embedding raw JSON schemas in this document, per user instruction.
 - No sample token maps are duplicated here—template-specific data remains governed by [spec/specman-templates/spec.md](../../spec/specman-templates/spec.md).
 
+### Artifact-Specific Front Matter Schemas
+
+- `src/crates/specman/src/front_matter.rs` now models specification, implementation, and scratch metadata via dedicated structs (`SpecificationFrontMatter`, `ImplementationFrontMatter`, `ScratchFrontMatter`) plus the `ArtifactFrontMatter` enum. Each struct derives `Serialize`, `Deserialize`, and `JsonSchema`, and their doc comments cite the relevant paragraphs in [SpecMan Data Model](../../spec/specman-data-model/spec.md) to satisfy the Stage 4 comment-alignment requirement.
+- The new `ScratchWorkType` enum encodes the draft/revision/feat/ref/fix discriminators exactly as defined in the data model. A manual `JsonSchema` implementation ensures schema consumers see a single-key object that mirrors the YAML shape (`work_type: { feat: {} }`, etc.), preserving deterministic serialization for Stage 5.
+- Downstream consumers (dependency traversal, metadata mutator, and CLI summaries) no longer deserialize ad-hoc `RawFrontMatter` maps. Instead they call `ArtifactFrontMatter::from_yaml_value`, match on the artifact variant, and rely on typed fields (`identity`, `dependencies`, `references`, `work_type`) for validation. This keeps lifecycle code focused on orchestration while the front-matter module owns schema fidelity.
+- CLI summaries (`spec`, `implementation`, `scratch` commands) now use the typed structs to surface names, versions, branches, targets, and work types without re-parsing YAML manually, eliminating the duplicated `serde_yaml::Value` logic noted in Stage 5 planning.
+- Dedicated unit tests in `front_matter.rs` exercise the new parser/serializer paths so regressions in schema alignment (especially work-type payloads) are caught before lifecycle planning or CLI summaries consume invalid structures.
+
 ## Entity: DataModelAdapter
 
 [Entity: DataModelAdapter](../../spec/specman-core/spec.md#entity-datamodeladapter) formalizes persistence hooks for dependency trees and cache invalidation.

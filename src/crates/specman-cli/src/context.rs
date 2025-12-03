@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use specman::InMemoryAdapter;
-use specman::dependency_tree::FilesystemDependencyMapper;
+use specman::dependency_tree::{ArtifactId, DependencyMapping, FilesystemDependencyMapper};
 use specman::lifecycle::DefaultLifecycleController;
 use specman::persistence::WorkspacePersistence;
 use specman::template::MarkdownTemplateEngine;
 use specman::workspace::{FilesystemWorkspaceLocator, WorkspaceLocator, WorkspacePaths};
+use specman::{DataModelAdapter, InMemoryAdapter, SpecmanError};
 use std::sync::Arc;
 
 use crate::error::CliError;
@@ -27,7 +27,6 @@ pub struct CliSession {
         DefaultLifecycleController<
             Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
             Arc<MarkdownTemplateEngine>,
-            Arc<InMemoryAdapter>,
         >,
     >, // Centralized lifecycle guard rails shared across commands.
     pub verbosity: Verbosity,
@@ -55,14 +54,17 @@ impl CliSession {
         let workspace_paths = workspace_locator.workspace()?;
         let dependency_mapper =
             Arc::new(FilesystemDependencyMapper::new(workspace_locator.clone()));
-        let persistence = Arc::new(WorkspacePersistence::new(workspace_locator.clone()));
+        let data_adapter: Arc<dyn DataModelAdapter> = Arc::new(InMemoryAdapter::new());
+        let persistence = Arc::new(WorkspacePersistence::with_inventory_and_adapter(
+            workspace_locator.clone(),
+            dependency_mapper.inventory_handle(),
+            data_adapter.clone(),
+        ));
         let template_engine = Arc::new(MarkdownTemplateEngine::default());
         let templates = TemplateCatalog::new(workspace_paths.clone());
-        let data_adapter = Arc::new(InMemoryAdapter::new());
         let lifecycle = Arc::new(DefaultLifecycleController::new(
             dependency_mapper.clone(),
             template_engine.clone(),
-            data_adapter.clone(),
         ));
 
         Ok(Self {
@@ -74,5 +76,12 @@ impl CliSession {
             lifecycle,
             verbosity,
         })
+    }
+
+    /// Recomputes and persists the dependency tree for the provided artifact.
+    pub fn record_dependency_tree(&self, artifact: &ArtifactId) -> Result<(), SpecmanError> {
+        let tree = self.dependency_mapper.dependency_tree(artifact)?;
+        self.persistence.save_dependency_tree(artifact, &tree)?;
+        Ok(())
     }
 }

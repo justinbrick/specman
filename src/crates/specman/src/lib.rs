@@ -13,8 +13,9 @@ pub mod workspace;
 
 pub use adapter::{DataModelAdapter, InMemoryAdapter};
 pub use dependency_tree::{
-    ArtifactId, ArtifactKind, ArtifactSummary, DependencyEdge, DependencyMapping,
-    DependencyRelation, DependencyTree, FilesystemDependencyMapper,
+    ArtifactId, ArtifactKind, ArtifactSummary, DependencyEdge, DependencyGraphServices,
+    DependencyMapping, DependencyRelation, DependencyTree, FilesystemDependencyMapper,
+    InventoryDependent, WorkspaceInventorySnapshot,
 };
 pub use error::SpecmanError;
 pub use lifecycle::{

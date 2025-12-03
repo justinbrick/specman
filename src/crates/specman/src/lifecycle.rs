@@ -1,7 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::adapter::DataModelAdapter;
 use crate::dependency_tree::{ArtifactId, DependencyMapping, DependencyTree};
 use crate::error::SpecmanError;
 use crate::persistence::{ArtifactRemovalStore, RemovedArtifact};
@@ -52,43 +51,34 @@ pub trait LifecycleController: Send + Sync {
     ) -> Result<RemovedArtifact, SpecmanError>;
 }
 
-pub struct DefaultLifecycleController<M, T, A>
+pub struct DefaultLifecycleController<M, T>
 where
     M: DependencyMapping,
     T: TemplateEngine,
-    A: DataModelAdapter,
 {
     mapping: M,
     templates: T,
-    adapter: A,
 }
 
-impl<M, T, A> DefaultLifecycleController<M, T, A>
+impl<M, T> DefaultLifecycleController<M, T>
 where
     M: DependencyMapping,
     T: TemplateEngine,
-    A: DataModelAdapter,
 {
-    pub fn new(mapping: M, templates: T, adapter: A) -> Self {
-        Self {
-            mapping,
-            templates,
-            adapter,
-        }
+    pub fn new(mapping: M, templates: T) -> Self {
+        Self { mapping, templates }
     }
 }
 
-impl<M, T, A> LifecycleController for DefaultLifecycleController<M, T, A>
+impl<M, T> LifecycleController for DefaultLifecycleController<M, T>
 where
     M: DependencyMapping,
     T: TemplateEngine,
-    A: DataModelAdapter,
 {
     fn plan_creation(&self, request: CreationRequest) -> Result<CreationPlan, SpecmanError> {
         let dependencies = self.mapping.dependency_tree(&request.target)?;
         let mut rendered = self.templates.render(&request.template, &request.tokens)?;
         rendered.provenance = request.provenance.clone();
-        self.adapter.save_dependency_tree(dependencies.clone())?;
         Ok(CreationPlan {
             rendered,
             dependencies,
@@ -140,7 +130,6 @@ where
         }
 
         let removed = persistence.remove_artifact(&target)?;
-        self.adapter.invalidate_dependency_tree(&target)?;
         Ok(removed)
     }
 }
@@ -251,17 +240,8 @@ mod tests {
         }
     }
 
-    fn controller() -> (
-        DefaultLifecycleController<MockMapping, FakeTemplateEngine, RecordingAdapter>,
-        RecordingAdapter,
-    ) {
-        let adapter = RecordingAdapter::default();
-        let controller = DefaultLifecycleController::new(
-            MockMapping,
-            FakeTemplateEngine::default(),
-            adapter.clone(),
-        );
-        (controller, adapter)
+    fn controller() -> DefaultLifecycleController<MockMapping, FakeTemplateEngine> {
+        DefaultLifecycleController::new(MockMapping, FakeTemplateEngine::default())
     }
 
     #[test]
@@ -272,7 +252,7 @@ mod tests {
         let start = workspace_root.join("impl");
         fs::create_dir_all(&start).unwrap();
 
-        let (controller, _adapter) = controller();
+        let controller = controller();
         let artifact = ArtifactId {
             kind: ArtifactKind::Implementation,
             name: "specman-library".into(),
@@ -310,7 +290,7 @@ mod tests {
         fs::create_dir_all(dot_specman.join("scratchpad")).unwrap();
         let start = dot_specman.join("scratchpad");
 
-        let (controller, _adapter) = controller();
+        let controller = controller();
         let profile = ScratchPadProfile {
             kind: ScratchPadProfileKind::Ref,
             name: "workspace-template-persist".into(),
@@ -348,8 +328,6 @@ mod tests {
         fs::create_dir_all(dot_specman.join("scratchpad")).unwrap();
         let impl_dir = workspace_root.join("impl");
         fs::create_dir_all(&impl_dir).unwrap();
-        let locator = FilesystemWorkspaceLocator::new(impl_dir.clone());
-        let persistence = WorkspacePersistence::new(locator);
 
         let artifact = ArtifactId {
             kind: ArtifactKind::Implementation,
@@ -359,7 +337,13 @@ mod tests {
         fs::create_dir_all(&artifact_dir).unwrap();
         fs::write(artifact_dir.join("impl.md"), "body").unwrap();
 
-        let (controller, adapter) = controller();
+        let controller = controller();
+        let adapter = Arc::new(RecordingAdapter::default());
+        let adapter_handle: Arc<dyn DataModelAdapter> = adapter.clone();
+        let persistence = WorkspacePersistence::with_adapter(
+            FilesystemWorkspaceLocator::new(impl_dir.clone()),
+            adapter_handle,
+        );
         let plan = controller
             .plan_deletion(artifact.clone())
             .expect("deletion plan");
@@ -384,9 +368,14 @@ mod tests {
         fs::create_dir_all(dot_specman.join("scratchpad")).unwrap();
         let impl_dir = workspace_root.join("impl");
         fs::create_dir_all(&impl_dir).unwrap();
-        let persistence = WorkspacePersistence::new(FilesystemWorkspaceLocator::new(impl_dir));
 
-        let (controller, adapter) = controller();
+        let controller = controller();
+        let adapter = Arc::new(RecordingAdapter::default());
+        let adapter_handle: Arc<dyn DataModelAdapter> = adapter.clone();
+        let persistence = WorkspacePersistence::with_adapter(
+            FilesystemWorkspaceLocator::new(impl_dir),
+            adapter_handle,
+        );
         let artifact = ArtifactId {
             kind: ArtifactKind::Specification,
             name: "has-dependents".into(),
@@ -415,10 +404,14 @@ mod tests {
         fs::create_dir_all(dot_specman.join("scratchpad")).unwrap();
         let impl_dir = workspace_root.join("impl");
         fs::create_dir_all(&impl_dir).unwrap();
-        let locator = FilesystemWorkspaceLocator::new(impl_dir.clone());
-        let persistence = WorkspacePersistence::new(locator);
 
-        let (controller, adapter) = controller();
+        let controller = controller();
+        let adapter = Arc::new(RecordingAdapter::default());
+        let adapter_handle: Arc<dyn DataModelAdapter> = adapter.clone();
+        let persistence = WorkspacePersistence::with_adapter(
+            FilesystemWorkspaceLocator::new(impl_dir.clone()),
+            adapter_handle,
+        );
         let artifact = ArtifactId {
             kind: ArtifactKind::Implementation,
             name: "force-delete".into(),
@@ -470,11 +463,9 @@ mod tests {
             optional: false,
         });
 
-        let adapter = RecordingAdapter::default();
         let controller = DefaultLifecycleController::new(
             StaticTreeMapping { tree: tree.clone() },
             FakeTemplateEngine::default(),
-            adapter,
         );
 
         let plan = controller
@@ -508,11 +499,9 @@ mod tests {
             optional: false,
         });
 
-        let adapter = RecordingAdapter::default();
         let controller = DefaultLifecycleController::new(
             StaticTreeMapping { tree: tree.clone() },
             FakeTemplateEngine::default(),
-            adapter,
         );
 
         let plan = controller
@@ -546,11 +535,9 @@ mod tests {
             optional: false,
         });
 
-        let adapter = RecordingAdapter::default();
         let controller = DefaultLifecycleController::new(
             StaticTreeMapping { tree: tree.clone() },
             FakeTemplateEngine::default(),
-            adapter,
         );
 
         let plan = controller
