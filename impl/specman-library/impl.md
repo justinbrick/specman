@@ -207,6 +207,10 @@ impl<L: WorkspaceLocator> FilesystemDependencyMapper<L> {
     &self,
     path: impl AsRef<Path>,
   ) -> Result<DependencyTree, SpecmanError>;
+  pub fn dependency_tree_from_locator(
+    &self,
+    reference: &str,
+  ) -> Result<DependencyTree, SpecmanError>;
   pub fn dependency_tree_from_url(&self, url: &str) -> Result<DependencyTree, SpecmanError>;
 }
 
@@ -219,7 +223,35 @@ pub struct DependencyTree {
 }
 ```
 
+Resource handles are now parsed centrally via `ArtifactLocator::from_reference`, which consumes
+workspace paths, HTTPS URLs, and the SpecMan-specific `spec://`, `impl://`, and `scratch://`
+schemes. Handles normalize identifiers (lowercase, single-segment slugs) before resolving to
+workspace files, ensuring every downstream consumer works with canonical filesystem paths.
+
+```rust
+#[derive(Clone, Debug)]
+enum ArtifactLocator { File(PathBuf), Url(Url) }
+
+impl ArtifactLocator {
+  pub fn from_reference(reference: &str, workspace: &WorkspacePaths) -> Result<Self, SpecmanError> {
+    if reference.starts_with("https://") {
+      return Self::from_url(reference);
+    }
+
+    if let Some(handle) = ResourceHandle::parse(reference)? {
+      return handle.into_locator(workspace);
+    }
+
+    Self::from_path(reference, workspace, Some(workspace.root()))
+  }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ResourceHandle { kind: ArtifactKind, slug: String }
+```
+
 - Traversal stores the aggregate edge set so aggregate serialization (`serde_json::to_string(&tree)`) can be returned verbatim whenever a dependency cycle triggers a `SpecmanError::Dependency`. That serialized payload doubles as the JSON Schema example mandated by this concept.
+- `dependency_tree_from_locator` is the public entry point for every CLI/adapter call and delegates to the shared parser, so resource handles, workspace paths, and HTTPS URLs share identical validation + error messaging. The legacy URL helper remains as a thin shim for backwards compatibility.
 - Upstream, downstream, and aggregate vectors follow the SpecMan Data Model entity definitions while `has_blocking_dependents()` enforces lifecycle guardrails for creation/deletion flows.
 - Downstream scans rely on `WorkspaceInventory::build` to walk every artifact under `spec/`, `impl/`, and `.specman/scratchpad`, guaranteeing that optional edges remain visible while never blocking deletions unless the `optional` flag is false (or the artifact is a scratch pad referencing another scratch pad).
 
@@ -366,7 +398,8 @@ pub struct MetadataMutationResult {
 }
 ```
 
-- The mutator only accepts HTTPS or workspace-relative locators, aligning with dependency traversal rules and preventing workspace escapes.
+- The mutator accepts HTTPS URLs, workspace-relative paths, and SpecMan resource handles, aligning with dependency traversal rules while still preventing workspace escapes.
+- Resource-handle validation routes through the same parser as dependency traversal, so `metadata add-dependency` / `add-reference` commands can accept `spec://`, `impl://`, and `scratch://` identifiers without bespoke normalization while still preventing workspace escapes.
 - Persisted mutations invalidate cached dependency trees through the optional adapter hook; schemars output is reused instead of embedding raw JSON schemas in this document, per user instruction.
 - No sample token maps are duplicated here—template-specific data remains governed by [spec/specman-templates/spec.md](../../spec/specman-templates/spec.md).
 

@@ -187,9 +187,20 @@ impl<L: WorkspaceLocator> FilesystemDependencyMapper<L> {
         self.graph.dependency_tree_from_path(path)
     }
 
+    /// Builds a dependency tree by resolving any supported locator string (workspace-relative
+    /// paths, HTTPS URLs, or resource handles).
+    pub fn dependency_tree_from_locator(
+        &self,
+        reference: &str,
+    ) -> Result<DependencyTree, SpecmanError> {
+        self.graph.dependency_tree_from_locator(reference)
+    }
+
     /// Builds a dependency tree by fetching the artifact from the provided HTTPS URL.
+    /// Prefer [`dependency_tree_from_locator`], which also supports resource handles and
+    /// workspace-relative paths.
     pub fn dependency_tree_from_url(&self, url: &str) -> Result<DependencyTree, SpecmanError> {
-        self.graph.dependency_tree_from_url(url)
+        self.graph.dependency_tree_from_locator(url)
     }
 }
 
@@ -233,10 +244,17 @@ impl<L: WorkspaceLocator> DependencyGraphServices<L> {
         self.build_tree_with_workspace(locator, workspace)
     }
 
-    pub fn dependency_tree_from_url(&self, url: &str) -> Result<DependencyTree, SpecmanError> {
+    pub fn dependency_tree_from_locator(
+        &self,
+        reference: &str,
+    ) -> Result<DependencyTree, SpecmanError> {
         let workspace = self.workspace_paths()?;
-        let locator = ArtifactLocator::from_url(url)?;
+        let locator = ArtifactLocator::from_reference(reference, &workspace)?;
         self.build_tree_with_workspace(locator, workspace)
+    }
+
+    pub fn dependency_tree_from_url(&self, url: &str) -> Result<DependencyTree, SpecmanError> {
+        self.dependency_tree_from_locator(url)
     }
 
     pub fn dependency_tree_for_artifact(
@@ -413,10 +431,99 @@ impl DependencyResolutionMode {
     }
 }
 
+/// Canonicalized reference to either a workspace file or remote HTTPS document. Resource handles
+/// are lowered into filesystem paths before becoming `ArtifactLocator::File` variants.
 #[derive(Clone, Debug)]
 enum ArtifactLocator {
     File(PathBuf),
     Url(Url),
+}
+
+/// Canonical parser for `spec://`, `impl://`, and `scratch://` resource handles as defined by
+/// SpecMan Core's Dependency Mapping Services concept.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ResourceHandle {
+    kind: ArtifactKind,
+    slug: String,
+}
+
+impl ResourceHandle {
+    fn parse(reference: &str) -> Result<Option<Self>, SpecmanError> {
+        if let Some(rest) = reference.strip_prefix("spec://") {
+            return Self::new(ArtifactKind::Specification, rest).map(Some);
+        }
+
+        if let Some(rest) = reference.strip_prefix("impl://") {
+            return Self::new(ArtifactKind::Implementation, rest).map(Some);
+        }
+
+        if let Some(rest) = reference.strip_prefix("scratch://") {
+            return Self::new(ArtifactKind::ScratchPad, rest).map(Some);
+        }
+
+        if reference.contains("://")
+            && !reference.starts_with("http://")
+            && !reference.starts_with("https://")
+        {
+            let scheme = reference
+                .split_once("://")
+                .map(|(scheme, _)| scheme)
+                .unwrap_or(reference);
+            return Err(SpecmanError::Dependency(format!(
+                "unsupported locator scheme {}:// (expected https://, spec://, impl://, scratch://, or workspace-relative path)",
+                scheme
+            )));
+        }
+
+        Ok(None)
+    }
+
+    fn new(kind: ArtifactKind, raw_slug: &str) -> Result<Self, SpecmanError> {
+        let slug = Self::canonical_slug(raw_slug)?;
+        Ok(Self { kind, slug })
+    }
+
+    fn canonical_slug(raw: &str) -> Result<String, SpecmanError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(SpecmanError::Dependency(
+                "resource handle must include a non-empty identifier".into(),
+            ));
+        }
+
+        if trimmed.contains('/') || trimmed.contains('\\') {
+            return Err(SpecmanError::Dependency(
+                "resource handle identifiers cannot contain path separators".into(),
+            ));
+        }
+
+        let canonical = trimmed.to_ascii_lowercase();
+        if !canonical
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_'))
+        {
+            return Err(SpecmanError::Dependency(
+                "resource handle identifiers may only contain letters, numbers, '-' or '_'".into(),
+            ));
+        }
+
+        Ok(canonical)
+    }
+
+    fn to_path(&self, workspace: &WorkspacePaths) -> PathBuf {
+        match self.kind {
+            ArtifactKind::Specification => workspace.spec_dir().join(&self.slug).join("spec.md"),
+            ArtifactKind::Implementation => workspace.impl_dir().join(&self.slug).join("impl.md"),
+            ArtifactKind::ScratchPad => workspace
+                .scratchpad_dir()
+                .join(&self.slug)
+                .join("scratch.md"),
+        }
+    }
+
+    fn into_locator(self, workspace: &WorkspacePaths) -> Result<ArtifactLocator, SpecmanError> {
+        ArtifactLocator::from_path(self.to_path(workspace), workspace, Some(workspace.root()))
+    }
 }
 
 impl ArtifactLocator {
@@ -427,6 +534,27 @@ impl ArtifactLocator {
     ) -> Result<Self, SpecmanError> {
         let resolved = resolve_workspace_path(path.as_ref(), base, workspace)?;
         Ok(Self::File(resolved))
+    }
+
+    /// Parses any supported dependency reference, including workspace paths, HTTPS URLs, and
+    /// SpecMan resource handles (`spec://`, `impl://`, `scratch://`). Relative paths are
+    /// interpreted from the workspace root.
+    fn from_reference(reference: &str, workspace: &WorkspacePaths) -> Result<Self, SpecmanError> {
+        if reference.starts_with("http://") {
+            return Err(SpecmanError::Dependency(format!(
+                "unsupported url scheme in {reference}; use https"
+            )));
+        }
+
+        if reference.starts_with("https://") {
+            return ArtifactLocator::from_url(reference);
+        }
+
+        if let Some(handle) = ResourceHandle::parse(reference)? {
+            return handle.into_locator(workspace);
+        }
+
+        ArtifactLocator::from_path(reference, workspace, Some(workspace.root()))
     }
 
     fn from_url(url: &str) -> Result<Self, SpecmanError> {
@@ -899,8 +1027,8 @@ fn resolve_workspace_path(
     Ok(canonical)
 }
 
-/// Verifies that a workspace-relative reference stays within the workspace
-/// boundaries or points to an HTTPS URL.
+/// Verifies that a dependency reference stays within the workspace boundaries or points to a
+/// supported locator (HTTPS URLs or SpecMan resource handles).
 pub fn validate_workspace_reference(
     reference: &str,
     parent: &Path,
@@ -916,11 +1044,18 @@ pub fn validate_workspace_reference(
         return Ok(());
     }
 
+    if let Some(handle) = ResourceHandle::parse(reference)? {
+        handle.into_locator(workspace)?;
+        return Ok(());
+    }
+
     let candidate = Path::new(reference);
     resolve_workspace_path(candidate, Some(parent), workspace)?;
     Ok(())
 }
 
+/// Resolves dependency references that may point to workspace-relative paths, HTTPS URLs, or
+/// SpecMan resource handles.
 fn resolve_dependency_locator(
     reference: &str,
     parent: &ArtifactLocator,
@@ -934,6 +1069,10 @@ fn resolve_dependency_locator(
 
     if reference.starts_with("https://") {
         return ArtifactLocator::from_url(reference);
+    }
+
+    if let Some(handle) = ResourceHandle::parse(reference)? {
+        return handle.into_locator(workspace);
     }
 
     if let ArtifactLocator::Url(url) = parent {
@@ -950,6 +1089,8 @@ fn resolve_dependency_locator(
     ArtifactLocator::from_path(reference, workspace, base_dir.as_deref())
 }
 
+/// Resolves scratch-pad target references during scratch creation, supporting workspace paths,
+/// HTTPS URLs, and resource handles.
 fn resolve_scratch_target_locator(
     reference: &str,
     scratch_locator: &ArtifactLocator,
@@ -962,6 +1103,10 @@ fn resolve_scratch_target_locator(
     }
     if reference.starts_with("https://") {
         return ArtifactLocator::from_url(reference);
+    }
+
+    if let Some(handle) = ResourceHandle::parse(reference)? {
+        return handle.into_locator(workspace);
     }
 
     let primary = ArtifactLocator::from_path(reference, workspace, Some(workspace.root()));
@@ -978,6 +1123,8 @@ fn resolve_scratch_target_locator(
     }
 }
 
+/// Resolves scratch-pad dependency entries, allowing bare slugs, workspace paths, HTTPS URLs, and
+/// resource handles.
 fn resolve_scratch_dependency_locator(
     reference: &str,
     workspace: &WorkspacePaths,
@@ -989,6 +1136,10 @@ fn resolve_scratch_dependency_locator(
     }
     if reference.starts_with("https://") {
         return ArtifactLocator::from_url(reference);
+    }
+
+    if let Some(handle) = ResourceHandle::parse(reference)? {
+        return handle.into_locator(workspace);
     }
 
     if reference.contains('/') || reference.contains('\\') {
@@ -1069,7 +1220,7 @@ fn infer_name_from_file(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::FilesystemWorkspaceLocator;
+    use crate::workspace::{FilesystemWorkspaceLocator, WorkspacePaths};
     use std::fs;
     use std::sync::Arc;
     use tempfile::tempdir;
@@ -1139,6 +1290,115 @@ dependencies:
         assert_eq!(tree.upstream.len(), 1);
         assert_eq!(tree.upstream[0].to.id.name, "specman-data-model");
         assert!(tree.downstream.is_empty());
+    }
+
+    #[test]
+    fn dependency_tree_from_locator_accepts_resource_handles() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/specman-core")).unwrap();
+
+        fs::write(
+            root.join("spec/specman-core/spec.md"),
+            r"---
+name: specman-core
+---
+# SpecMan Core
+",
+        )
+        .unwrap();
+
+        let mapper =
+            FilesystemDependencyMapper::new(FilesystemWorkspaceLocator::new(root.to_path_buf()));
+        let tree = mapper
+            .dependency_tree_from_locator("spec://specman-core")
+            .expect("handle builds tree");
+
+        assert_eq!(tree.root.id.name, "specman-core");
+    }
+
+    #[test]
+    fn resource_handle_parser_normalizes_slug() {
+        let handle = ResourceHandle::parse("spec://SpecMan-Core").expect("parse succeeded");
+        let handle = handle.expect("handle detected");
+        assert_eq!(handle.kind, ArtifactKind::Specification);
+        assert_eq!(handle.slug, "specman-core");
+
+        let scratch = ResourceHandle::parse("scratch://Pad_One").expect("parse");
+        let scratch = scratch.expect("handle detected");
+        assert_eq!(scratch.kind, ArtifactKind::ScratchPad);
+        assert_eq!(scratch.slug, "pad_one");
+    }
+
+    #[test]
+    fn resolve_dependency_locator_supports_resource_handles() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman").join("scratchpad")).unwrap();
+        fs::create_dir_all(root.join("spec/specman-core")).unwrap();
+        fs::create_dir_all(root.join("impl/workflow-engine")).unwrap();
+
+        fs::write(root.join("spec/specman-core/spec.md"), r"# SpecMan Core\n").unwrap();
+
+        fs::write(
+            root.join("impl/workflow-engine/impl.md"),
+            r"# Workflow Engine\n",
+        )
+        .unwrap();
+
+        let root_canonical = root.canonicalize().unwrap();
+        let workspace =
+            WorkspacePaths::new(root_canonical.clone(), root_canonical.join(".specman"));
+
+        let parent = ArtifactLocator::from_path(
+            workspace.impl_dir().join("workflow-engine").join("impl.md"),
+            &workspace,
+            None,
+        )
+        .expect("parent locator");
+
+        let resolved = resolve_dependency_locator("spec://specman-core", &parent, &workspace)
+            .expect("handle resolves");
+
+        match resolved {
+            ArtifactLocator::File(path) => {
+                assert!(path.ends_with("spec/specman-core/spec.md"));
+            }
+            _ => panic!("expected filesystem locator"),
+        }
+    }
+
+    #[test]
+    fn resolve_dependency_locator_rejects_unknown_scheme() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman").join("scratchpad")).unwrap();
+        fs::create_dir_all(root.join("impl/workflow-engine")).unwrap();
+        fs::write(
+            root.join("impl/workflow-engine/impl.md"),
+            r"# Workflow Engine\n",
+        )
+        .unwrap();
+
+        let root_canonical = root.canonicalize().unwrap();
+        let workspace =
+            WorkspacePaths::new(root_canonical.clone(), root_canonical.join(".specman"));
+
+        let parent = ArtifactLocator::from_path(
+            workspace.impl_dir().join("workflow-engine").join("impl.md"),
+            &workspace,
+            None,
+        )
+        .expect("parent locator");
+
+        let err = resolve_dependency_locator("ftp://example", &parent, &workspace)
+            .expect_err("should reject unsupported scheme");
+        if let SpecmanError::Dependency(message) = err {
+            assert!(message.contains("unsupported locator scheme"));
+        } else {
+            panic!("expected dependency error");
+        }
     }
 
     #[test]
@@ -1392,7 +1652,7 @@ version: "0.1.0"
         );
 
         let tree = mapper
-            .dependency_tree_from_url("https://example.com/root.md")
+            .dependency_tree_from_locator("https://example.com/root.md")
             .expect("should build tree from stubbed https content");
 
         assert_eq!(tree.root.id.name, "remote-root");
@@ -1425,6 +1685,48 @@ version: "0.1.0"
             SpecmanError::Dependency(msg) => assert!(msg.contains("unsupported url scheme")),
             other => panic!("unexpected error type: {other:?}"),
         }
+    }
+
+    #[test]
+    fn validate_workspace_reference_accepts_resource_handles() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/specman-core")).unwrap();
+        fs::create_dir_all(root.join("spec/consumer")).unwrap();
+
+        fs::write(
+            root.join("spec/specman-core/spec.md"),
+            "---\nname: specman-core\n---\n",
+        )
+        .unwrap();
+
+        let root_canonical = root.canonicalize().unwrap();
+        let workspace =
+            WorkspacePaths::new(root_canonical.clone(), root_canonical.join(".specman"));
+        let parent_dir = workspace.spec_dir().join("consumer");
+        fs::create_dir_all(&parent_dir).unwrap();
+
+        validate_workspace_reference("spec://specman-core", &parent_dir, &workspace)
+            .expect("handle should validate");
+    }
+
+    #[test]
+    fn validate_workspace_reference_rejects_missing_handle_targets() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/consumer")).unwrap();
+
+        let root_canonical = root.canonicalize().unwrap();
+        let workspace =
+            WorkspacePaths::new(root_canonical.clone(), root_canonical.join(".specman"));
+        let parent_dir = workspace.spec_dir().join("consumer");
+        fs::create_dir_all(&parent_dir).unwrap();
+
+        let err = validate_workspace_reference("spec://unknown", &parent_dir, &workspace)
+            .expect_err("missing handles should error");
+        assert!(matches!(err, SpecmanError::Io(_)));
     }
 
     #[test]

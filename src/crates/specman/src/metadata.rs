@@ -437,6 +437,35 @@ mod tests {
     }
 
     #[test]
+    fn mutate_spec_accepts_resource_handle_dependency() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/data-model")).unwrap();
+        fs::create_dir_all(root.join("spec/core")).unwrap();
+
+        fs::write(
+            root.join("spec/data-model/spec.md"),
+            "---\nname: data-model\n---\n# Data Model",
+        )
+        .unwrap();
+
+        let spec_path = root.join("spec/core/spec.md");
+        fs::write(&spec_path, "---\nname: core\n---\n# Core").unwrap();
+
+        let mutator = MetadataMutator::new(FilesystemWorkspaceLocator::new(&root));
+        let request = MetadataMutationRequest {
+            path: spec_path.canonicalize().unwrap(),
+            add_dependencies: vec!["spec://data-model".into()],
+            add_references: Vec::new(),
+            persist: false,
+        };
+
+        let result = mutator.mutate(request).expect("handle dependency accepted");
+        assert!(result.updated_document.contains("spec://data-model"));
+    }
+
+    #[test]
     fn mutate_impl_adds_reference_without_duplicates() {
         let temp = tempdir().unwrap();
         let root = temp.path().join("workspace");
