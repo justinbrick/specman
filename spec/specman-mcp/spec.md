@@ -39,6 +39,10 @@ This concept ensures that every capability delivered by a SpecMan Core-compliant
 - The adapter MUST act as a pure façade: it MUST delegate to an underlying SpecMan Core implementation or library rather than re-defining the business logic within the MCP layer.
 - Capability descriptors MUST include a stable identifier (`specman.core.<concept_snake_case>`) and version metadata so MCP clients can bind to specific SpecMan Core releases.
 - If an underlying SpecMan Core capability is temporarily unavailable, the MCP adapter MUST return an MCP error that cites the impacted concept and RECOMMENDED remediation (e.g., re-run once workspace lock clears) instead of silently degrading behavior.
+- The adapter MUST provide MCP tools that enumerate specifications, implementations, and scratch pads as resource handles using the `spec://{artifact}`, `impl://{artifact}`, and `scratch://{artifact}` schemes defined in [SpecMan Core Dependency Mapping Services](../specman-core/spec.md#concept-dependency-mapping-services). At a minimum, adapters MUST expose list and describe tools for each artifact class, and each response MUST serialize entities using the [SpecMan Data Model](../specman-data-model/spec.md).
+- Dependency graph tooling MUST accept `<scheme>://{artifact}/dependencies` inputs and return upstream/downstream trees powered by the SpecMan Core dependency mapping services. `/dependencies` handles are read-only aliases whose responses MUST include the same structure and error semantics as invoking the dependency tree builder directly.
+- The adapter MUST surface prompt-catalog tools that return authoring prompts for creating and modifying specifications, implementations, and scratch pads. Each prompt response MUST cite the corresponding template from the [SpecMan Templates](../specman-templates/spec.md) catalog, declare the intended work type (for scratch pads), and remind clients to honor HTML comment directives.
+- The adapter MUST provide lifecycle tools that execute the prompted create or modify flows for specs, implementations, and scratch pads. These tools MUST call into SpecMan Core lifecycle automation, enforce naming and metadata constraints from the SpecMan Data Model, and emit MCP errors when persistence or validation fails.
 
 ### Concept: Workspace & Data Governance
 
@@ -48,6 +52,9 @@ MCP calls interact with on-disk workspaces governed by the SpecMan Data Model.
 - Requests that mutate specifications, implementations, or scratch pads MUST pass through the lifecycle automation rules outlined in [SpecMan Core Lifecycle Automation](../specman-core/spec.md#concept-lifecycle-automation), ensuring templates remain authoritative and dependency checks run before persistence.
 - The server MUST enforce SpecMan data invariants before returning success; violations MUST be reported as MCP errors containing the data-model heading that was breached.
 - Data returned to MCP clients (e.g., rendered specs, dependency graphs) MUST retain source references so downstream tools can trace each datum back to its origin document within the workspace.
+- Resource handles resolved via `spec://`, `impl://`, or `scratch://` MUST be normalized through workspace discovery, bound to canonical artifact paths, and rejected when they refer to artifacts outside the active workspace. Normalized handles MUST retain stable identifiers so MCP clients can reuse them across sessions.
+- `/dependencies` handles MUST be treated as derived read-only locators whose responses are generated exclusively by dependency mapping services; mutation attempts against these handles MUST fail with an MCP error explaining that only query operations are supported.
+- Prompt catalog and lifecycle tools MUST reference template locators managed by SpecMan Templates pointer files, validate that supplied names comply with the [founding specification](../../docs/founding-spec.md), and document any workspace mutations in the resulting OperationEnvelope.
 
 ### Concept: Session Safety & Deterministic Execution
 
@@ -90,3 +97,5 @@ Encapsulates a single SpecMan action executed via MCP, including deterministic r
 - Implementers MAY offer dry-run variants of mutating capabilities so MCP clients can request previews before persisting changes; dry-run responses MUST clearly indicate they are non-persistent.
 - Adapters MAY reuse off-the-shelf MCP libraries or frameworks; compliance is measured by the behavior defined in this document, not by re-implementing the protocol stack.
 - Because deployments are STDIN-based on local machines, additional network security controls are OPTIONAL; nonetheless, implementers SHOULD ensure logging and locking remain in place to preserve SpecMan Core guarantees.
+- MCP adapters SHOULD document the mapping between resource handles and human-readable artifact names so that clients can prompt users before invoking lifecycle operations.
+- The `/dependencies` suffix is RESERVED for MCP adapters and MUST NOT be repurposed for mutation flows or non-dependency data; adapters MAY introduce additional read-only suffixes in future revisions provided they extend the resource-handle schema consistently.
