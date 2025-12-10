@@ -2,5 +2,6 @@
 resolver = "3"
 members = [
     "crates/specman",
-    "crates/specman-cli"
+    "crates/specman-cli",
+    "crates/specman-mcp"
 ]

@@ -38,7 +38,7 @@ references:
 
 The `specman-mcp-rust` implementation provides the MCP server facade required by [Concept: MCP Transport Compliance](../../spec/specman-mcp/spec.md#concept-mcp-transport-compliance) while delegating workspace intelligence to the existing `specman` library documented in [impl/specman-library/impl.md](../specman-library/impl.md). The adapter boots as a STDIN/STDOUT rmcp server, advertises the SpecMan capability catalog, and ensures every tool mirrors the semantics defined in [Concept: SpecMan Capability Parity](../../spec/specman-mcp/spec.md#concept-specman-capability-parity). Request payloads and responses reuse the data structures backed by [SpecMan Data Model](../../spec/specman-data-model/spec.md), and all lifecycle actions route through the SpecMan Core controllers described in [Concept: Lifecycle Automation](../../spec/specman-core/spec.md#concept-lifecycle-automation). Operationally, the adapter emits audit-friendly transcripts, honors the locking guidance from [Concept: Session Safety & Deterministic Execution](../../spec/specman-mcp/spec.md#concept-session-safety--deterministic-execution), and exposes derived resource handles that align with [Concept: Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance).
 
-This document follows the structure mandated by [templates/impl/impl.md](../../templates/impl/impl.md) and explicitly links every section back to the [SpecMan MCP concepts and entities](../../spec/specman-mcp/spec.md#concepts). Downstream tooling can therefore rely on these anchors to build precise traceability graphs between implementation code and the governing specification.
+This document follows the structure mandated by [templates/impl/impl.md](../../templates/impl/impl.md) and explicitly links every section back to the [SpecMan MCP concepts and entities](../../spec/specman-mcp/spec.md#concepts). Downstream tooling can therefore rely on these anchors to build precise traceability graphs between implementation code and the governing specification, while mirroring the MCP architecture guidance at <https://modelcontextprotocol.io/docs/learn/architecture> for tool, resource, and prompt primitives.
 
 ## Implementing Languages
 
@@ -81,7 +81,7 @@ Source code for the adapter lives under `src/crates/specman-mcp`:
 
 ### Concept: [MCP Transport Compliance](../../spec/specman-mcp/spec.md#concept-mcp-transport-compliance)
 
-`SpecmanMcpServer` embeds the rmcp STDIN runtime and exposes lifecycle hooks (`initialize`, `shutdown`, `ping`) that forward to SpecMan Core services. Version negotiation relies on rmcp’s handshake but constrains the accepted list to MCP releases vetted against SpecMan payloads. Every tool registers deterministic JSON Schemas derived from SpecMan Data Model structs, and errors raised by SpecMan Core are wrapped in rmcp error frames that preserve the originating concept reference.
+`SpecmanMcpServer` embeds the rmcp STDIN runtime and exposes lifecycle hooks (`initialize`, `shutdown`, `ping`) that forward to SpecMan Core services. Version negotiation relies on rmcp’s handshake but, for this release, the server only advertises the latest MCP protocol tag (`2025-11-25`) so clients always bind to the most recently published spec. Every tool registers deterministic JSON Schemas derived from SpecMan Data Model structs, and errors raised by SpecMan Core are wrapped in rmcp error frames that preserve the originating concept reference.
 
 #### API Signatures
 
@@ -270,6 +270,7 @@ pub struct SpecManCapabilityDescriptor {
 
 - `schema_in` and `schema_out` store schemars-generated fragments derived from SpecMan Data Model entities, ensuring clients receive deterministic payload descriptions.
 - `extensions` entries MUST set `type: "extension"` and cite the owning specification or implementation path, aligning with the MCP specification’s optional capability guidance.
+- `spec_version` is populated with the semver range `>=1.0.0`, committing each descriptor to the current SpecMan Core/Data Model lineage until a breaking change warrants a new major.
 
 ### Entity: [OperationEnvelope](../../spec/specman-mcp/spec.md#entity-operationenvelope)
 
@@ -323,15 +324,15 @@ pub struct OperationEnvelope {
 - `OperationEnvelope` derives `Serialize`, `Deserialize`, and `JsonSchema`, so every record that leaves the adapter validates against the SpecMan Data Model entities referenced by the governing capability. The schemars output is exported to rmcp’s schema registry, allowing MCP clients to pre-validate responses before attempting to parse them.
 - The adapter persists envelopes as newline-delimited JSON (`NDJSON`) under the workspace-owned telemetry file `.specman/logs/specman-mcp.jsonl`, aligning with [Concept: Session Safety & Deterministic Execution](../../spec/specman-mcp/spec.md#concept-session-safety--deterministic-execution) and the “no stdout logs” constraint from [Concept: MCP Transport Compliance](../../spec/specman-mcp/spec.md#concept-mcp-transport-compliance).
 - `OperationStore` appends every finalized envelope atomically by writing to a temporary file and issuing `rename` into place, preventing readers from ever seeing partial JSON. Each entry receives a stable `operation_id` (a UUID stored inside the envelope metadata) so external auditors can correlate rmcp responses with the telemetry record.
-- When the log file exceeds 16 MiB or 50,000 envelopes—whichever comes first—the store rotates the artifact into `.specman/logs/specman-mcp.jsonl.{timestamp}` before resuming writes to a fresh file. Rotation metadata (start/end timestamps, record counts) is recorded in a sidecar manifest so CLI tooling can stream or purge logs without parsing every envelope.
+- Log rotation is intentionally deferred for this milestone; `.specman/logs/specman-mcp.jsonl` grows linearly until mutating workloads justify a size-based compaction strategy.
 - The same `OperationStore` powers the `specman.core.operations.inspect` tool described in [Capability Registry Design](#capability-registry-design); lookups filter by session id, capability id, or time range and stream matching envelopes back over rmcp using the same JSON Schema advertised at descriptor registration time.
 - Integration tests serialize mock envelopes, read them back from disk, and assert byte-for-byte determinism to guarantee that the adapter’s append-only strategy remains portable across filesystems.
 
 ## Operational Notes
 
 - **Building & Running:** Execute `cargo run -p specman-mcp -- serve` to launch the STDIN server. The process auto-detects the workspace using `specman_library::workspace::FilesystemWorkspaceLocator` and refuses to start when `.specman` is missing, aligning with [Concept: Workspace Discovery](../../spec/specman-core/spec.md#concept-workspace-discovery).
-- **Configuration:** Environment variables `SPECMAN_WORKSPACE` (optional override) and `SPECMAN_MCP_PROTOCOLS` (comma-separated MCP version whitelist) tailor workspace selection and version negotiation. Undefined variables default to ancestor discovery plus the MCP versions embedded in the binary.
-- **Logging & Telemetry:** Structured logs stream into a workspace-owned file such as `.specman/logs/specman-mcp.jsonl`, keeping stdout/stderr reserved for rmcp protocol frames while still satisfying the audit requirements in [Concept: Session Safety & Deterministic Execution](../../spec/specman-mcp/spec.md#concept-session-safety--deterministic-execution). The log path can be overridden via `SPECMAN_MCP_LOG_PATH`.
+- **Configuration:** `SPECMAN_WORKSPACE` remains an optional override for forcing workspace discovery to start from a specific path. Protocol negotiation is fixed to the latest MCP release (`2025-11-25`), and no environment knob exists to opt into alternative versions until they have been vetted alongside SpecMan schemas.
+- **Logging & Telemetry:** Structured logs stream into `.specman/logs/specman-mcp.jsonl`, keeping stdout/stderr reserved for rmcp protocol frames while still satisfying the audit requirements in [Concept: Session Safety & Deterministic Execution](../../spec/specman-mcp/spec.md#concept-session-safety--deterministic-execution). Rotation is deferred for now; operators can manually truncate or archive the file until compaction support lands. The log path can be overridden via `SPECMAN_MCP_LOG_PATH`.
 - **Heartbeats & Progress:** Long-running dependency scans and lifecycle operations emit rmcp `progress` events every 2 seconds. Lack of heartbeats for 10 seconds triggers an rmcp warning frame so clients can retry without tearing down the process.
 - **Error Handling:** Capability failures bubble up as rmcp errors whose payload includes the offending concept/entity link plus the `OperationEnvelope` status. Requests that reference out-of-workspace handles return a governance error citing [Concept: Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance).
 - **Prompt Catalog Tools:** `specman.core.prompt_catalog` enumerates specification, implementation, and scratch-pad prompts by reading `.specman/templates` pointer files and `templates/prompts/*.md`. Responses remind callers to respect HTML directives per [SpecMan Templates](../../spec/specman-templates/spec.md#concept-ai-instruction-channel).
@@ -416,7 +417,33 @@ pub struct SpecmanServices {
 | `specman.core.metadata.patch` | [Concept: Metadata Mutation](../../spec/specman-core/spec.md#concept-metadata-mutation) | `MetadataMutationRequest` | `MetadataMutationResult` | `MetadataMutator::mutate()` | Adds or removes dependencies/references, enforces workspace boundaries, and (optionally) persists the updated artifact. |
 | `specman.core.operations.inspect` | [Concept: Session Safety & Deterministic Execution](../../spec/specman-mcp/spec.md#concept-session-safety--deterministic-execution) + [Entity: OperationEnvelope](../../spec/specman-mcp/spec.md#entity-operationenvelope) | `OperationQuery` (session id + optional capability id) | `Vec<OperationEnvelope>` | Adapter-local `OperationStore` backed by structured telemetry on disk | Exposes audit history through MCP so supervising agents can fetch prior envelopes without scraping log files. |
 
+These tool descriptors are what MCP clients observe via `tools/list`, so creation (`specman.core.lifecycle.create`), editing (`specman.core.metadata.patch`), and deletion (`specman.core.lifecycle.delete`) workflows are explicitly advertised and callable alongside their planning counterparts. The adapter sets each descriptor’s `name`, `title`, `description`, and schema fields so AI-oriented hosts can present clear affordances for managing specifications, implementations, and scratch pads without guessing at SpecMan semantics.
+
 Each executor deserializes payloads using the schema recorded in the descriptor. Validation failures return rmcp errors whose payload references the governing concept. Successful executions emit an `OperationEnvelope`, persist it to `.specman/logs/specman-mcp.jsonl`, and publish the resulting value back to rmcp.
+
+## MCP Resource Catalog
+
+In addition to tools, the adapter publishes MCP resources aligned with the architecture guidance at <https://modelcontextprotocol.io/docs/learn/architecture>. Resources let clients browse immutable workspace context via `resources/list` and hydrate individual handles via `resources/read` without invoking mutating tools.
+
+### Resource families
+
+- **`specman.resources.spec`** – Enumerates every specification discovered under `spec/`, returning descriptors whose `uri` field is `spec://{artifact_id}` and whose `metadata` block embeds the corresponding `ArtifactSummary` plus a `source_path` pointing at the normalized filesystem location. The `mimeType` is `application/vnd.specman.spec+json`, and the `description` links back to the governing SpecMan Core concept so hosts understand the payload.
+- **`specman.resources.impl`** – Mirrors implementations via `impl://{artifact_id}` resource URIs, surfaced with `application/vnd.specman.impl+json` payloads that include front-matter snapshots, canonical filesystem locations, and dependency counts gathered from `specman_library`.
+- **`specman.resources.scratch`** – Lists scratch pads under `.specman/scratchpad/`, exposing `scratch://{slug}` handles with `application/vnd.specman.scratch+json` bodies describing work type, target artifact, branch metadata, and the physical scratch directory.
+
+Every `resources/list` call accepts optional filters (scheme, glob, artifact kind) and streams descriptors sorted by artifact name so downstream MCP hosts can rapidly diff inventories. The server declares `resources.listChanged = true` during initialization so it can notify clients when workspace mutations alter the available resources.
+
+### Dependency resource handles
+
+For each base resource, the adapter also synthesizes derived handles of the form `{impl|spec|scratch}://{artifact_id}/dependencies`. Reading these handles returns the `DependencyTree` produced by `FilesystemDependencyMapper`, allowing clients to fetch upstream/downstream relationships without issuing a separate tool call. Derived handles are marked read-only; mutation attempts are rejected by `WorkspaceSessionGuard` with a governance error that references [Concept: Dependency Mapping Services](../../spec/specman-core/spec.md#concept-dependency-mapping-services).
+
+### Resource payloads
+
+- `resources/read` on `spec://` or `impl://` handles returns JSON objects that embed `ArtifactFrontMatter`, normalized workspace paths, a short text preview of the Markdown title, **and the full Markdown body** so hosts never need to read files directly from disk.
+- `resources/read` on `scratch://` handles returns the scratch-pad front matter, resolved target artifact, the most recent `Notes` heading content, **and the entire scratch Markdown document** to keep agents aware of active work without separate filesystem access.
+- `resources/read` on any `/dependencies` handle returns the complete `DependencyTree` entity with upstream, downstream, and aggregate edges derived from SpecMan Core.
+
+These resources complement the editing tools: clients list a resource to discover artifact handles, hydrate it for read-only context (complete with filesystem paths and raw content), and then call the appropriate lifecycle or metadata tool to mutate the artifact in a SpecMan-compliant way.
 
 ## MCPWorkspaceSession Guard Prototype
 
@@ -452,6 +479,7 @@ pub struct WorkspaceSessionGuard<'a> {
 
 1. `CapabilityRegistry::execute` locates the descriptor and allocates an `OperationEnvelopeBuilder` seeded with the capability id plus raw inputs.
 2. `SessionManager::with_session` retrieves (or creates) the `MCPWorkspaceSession`, resolves the workspace via `SpecmanServices::locator`, and constructs a `WorkspaceSessionGuard`.
+    - Sessions are explicitly single-workspace for this release; if discovery ever returns a different root than the one recorded at initialization, the guard aborts the request and signals an MCP error instructing the client to reconnect.
 3. The guard normalizes every resource handle in the payload using `specman_library::dependency::ArtifactLocator::from_reference`, ensuring [Concept: Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance) is enforced uniformly.
 4. Based on the descriptor metadata, the guard derives a list of `CapabilityLockIntent` values:
    - `Read(ArtifactId)` for inspection tools (workspace describe, dependency tree, metadata describe).
