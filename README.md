@@ -13,7 +13,6 @@ SpecMan exists because tools like GitHub's Speckit optimize for shareholder opti
 
 Read the extended background in `docs/about.md` if you want the full manifesto.
 
-
 ## Testing
 
 Run repository tests from the `src` directory to exercise filesystem + HTTPS traversal paths, cycle detection, and metadata fallbacks:
@@ -26,6 +25,6 @@ cargo test -p specman
 CI should also run `cargo fmt` and `cargo clippy` to keep formatting and lint gates aligned with Rust 1.91.
 
 ## Documentation Index
+
 - `docs/about.md` — philosophy, goals, and why SpecMan replaces Speckit's poor prompting.
 - `docs/getting-started.md` — installation, workspace setup, CLI walkthrough.
-
