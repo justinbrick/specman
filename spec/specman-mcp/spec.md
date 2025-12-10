@@ -6,7 +6,7 @@ dependencies:
     optional: false
   - ref: ../specman-core/spec.md
     optional: false
-  - ref: https://modelcontextprotocol.io/specification
+  - ref: https://modelcontextprotocol.io/docs/learn/architecture
     optional: false
 ---
 
@@ -16,7 +16,7 @@ This specification defines the requirements for a Model Context Protocol (MCP) s
 
 ## Terminology & References
 
-This document uses the normative keywords defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). Readers SHOULD review the [SpecMan Data Model](../specman-data-model/spec.md) to understand workspace entities and MUST familiarize themselves with the current Model Context Protocol guidance at [modelcontextprotocol.io/specification](https://modelcontextprotocol.io/specification). Version negotiation remains an implementation detail; MCP adapters MAY opt into any published MCP revision as long as they negotiate compatibly with connected clients. All capability parity statements inherit requirements from the [SpecMan Core](../specman-core/spec.md) concepts listed below.
+This document uses the normative keywords defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). Readers SHOULD review the [SpecMan Data Model](../specman-data-model/spec.md) to understand workspace entities and MUST familiarize themselves with the current Model Context Protocol guidance at [modelcontextprotocol.io/docs/learn/architecture](https://modelcontextprotocol.io/docs/learn/architecture). Version negotiation remains an implementation detail; MCP adapters MAY opt into any published MCP revision as long as they negotiate compatibly with connected clients. All capability parity statements inherit requirements from the [SpecMan Core](../specman-core/spec.md) concepts listed below.
 
 ## Concepts
 
