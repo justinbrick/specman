@@ -344,26 +344,6 @@ fn resource_for_artifact(
     }
 }
 
-fn dependency_resource(record: &ArtifactRecord) -> Resource {
-    let uri = format!("{}/dependencies", record.handle);
-    Resource {
-        raw: RawResource {
-            uri,
-            name: format!("{}-dependencies", record.id.name),
-            title: Some(format!("Dependency tree for {}", record.handle)),
-            description: Some(format!(
-                "Serialized dependency tree for the {} artifact",
-                record.handle
-            )),
-            mime_type: Some("application/json".to_string()),
-            size: None,
-            icons: None,
-            meta: None,
-        },
-        annotations: None,
-    }
-}
-
 fn kind_label(kind: ArtifactKind) -> &'static str {
     match kind {
         ArtifactKind::Specification => "specification",
@@ -381,7 +361,6 @@ fn resources_from_inventory(inventory: &ArtifactInventory) -> Vec<Resource> {
             format!("SpecMan {} {}", kind_label(record.id.kind), record.handle),
             "text/markdown",
         ));
-        resources.push(dependency_resource(record));
     }
 
     for record in &inventory.implementations {
@@ -390,7 +369,6 @@ fn resources_from_inventory(inventory: &ArtifactInventory) -> Vec<Resource> {
             format!("SpecMan {} {}", kind_label(record.id.kind), record.handle),
             "text/markdown",
         ));
-        resources.push(dependency_resource(record));
     }
 
     for record in &inventory.scratchpads {
@@ -399,7 +377,6 @@ fn resources_from_inventory(inventory: &ArtifactInventory) -> Vec<Resource> {
             format!("SpecMan {} {}", kind_label(record.id.kind), record.handle),
             "text/markdown",
         ));
-        resources.push(dependency_resource(record));
     }
 
     resources
@@ -525,20 +502,14 @@ mod tests {
     use tempfile::TempDir;
 
     #[tokio::test]
-    async fn list_resources_includes_handles_and_dependencies()
-    -> Result<(), Box<dyn std::error::Error>> {
+    async fn list_resources_includes_handles() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
         let inventory = workspace.server.inventory().await?;
         let resources = resources_from_inventory(&inventory);
 
         let uris: Vec<String> = resources.into_iter().map(|r| r.raw.uri).collect();
 
-        for expected in [
-            "spec://testspec",
-            "spec://testspec/dependencies",
-            "impl://testimpl",
-            "impl://testimpl/dependencies",
-        ] {
+        for expected in ["spec://testspec", "impl://testimpl"] {
             assert!(
                 uris.contains(&expected.to_string()),
                 "missing resource {expected}"
