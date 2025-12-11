@@ -990,12 +990,7 @@ mod tests {
         let prompts = server.prompt_router.list_all();
         let names: std::collections::HashSet<_> = prompts.iter().map(|p| p.name.as_str()).collect();
 
-        for expected in [
-            "specman.scratch.feat",
-            "specman.scratch.ref",
-            "specman.scratch.revision",
-            "specman.scratch.fix",
-        ] {
+        for expected in ["feat", "ref", "revision", "fix"] {
             assert!(names.contains(expected), "missing prompt {expected}");
         }
     }
