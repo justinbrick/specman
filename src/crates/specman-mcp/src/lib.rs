@@ -4,16 +4,20 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rmcp::handler::server::{
-    ServerHandler, router::Router, tool::ToolRouter, wrapper::Json, wrapper::Parameters,
+    ServerHandler, router::Router, router::prompt::PromptRouter, tool::ToolRouter, wrapper::Json,
+    wrapper::Parameters,
 };
 use rmcp::schemars::JsonSchema;
 use rmcp::service::{RequestContext, RoleServer, ServerInitializeError};
 use rmcp::{
     model::{
-        ErrorData, ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParam,
-        RawResource, RawResourceTemplate, ReadResourceRequestParam, ReadResourceResult, Resource,
-        ResourceContents, ResourceTemplate, ServerCapabilities, ServerInfo,
+        ErrorData, GetPromptRequestParam, GetPromptResult, ListPromptsResult,
+        ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParam, PromptMessage,
+        PromptMessageRole, RawResource, RawResourceTemplate, ReadResourceRequestParam,
+        ReadResourceResult, Resource, ResourceContents, ResourceTemplate, ServerCapabilities,
+        ServerInfo,
     },
+    prompt, prompt_handler, prompt_router,
     service::ServiceExt,
     tool, tool_router, transport,
 };
@@ -23,6 +27,11 @@ use specman::{
     FilesystemWorkspaceLocator, SemVer, SpecmanError, WorkspaceLocator, WorkspacePaths,
 };
 
+const SCRATCH_FEAT_TEMPLATE: &str = include_str!("../templates/prompts/scratch-feat.md");
+const SCRATCH_FIX_TEMPLATE: &str = include_str!("../templates/prompts/scratch-fix.md");
+const SCRATCH_REF_TEMPLATE: &str = include_str!("../templates/prompts/scratch-ref.md");
+const SCRATCH_REVISION_TEMPLATE: &str = include_str!("../templates/prompts/scratch-revision.md");
+
 /// Structured workspace data exposed over MCP tools.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct WorkspaceInfo {
@@ -31,11 +40,6 @@ pub struct WorkspaceInfo {
     pub spec_dir: String,
     pub impl_dir: String,
     pub scratchpad_dir: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct DependencyTreeRequest {
-    pub locator: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -58,39 +62,36 @@ pub struct ArtifactInventory {
     pub scratchpads: Vec<ArtifactRecord>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct DescribeArtifactRequest {
-    pub locator: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ArtifactDescription {
-    pub artifact: ArtifactRecord,
-    pub tree: DependencyTree,
-}
-
 #[derive(Clone)]
 pub struct SpecmanMcpServer {
     workspace: Arc<FilesystemWorkspaceLocator>,
     dependency_mapper: Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
     tool_router: ToolRouter<Self>,
+    prompt_router: PromptRouter<Self>,
 }
 
 #[tool_router]
+#[prompt_router]
 impl SpecmanMcpServer {
     pub fn new() -> Result<Self, SpecmanError> {
-        let workspace = Arc::new(FilesystemWorkspaceLocator::from_current_dir()?);
+        let cwd = std::env::current_dir()?;
+        Self::new_with_root(cwd)
+    }
+
+    pub fn new_with_root(root: impl Into<PathBuf>) -> Result<Self, SpecmanError> {
+        let workspace = Arc::new(FilesystemWorkspaceLocator::new(root));
         let dependency_mapper = Arc::new(FilesystemDependencyMapper::new(workspace.clone()));
 
         Ok(Self {
             workspace,
             dependency_mapper,
             tool_router: Self::tool_router(),
+            prompt_router: Self::prompt_router(),
         })
     }
 
     #[tool(
-        name = "specman.core.workspace_discovery",
+        name = "workspace_discovery",
         description = "Return canonical workspace directories discovered via nearest .specman ancestor"
     )]
     async fn workspace_discovery(&self) -> Result<Json<WorkspaceInfo>, McpError> {
@@ -106,51 +107,126 @@ impl SpecmanMcpServer {
     }
 
     #[tool(
-        name = "specman.core.dependency_mapping",
-        description = "Build dependency tree for a locator (path, URL, or spec:// handle)"
-    )]
-    async fn dependency_mapping(
-        &self,
-        params: Parameters<DependencyTreeRequest>,
-    ) -> Result<Json<DependencyTree>, McpError> {
-        let locator = params.0.locator;
-        let tree = self
-            .dependency_mapper
-            .dependency_tree_from_locator(&locator)
-            .map_err(to_mcp_error)?;
-        Ok(Json(tree))
-    }
-
-    #[tool(
-        name = "specman.core.workspace_inventory",
+        name = "workspace_inventory",
         description = "List specifications, implementations, and scratch pads as SpecMan resource handles"
     )]
     async fn workspace_inventory(&self) -> Result<Json<ArtifactInventory>, McpError> {
         Ok(Json(self.inventory().await?))
     }
 
-    #[tool(
-        name = "specman.core.artifact_describe",
-        description = "Describe an artifact by locator or resource handle and include its dependency tree"
+    #[prompt(
+        name = "specman.scratch.feat",
+        description = "Generate a SpecMan scratch pad for feature execution using the standard template"
     )]
-    async fn artifact_describe(
+    pub async fn scratch_feat_prompt(
         &self,
-        params: Parameters<DescribeArtifactRequest>,
-    ) -> Result<Json<ArtifactDescription>, McpError> {
-        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
-        let locator = params.0.locator;
+        Parameters(args): Parameters<ScratchFeatArgs>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        self.render_scratch_prompt(
+            SCRATCH_FEAT_TEMPLATE,
+            &args.base.target,
+            args.base.branch_name,
+            args.base.scratch_name,
+            args.base.arguments,
+            ScratchPromptExtras {
+                work_type: "feat",
+                target_token: "{{target_impl_path}}",
+                extra_tokens: vec![
+                    (
+                        "{{objectives}}",
+                        value_or_default(args.objectives, "(add objectives)"),
+                    ),
+                    (
+                        "{{task_outline}}",
+                        value_or_default(args.task_outline, "(add a task outline)"),
+                    ),
+                ],
+            },
+        )
+    }
 
-        let tree = self
-            .dependency_mapper
-            .dependency_tree_from_locator(&locator)
-            .map_err(to_mcp_error)?;
+    #[prompt(
+        name = "specman.scratch.ref",
+        description = "Generate a SpecMan scratch pad for refactor discovery using the standard template"
+    )]
+    pub async fn scratch_ref_prompt(
+        &self,
+        Parameters(args): Parameters<ScratchRefArgs>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        self.render_scratch_prompt(
+            SCRATCH_REF_TEMPLATE,
+            &args.base.target,
+            args.base.branch_name,
+            args.base.scratch_name,
+            args.base.arguments,
+            ScratchPromptExtras {
+                work_type: "ref",
+                target_token: "{{target_impl_path}}",
+                extra_tokens: vec![
+                    (
+                        "{{refactor_focus}}",
+                        value_or_default(args.refactor_focus, "(state refactor focus)"),
+                    ),
+                    (
+                        "{{investigation_notes}}",
+                        value_or_default(args.investigation_notes, "(capture investigation notes)"),
+                    ),
+                ],
+            },
+        )
+    }
 
-        let record = artifact_record(&tree.root, &workspace);
+    #[prompt(
+        name = "specman.scratch.revision",
+        description = "Generate a SpecMan scratch pad for specification revision using the standard template"
+    )]
+    pub async fn scratch_revision_prompt(
+        &self,
+        Parameters(args): Parameters<ScratchRevisionArgs>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        self.render_scratch_prompt(
+            SCRATCH_REVISION_TEMPLATE,
+            &args.base.target,
+            args.base.branch_name,
+            args.base.scratch_name,
+            args.base.arguments,
+            ScratchPromptExtras {
+                work_type: "revision",
+                target_token: "{{target_spec_path}}",
+                extra_tokens: vec![
+                    (
+                        "{{revised_headings}}",
+                        value_or_default(args.revised_headings, "(list revised headings)"),
+                    ),
+                    (
+                        "{{change_summary}}",
+                        value_or_default(args.change_summary, "(summarize change scope)"),
+                    ),
+                ],
+            },
+        )
+    }
 
-        Ok(Json(ArtifactDescription {
-            artifact: record,
-            tree,
-        }))
+    #[prompt(
+        name = "specman.scratch.fix",
+        description = "Generate a SpecMan scratch pad for implementation fixes using the standard template"
+    )]
+    pub async fn scratch_fix_prompt(
+        &self,
+        Parameters(args): Parameters<ScratchFixArgs>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        self.render_scratch_prompt(
+            SCRATCH_FIX_TEMPLATE,
+            &args.base.target,
+            args.base.branch_name,
+            args.base.scratch_name,
+            args.base.arguments,
+            ScratchPromptExtras {
+                work_type: "fix",
+                target_token: "{{target_impl_path}}",
+                extra_tokens: Vec::new(),
+            },
+        )
     }
 }
 
@@ -158,7 +234,8 @@ impl SpecmanMcpServer {
     /// Start a stdio-based MCP server and wait until the transport closes.
     pub async fn run_stdio(self) -> Result<(), ServerInitializeError> {
         let tools = self.tool_router.clone();
-        let router = Router::new(self).with_tools(tools);
+        let prompts = self.prompt_router.clone();
+        let router = Router::new(self).with_tools(tools).with_prompts(prompts);
         let service = router.serve(transport::io::stdio()).await?;
 
         // Hold the service open until the peer closes the transport.
@@ -275,6 +352,7 @@ impl SpecmanMcpServer {
     }
 }
 
+#[prompt_handler]
 impl ServerHandler for SpecmanMcpServer {
     fn list_resources(
         &self,
@@ -318,6 +396,7 @@ impl ServerHandler for SpecmanMcpServer {
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
+                .enable_prompts()
                 .build(),
             ..ServerInfo::default()
         }
@@ -342,6 +421,214 @@ fn resource_for_artifact(
         },
         annotations: None,
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct ScratchPromptArgs {
+    pub target: String,
+    pub branch_name: Option<String>,
+    pub scratch_name: Option<String>,
+    #[serde(default)]
+    pub arguments: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct ScratchFeatArgs {
+    #[serde(flatten)]
+    pub base: ScratchPromptArgs,
+    #[serde(default)]
+    pub objectives: Option<String>,
+    #[serde(default)]
+    pub task_outline: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct ScratchRefArgs {
+    #[serde(flatten)]
+    pub base: ScratchPromptArgs,
+    #[serde(default)]
+    pub refactor_focus: Option<String>,
+    #[serde(default)]
+    pub investigation_notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct ScratchRevisionArgs {
+    #[serde(flatten)]
+    pub base: ScratchPromptArgs,
+    #[serde(default)]
+    pub revised_headings: Option<String>,
+    #[serde(default)]
+    pub change_summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct ScratchFixArgs {
+    #[serde(flatten)]
+    pub base: ScratchPromptArgs,
+}
+
+struct ResolvedTarget {
+    tree: DependencyTree,
+    workspace: WorkspacePaths,
+    handle: String,
+    path: String,
+}
+
+struct ScratchPromptExtras {
+    work_type: &'static str,
+    target_token: &'static str,
+    extra_tokens: Vec<(&'static str, String)>,
+}
+
+impl SpecmanMcpServer {
+    fn resolve_target(&self, locator: &str) -> Result<ResolvedTarget, McpError> {
+        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
+        let tree = self
+            .dependency_mapper
+            .dependency_tree_from_locator(locator)
+            .map_err(to_mcp_error)?;
+
+        let path = artifact_path(&tree.root.id, &workspace)
+            .display()
+            .to_string();
+        let handle = artifact_handle(&tree.root);
+
+        Ok(ResolvedTarget {
+            tree,
+            workspace,
+            handle,
+            path,
+        })
+    }
+
+    fn render_scratch_prompt(
+        &self,
+        template: &str,
+        locator: &str,
+        branch_name: Option<String>,
+        scratch_name: Option<String>,
+        arguments: Option<String>,
+        extras: ScratchPromptExtras,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let resolved = self.resolve_target(locator)?;
+
+        let inferred_scratch = format!("{}-{}", resolved.tree.root.id.name, extras.work_type);
+        let scratch_name = sanitize_slug(scratch_name.as_deref().unwrap_or(&inferred_scratch));
+        let default_branch = format!(
+            "{}/{}/{}",
+            resolved.tree.root.id.name, extras.work_type, scratch_name
+        );
+        let branch_name = branch_name
+            .and_then(|value| {
+                let trimmed = value.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            })
+            .unwrap_or(default_branch);
+
+        let context = bullet_list(&dependency_lines(&resolved));
+        let dependencies = context.clone();
+        let argument_text = value_or_default(arguments, "(no additional arguments provided)");
+
+        let mut replacements = vec![
+            ("{{output_name}}", scratch_name.clone()),
+            ("{{scratch_name}}", scratch_name.clone()),
+            ("{{branch_name}}", branch_name.clone()),
+            (extras.target_token, resolved.path.clone()),
+            ("{{context}}", context),
+            ("{{dependencies}}", dependencies),
+            ("{{arguments}}", argument_text),
+        ];
+
+        replacements.extend(extras.extra_tokens);
+
+        let rendered = apply_tokens(template, &replacements);
+        Ok(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            rendered,
+        )])
+    }
+}
+
+fn apply_tokens(template: &str, replacements: &[(&str, String)]) -> String {
+    let mut rendered = template.to_owned();
+    for (needle, value) in replacements {
+        rendered = rendered.replace(needle, value);
+    }
+    rendered
+}
+
+fn artifact_handle(summary: &ArtifactSummary) -> String {
+    match summary.id.kind {
+        ArtifactKind::Specification => format!("spec://{}", summary.id.name),
+        ArtifactKind::Implementation => format!("impl://{}", summary.id.name),
+        ArtifactKind::ScratchPad => format!("scratch://{}", summary.id.name),
+    }
+}
+
+fn dependency_lines(resolved: &ResolvedTarget) -> Vec<String> {
+    let mut lines = Vec::new();
+    lines.push(format!("- {} ({})", resolved.handle, resolved.path));
+
+    for edge in &resolved.tree.upstream {
+        let handle = artifact_handle(&edge.to);
+        let path = artifact_path(&edge.to.id, &resolved.workspace)
+            .display()
+            .to_string();
+        lines.push(format!("- {} ({})", handle, path));
+    }
+
+    lines
+}
+
+fn bullet_list(items: &[String]) -> String {
+    if items.is_empty() {
+        "- (no dependencies discovered)".to_string()
+    } else {
+        items.join("\n")
+    }
+}
+
+fn sanitize_slug(input: &str) -> String {
+    let mut slug: String = input
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+            '-' => '-',
+            ch if ch.is_ascii_alphanumeric() => ch,
+            ch if ch.is_whitespace() => '-',
+            _ => '-',
+        })
+        .collect();
+
+    while slug.contains("--") {
+        slug = slug.replace("--", "-");
+    }
+
+    let trimmed = slug.trim_matches('-').to_string();
+    if trimmed.is_empty() {
+        "scratch".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn value_or_default(value: Option<String>, default_value: &str) -> String {
+    value
+        .and_then(|v| {
+            let trimmed = v.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        })
+        .unwrap_or_else(|| default_value.to_string())
 }
 
 fn kind_label(kind: ArtifactKind) -> &'static str {
@@ -498,6 +785,7 @@ impl SpecmanMcpServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rmcp::model::PromptMessageContent;
     use std::io::Write;
     use tempfile::TempDir;
 
@@ -559,6 +847,160 @@ mod tests {
     }
 
     #[test]
+    fn get_info_enables_prompts() {
+        let server = SpecmanMcpServer::new().expect("server should start");
+        let info = server.get_info();
+
+        assert!(info.capabilities.prompts.is_some());
+    }
+
+    #[tokio::test]
+    async fn scratch_feat_prompt_renders_tokens() -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+        let message = workspace
+            .server
+            .scratch_feat_prompt(Parameters(ScratchFeatArgs {
+                base: ScratchPromptArgs {
+                    target: "impl://testimpl".to_string(),
+                    branch_name: None,
+                    scratch_name: None,
+                    arguments: Some("user guidance".to_string()),
+                },
+                objectives: Some("ship a demo".to_string()),
+                task_outline: None,
+            }))
+            .await?
+            .pop()
+            .expect("prompt returns one message");
+
+        let rendered = match message.content {
+            PromptMessageContent::Text { text } => text,
+            other => panic!("unexpected content: {:?}", other),
+        };
+
+        assert!(rendered.contains("branch: testimpl/feat/testimpl-feat"));
+        assert!(rendered.contains("user guidance"));
+        assert!(rendered.contains("ship a demo"));
+        assert!(rendered.contains("impl/testimpl/impl.md"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scratch_ref_prompt_renders_dependencies() -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+        let rendered = workspace
+            .server
+            .scratch_ref_prompt(Parameters(ScratchRefArgs {
+                base: ScratchPromptArgs {
+                    target: "impl://testimpl".to_string(),
+                    branch_name: None,
+                    scratch_name: Some("impl-refactor".to_string()),
+                    arguments: None,
+                },
+                refactor_focus: Some("restructure adapters".to_string()),
+                investigation_notes: Some("check dependency graph".to_string()),
+            }))
+            .await?
+            .pop()
+            .expect("prompt returns one message")
+            .content;
+
+        let text = match rendered {
+            PromptMessageContent::Text { text } => text,
+            other => panic!("unexpected content: {:?}", other),
+        };
+
+        assert!(text.contains("impl/testimpl/impl.md"));
+        assert!(text.contains("spec://testspec"));
+        assert!(text.contains("impl-refactor"));
+        assert!(text.contains("restructure adapters"));
+        assert!(text.contains("check dependency graph"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scratch_revision_prompt_uses_spec_target() -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+        let rendered = workspace
+            .server
+            .scratch_revision_prompt(Parameters(ScratchRevisionArgs {
+                base: ScratchPromptArgs {
+                    target: "spec://testspec".to_string(),
+                    branch_name: Some("custom-revision".to_string()),
+                    scratch_name: None,
+                    arguments: Some("user adds notes".to_string()),
+                },
+                revised_headings: Some("intro, scope".to_string()),
+                change_summary: Some("tighten wording".to_string()),
+            }))
+            .await?
+            .pop()
+            .expect("prompt returns one message")
+            .content;
+
+        let text = match rendered {
+            PromptMessageContent::Text { text } => text,
+            other => panic!("unexpected content: {:?}", other),
+        };
+
+        assert!(text.contains("spec/testspec/spec.md"));
+        assert!(text.contains("custom-revision"));
+        assert!(text.contains("intro, scope"));
+        assert!(text.contains("tighten wording"));
+        assert!(text.contains("user adds notes"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn scratch_fix_prompt_defaults_branch() -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+        let rendered = workspace
+            .server
+            .scratch_fix_prompt(Parameters(ScratchFixArgs {
+                base: ScratchPromptArgs {
+                    target: "impl://testimpl".to_string(),
+                    branch_name: None,
+                    scratch_name: None,
+                    arguments: Some("fix bug".to_string()),
+                },
+            }))
+            .await?
+            .pop()
+            .expect("prompt returns one message")
+            .content;
+
+        let text = match rendered {
+            PromptMessageContent::Text { text } => text,
+            other => panic!("unexpected content: {:?}", other),
+        };
+
+        assert!(text.contains("impl/testimpl/impl.md"));
+        assert!(text.contains("testimpl/fix/testimpl-fix"));
+        assert!(text.contains("fix bug"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn prompt_router_lists_all_prompts() {
+        let server = SpecmanMcpServer::new().expect("server should start");
+        let prompts = server.prompt_router.list_all();
+        let names: std::collections::HashSet<_> = prompts.iter().map(|p| p.name.as_str()).collect();
+
+        for expected in [
+            "specman.scratch.feat",
+            "specman.scratch.ref",
+            "specman.scratch.revision",
+            "specman.scratch.fix",
+        ] {
+            assert!(names.contains(expected), "missing prompt {expected}");
+        }
+    }
+
+    #[test]
     fn resource_templates_cover_expected_handles() {
         let templates = resource_templates();
         let uris: Vec<String> = templates.into_iter().map(|t| t.raw.uri_template).collect();
@@ -580,42 +1022,21 @@ mod tests {
 
     struct TestWorkspace {
         _temp: TempDir,
-        _dir_guard: DirGuard,
         server: SpecmanMcpServer,
     }
 
     impl TestWorkspace {
         fn create() -> Result<Self, Box<dyn std::error::Error>> {
             let temp = tempfile::tempdir()?;
-            let dir_guard = DirGuard::change_to(temp.path())?;
 
             create_workspace_files(temp.path())?;
 
-            let server = SpecmanMcpServer::new()?;
+            let server = SpecmanMcpServer::new_with_root(temp.path())?;
 
             Ok(Self {
                 _temp: temp,
-                _dir_guard: dir_guard,
                 server,
             })
-        }
-    }
-
-    struct DirGuard {
-        previous: PathBuf,
-    }
-
-    impl DirGuard {
-        fn change_to(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-            let previous = std::env::current_dir()?;
-            std::env::set_current_dir(path)?;
-            Ok(Self { previous })
-        }
-    }
-
-    impl Drop for DirGuard {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.previous);
         }
     }
 
