@@ -1,7 +1,7 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use schemars::schema::{InstanceType, ObjectValidation, Schema, SchemaObject, SubschemaValidation};
-use schemars::{JsonSchema, SchemaGenerator};
+use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::de::{self, DeserializeOwned, Deserializer};
 use serde::ser::{SerializeMap, Serializer};
 use serde::{Deserialize, Serialize};
@@ -360,8 +360,8 @@ impl<'de> Deserialize<'de> for ScratchWorkType {
 }
 
 impl JsonSchema for ScratchWorkType {
-    fn schema_name() -> String {
-        "ScratchWorkType".into()
+    fn schema_name() -> Cow<'static, str> {
+        Cow::from("ScratchWorkType")
     }
 
     fn json_schema(generator: &mut SchemaGenerator) -> Schema {
@@ -376,15 +376,8 @@ impl JsonSchema for ScratchWorkType {
             variant_schema("fix", generator.subschema_for::<ScratchFixMetadata>()),
         ];
 
-        let subschema = SubschemaValidation {
-            any_of: Some(variants),
-            ..Default::default()
-        };
-
-        Schema::Object(SchemaObject {
-            subschemas: Some(Box::new(subschema)),
-            ..Default::default()
-        })
+        serde_json::from_value(serde_json::json!({ "anyOf": variants }))
+            .expect("valid ScratchWorkType schema")
     }
 }
 
@@ -454,18 +447,15 @@ fn has_key(mapping: &Mapping, name: &str) -> bool {
 }
 
 fn variant_schema(key: &str, schema: Schema) -> Schema {
-    let mut validation = ObjectValidation::default();
-    validation.properties.insert(key.to_string(), schema);
-    validation.required.insert(key.to_string());
-    validation.min_properties = Some(1);
-    validation.max_properties = Some(1);
-    validation.additional_properties = Some(Box::new(Schema::Bool(false)));
-
-    Schema::Object(SchemaObject {
-        instance_type: Some(InstanceType::Object.into()),
-        object: Some(Box::new(validation)),
-        ..Default::default()
-    })
+    serde_json::from_value(serde_json::json!({
+        "type": "object",
+        "properties": { key: schema },
+        "required": [key],
+        "minProperties": 1,
+        "maxProperties": 1,
+        "additionalProperties": false
+    }))
+    .expect("valid work_type variant schema")
 }
 
 #[cfg(test)]
