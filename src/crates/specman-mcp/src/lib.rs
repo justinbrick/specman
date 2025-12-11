@@ -115,7 +115,7 @@ impl SpecmanMcpServer {
     }
 
     #[prompt(
-        name = "specman.scratch.feat",
+        name = "feat",
         description = "Generate a SpecMan scratch pad for feature execution using the standard template"
     )]
     pub async fn scratch_feat_prompt(
@@ -146,7 +146,7 @@ impl SpecmanMcpServer {
     }
 
     #[prompt(
-        name = "specman.scratch.ref",
+        name = "ref",
         description = "Generate a SpecMan scratch pad for refactor discovery using the standard template"
     )]
     pub async fn scratch_ref_prompt(
@@ -177,7 +177,7 @@ impl SpecmanMcpServer {
     }
 
     #[prompt(
-        name = "specman.scratch.revision",
+        name = "revision",
         description = "Generate a SpecMan scratch pad for specification revision using the standard template"
     )]
     pub async fn scratch_revision_prompt(
@@ -208,7 +208,7 @@ impl SpecmanMcpServer {
     }
 
     #[prompt(
-        name = "specman.scratch.fix",
+        name = "fix",
         description = "Generate a SpecMan scratch pad for implementation fixes using the standard template"
     )]
     pub async fn scratch_fix_prompt(
