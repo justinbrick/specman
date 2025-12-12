@@ -1,6 +1,6 @@
 ---
 target: ../relative/path/to/artifact.md
-branch: optional-branch-name
+branch: "TODO: create branch using {target_name}/{work_type}/{scratch_pad_name}"
 work_type:
   feat: {}
 ---

@@ -72,13 +72,16 @@ The template catalog and its prompts share a fixed set of interpolation tokens t
 
 #### Token `{{artifact_name_or_request}}`
 
-- All prompts (specification, implementation, scratch pad) MUST accept this token to capture either the explicit artifact name or a markdown-formatted request asking the reader to supply a compliant artifact name when none is provided.
+- Scratch pad prompts MUST accept this token to capture either the explicit artifact name or a markdown-formatted request asking the reader to supply a compliant artifact name when none is provided.
+- Specification and implementation prompts MAY accept this token for consistency but are not required to surface it when the artifact name is already implied by context.
 - When the caller does not provide a value, the prompt MUST include guidance asking for a name that satisfies the relevant naming rules from the founding specification or scratch pad constraints.
 
-#### Token `{{branch_name}}`
+#### Token `{{branch_name_or_request}}`
 
-- Scratch pad prompts and templates MUST treat this token as OPTIONAL input. When not provided, the default branch name MUST follow the data model branch scheme `{target_name}/{work_type}/{scratch_pad_name}`.
-- When supplied, the value MUST comply with the same branch naming scheme defined in the [SpecMan Data Model](../specman-data-model/spec.md#git-branches).
+- Scratch pad prompts and templates MUST treat this token as OPTIONAL input and place it as its own numbered step. The token MUST expand to instructions:
+  - When a branch name is provided, the token text MUST instruct the reader to check out that branch.
+  - When a branch name is not provided, the token text MUST instruct the reader to generate a branch name that follows `{target_name}/{work_type}/{scratch_pad_name}` and show an example string rather than auto-populating.
+- When supplied, the value MUST comply with the branch naming scheme defined in the [SpecMan Data Model](../specman-data-model/spec.md#git-branches).
 
 ## Key Entities
 

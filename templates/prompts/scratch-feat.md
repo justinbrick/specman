@@ -10,11 +10,14 @@ Before you begin, complete these reading prerequisites:
 Read the following dependencies before continuing:
 {{context}}
 
+User-provided input:
+{{arguments}}
+
 Steps:
 
 1. Create or refine a short, lowercase, hyphenated scratch pad name (no more than four words) that describes the feature effort, ensuring it meets the SpecMan naming constraints, and assign it to `{{output_name}}` for all remaining steps.
-2. Copy `templates/scratch/scratch.md`, keep every HTML comment directive until satisfied, and update the front matter with `target: {{target_path}}`, `branch: {{branch_name}}`, and `work_type: { feat: {} }`, noting the artifact reference using {{artifact_name_or_request}} in Context if the name still needs confirmation.
-3. Check out {{branch_name}} before making any edits so that all subsequent work happens on the correct branch from the start.
+2. Copy `templates/scratch/scratch.md`, keep every HTML comment directive until satisfied, and update the front matter with `target: {{target_path}}` and `work_type: { feat: {} }`.
+3. {{branch_name_or_request}}
 4. Summarize the feature goals from the User Input section inside Context plus Scope & Goals, grounding the work in the provided context and dependencies where applicable, and convert the planned tasks into a concise checklist that links to `tasks.md` when present.
 5. Add an "Entity & Concept Plan" subsection that inventories every relevant entity, concept, module, or API referenced by the target and its governing spec, describing current behavior, the intended feature delta, dependencies impacted, validation checkpoints, and open questions so downstream implementers have a playbook.
 6. Insert a numbered step that explicitly confirms every structure or function touched by the feature has updated (or newly added) code comments describing the change and rationale. Call out that experimental codepaths are not exempt—experiments MUST keep these comments current as well.

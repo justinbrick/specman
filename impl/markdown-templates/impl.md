@@ -12,6 +12,7 @@ primary_language:
 This implementation provides a curated set of specification, implementation, and scratch pad Markdown templates kept in the `templates/` workspace directory. Each template aligns with the SpecMan data model defined in `spec/specman-data-model/spec.md`.
 
 ## Included Items
+
 - [`templates/spec/spec.md`](../../templates/spec/spec.md) — specification scaffold with inline concept/entity constraint guidance baked directly into each heading.
 - [`templates/impl/impl.md`](../../templates/impl/impl.md) — implementation scaffold that embeds per-section constraint reminders, adds a Concept & Entity Breakdown with per-heading API signatures, and requires inline links back to governing spec fragments.
 - [`templates/scratch/scratch.md`](../../templates/scratch/scratch.md) — general scratch pad scaffold with structured sections for context, notes, and follow-up actions across feat/ref/revision work.
@@ -28,12 +29,15 @@ This implementation provides a curated set of specification, implementation, and
 The prompt catalog in `templates/prompts/` equips automation with starting points that enforce SpecMan norms. Each prompt instructs the AI to copy its companion Markdown template verbatim, preserve HTML comment directives, and validate the result against `spec/specman-data-model/spec.md` before completion. Scratch pad prompts further call out the appropriate `work_type` object shape and scenario-specific sections so their artifacts remain consistent across discovery, execution, synthesis, and fix workflows.
 
 Interactive guardrails ensure upstream requirements stay visible:
+
 - `templates/prompts/spec.md` now performs an adversarial requirement review, intentionally misinterpreting inputs to surface ambiguities and returning the resulting issues/questions to the user before finalizing prose.
 - `templates/prompts/impl.md` requires authors to enumerate every concept/entity from the governing specification, link directly to those headings, and nest API signatures plus data models beneath each subsection so relationship graphs can be inferred automatically.
 - `templates/prompts/scratch-revision.md` introduces a conflict audit that enumerates existing statements (with headings and RFC 2119 levels) that might contradict the requested revision so authors can explicitly confirm overrides or alignments, and records each conflict as a task while reiterating the whole set in the chat response.
 - `templates/prompts/scratch-ref.md`, `templates/prompts/scratch-feat.md`, and `templates/prompts/scratch-fix.md` require an "Entity & Concept" breakdown that inventories every affected module/API, outlines the planned change, and produces a staged plan future scratch pads can execute.
 - `templates/prompts/scratch-ref.md`, `templates/prompts/scratch-feat.md`, and `templates/prompts/scratch-fix.md` add numbered steps that verify every affected structure or function has updated code comments describing what changed and why; experiments are explicitly covered so exploratory branches stay documented. These prompts also require teams to track unresolved questions (tasks or inline bullets) **and** repeat the entire question list in their chat response alongside the batched decision block so reviewers can respond in one pass.
 - `templates/prompts/scratch-fix.md` additionally forces authors to capture reproduction steps, impact assessment, and `fixed_headings` alignment so defect coverage is explicit.
+- Scratch pad prompts now require the `{{artifact_name_or_request}}` token so the AI either records the artifact name or asks the reader for one that meets SpecMan naming rules; specification and implementation prompts leave artifact-name confirmation to their own context.
+- The branch token was renamed to `{{branch_name_or_request}}` and is used as a standalone step whose expansion carries the instructions: check out the provided branch when present, or ask the reader to generate a compliant `{target_name}/{work_type}/{scratch_pad_name}` branch (with an example) when absent.
 
 ## Specification Template
 

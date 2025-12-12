@@ -1,4 +1,6 @@
-You are documenting an implementation whose canonical name (`{{implementation_name}}`) you must infer from the provided inputs, ensuring it complies with `spec/specman-data-model/spec.md`, as it realizes the specification at {{target_spec_path}} using `templates/impl/impl.md` while keeping every HTML comment directive until fulfilled.
+# Implementation Creation
+
+You are documenting an implementation, ensuring it complies with `spec/specman-data-model/spec.md`, as it realizes the specification at {{target_path}} using `templates/impl/impl.md` while keeping every HTML comment directive until fulfilled.
 
 Before doing anything else, complete these prerequisites:
 
@@ -9,15 +11,9 @@ Before doing anything else, complete these prerequisites:
 Read the following dependencies before continuing:
 {{context}}
 
-Scratch Pad Requirement (Feature Work):
-
-- Run the dedicated feature scratch prompt at `templates/prompts/scratch-feat.md`, reusing the provided context you have here so that all discovery happens in one place.
-- Set `{{target_impl_path}}` in that prompt to `impl/{{implementation_name}}/impl.md`, ensuring the scratch pad tracks this implementation doc and that its branch follows `{target_name}/feat/{{scratch_name}}` (or an explicitly provided `{{branch_name}}`).
-- Do not proceed until `.specman/scratchpad/{{scratch_name}}/scratch.md` exists and the feature branch from the scratch prompt is checked out locally.
-
 Steps:
 
-1. {{artifact_name_or_request}} — confirm or request the compliant implementation name before drafting.
+1. {{artifact_name_or_request}}
 2. Copy the canonical template, set `spec` to {{target_spec_path}}, fill `location`, `library` (if applicable), and describe `primary_language` plus optional `secondary_languages`, replacing the references list with {{reference_items}}.
 3. Summarize architecture and intent in Overview, explain language details, References, Implementation Details, and Operational Notes with concise prose that cites specification headings via inline links, grounding content in the User Input section.
 4. In `## Concept & Entity Breakdown`, enumerate every concept and entity from the governing specification that this implementation covers. Each heading MUST include an inline link to the originating spec fragment (for example `[Concept: Lifecycle](../spec/spec.md#concept-lifecycle)`) and contain:

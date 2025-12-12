@@ -10,11 +10,14 @@ Before any analysis, complete these reading prerequisites:
 Read the following dependencies before continuing:
 {{context}}
 
+User-provided input:
+{{arguments}}
+
 Steps:
 
 1. Create or refine a short, lowercase, hyphenated scratch pad name (≤4 words) that captures the refactor focus, ensuring it satisfies SpecMan naming constraints, and apply it to `{{output_name}}` moving forward.
-2. Copy `templates/scratch/scratch.md`, retain HTML comments until satisfied, and set the front matter with `target: {{target_path}}`, `branch: {{branch_name}}`, and `work_type: { ref: { refactored_headings: [...] } }`, filling `refactored_headings` from the refactor focus described in the User Input section and noting {{artifact_name_or_request}} in Context if the artifact name needs confirmation.
-3. Check out {{branch_name}} before making changes so the refactor work proceeds on the correct branch from the outset.
+2. Copy `templates/scratch/scratch.md`, retain HTML comments until satisfied, and set the front matter with `target: {{target_path}}` and `work_type: { ref: { refactored_headings: [...] } }`, filling `refactored_headings` from the refactor focus described in the User Input section.
+3. {{branch_name_or_request}}
 4. Capture the current architecture, issues, and constraints in Context plus Scope & Goals, grounding the plan in the provided context and dependencies where applicable, then seed Notes with findings from the User Input section (code links, experiments, and risks).
 5. Build an "Entity & Concept Decomposition" section: enumerate every entity, concept, module, or API touched inside the target and its governing spec, outline the planned refactor for each (what changes, why, downstream effect, validation, open questions), and convert this breakdown into a staged implementation plan for downstream execution.
 6. Add a dedicated step that confirms every structure or function touched by the refactor has its code comments updated (or newly added) to describe what changed and why. Experimental branches are not exempt—experiments MUST keep these comments current too.
