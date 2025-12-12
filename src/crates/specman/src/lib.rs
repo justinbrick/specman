@@ -1,4 +1,5 @@
 pub mod adapter;
+pub mod api;
 pub mod dependency_tree;
 pub mod error;
 pub mod front_matter;
@@ -10,6 +11,8 @@ pub mod shared_function;
 pub mod template;
 pub mod template_catalog;
 pub mod workspace;
+
+pub use api::{create_implementation, create_scratch_pad, create_specification};
 
 pub use adapter::{DataModelAdapter, InMemoryAdapter};
 pub use dependency_tree::{
@@ -31,8 +34,9 @@ pub use persistence::{
 pub use scratchpad::ScratchPadProfile;
 pub use shared_function::{EntityKind, SchemaRef, SemVer};
 pub use template::{
-    MarkdownTemplateEngine, RenderedTemplate, TemplateDescriptor, TemplateEngine, TemplateLocator,
-    TemplateProvenance, TemplateScenario, TemplateTier, TokenMap,
+    ImplContext, MarkdownTemplateEngine, RenderedTemplate, ScratchPadContext, SpecContext,
+    TemplateDescriptor, TemplateEngine, TemplateLocator, TemplateProvenance, TemplateScenario,
+    TemplateTier, TokenMap,
 };
 pub use template_catalog::{ResolvedTemplate, TemplateCatalog};
 pub use workspace::{

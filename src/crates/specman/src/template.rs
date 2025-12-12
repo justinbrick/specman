@@ -1,10 +1,9 @@
+use handlebars::Handlebars;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
-
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
 use crate::error::SpecmanError;
 
@@ -94,7 +93,17 @@ pub trait TemplateEngine: Send + Sync {
 
 /// Minimal Markdown template engine that performs token substitution.
 #[derive(Default)]
-pub struct MarkdownTemplateEngine;
+pub struct MarkdownTemplateEngine {
+    registry: Handlebars<'static>,
+}
+
+impl MarkdownTemplateEngine {
+    pub fn new() -> Self {
+        let mut registry = Handlebars::new();
+        registry.register_escape_fn(handlebars::no_escape);
+        Self { registry }
+    }
+}
 
 impl TemplateEngine for MarkdownTemplateEngine {
     fn render(
@@ -105,7 +114,11 @@ impl TemplateEngine for MarkdownTemplateEngine {
         match &descriptor.locator {
             TemplateLocator::FilePath(path) => {
                 let raw = fs::read_to_string(path)?;
-                let body = apply_tokens(&raw, descriptor, tokens)?;
+                let body = self
+                    .registry
+                    .render_template(&raw, tokens)
+                    .map_err(|e| SpecmanError::Template(e.to_string()))?;
+
                 // Leverage the `markdown` crate to parse as a validation step.
                 let _ = markdown::to_html(&body);
                 Ok(RenderedTemplate {
@@ -121,50 +134,21 @@ impl TemplateEngine for MarkdownTemplateEngine {
     }
 }
 
-impl<T> TemplateEngine for Arc<T>
-where
-    T: TemplateEngine,
-{
-    fn render(
-        &self,
-        descriptor: &TemplateDescriptor,
-        tokens: &TokenMap,
-    ) -> Result<RenderedTemplate, SpecmanError> {
-        (**self).render(descriptor, tokens)
-    }
+#[derive(Serialize)]
+pub struct SpecContext {
+    pub name: String,
+    pub title: String,
 }
 
-fn apply_tokens(
-    content: &str,
-    descriptor: &TemplateDescriptor,
-    tokens: &TokenMap,
-) -> Result<String, SpecmanError> {
-    for key in &descriptor.required_tokens {
-        if !tokens.contains_key(key) {
-            return Err(SpecmanError::Template(format!("missing token: {key}")));
-        }
-    }
-
-    let mut rendered = content.to_owned();
-    for (key, value) in tokens {
-        let needle = format!("{{{{{key}}}}}");
-        if rendered.contains(&needle) {
-            rendered = rendered.replace(&needle, &value_to_string(value));
-        }
-    }
-
-    if rendered.contains("{{") {
-        return Err(SpecmanError::Template(
-            "unresolved template tokens remain in output".into(),
-        ));
-    }
-
-    Ok(rendered)
+#[derive(Serialize)]
+pub struct ImplContext {
+    pub name: String,
+    pub target: String,
 }
 
-fn value_to_string(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::String(s) => s.clone(),
-        _ => value.to_string(),
-    }
+#[derive(Serialize)]
+pub struct ScratchPadContext {
+    pub name: String,
+    pub target: String,
+    pub work_type: String,
 }
