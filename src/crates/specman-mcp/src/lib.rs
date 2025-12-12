@@ -413,8 +413,10 @@ impl SpecmanMcpServer {
 
         let target_name = resolved.tree.root.id.name.clone();
 
+        let example_scratch = format!("{}-{}", target_name, work_type);
+
         let provided_branch = branch_name.and_then(|value| normalize_input(Some(value)));
-        let example_branch = format!("{}/{}/{}", target_name, work_type, "some-action-here");
+        let example_branch = format!("{}/{}/{}", target_name, work_type, example_scratch);
         let branch_instruction = match provided_branch {
             Some(branch) => format!(
                 "Check out the provided branch \"{}\" and keep it active while working on this {} scratch pad.",
@@ -426,7 +428,10 @@ impl SpecmanMcpServer {
             ),
         };
 
-        let artifact_instruction = "Provide a scratch pad name (lowercase, hyphenated, ≤4 words) that satisfies spec/specman-data-model naming rules.".to_string();
+        let artifact_instruction = format!(
+            "Provide a scratch pad name (lowercase, hyphenated, ≤4 words) that satisfies spec/specman-data-model naming rules. Example: {}.",
+            example_scratch
+        );
 
         let context = bullet_list(&dependency_lines(&resolved));
         let dependencies = context.clone();
