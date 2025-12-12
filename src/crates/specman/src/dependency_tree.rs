@@ -1008,6 +1008,7 @@ fn resolve_workspace_path(
     base: Option<&Path>,
     workspace: &WorkspacePaths,
 ) -> Result<PathBuf, SpecmanError> {
+    // Enforce workspace scoping and emit explicit missing-target errors before canonicalizing.
     let path = if candidate.is_absolute() {
         candidate.to_path_buf()
     } else if let Some(base_dir) = base {
@@ -1015,6 +1016,13 @@ fn resolve_workspace_path(
     } else {
         workspace.root().join(candidate)
     };
+
+    if !path.exists() {
+        return Err(SpecmanError::Dependency(format!(
+            "missing target: {}",
+            path.display()
+        )));
+    }
 
     let canonical = fs::canonicalize(&path)?;
     if !canonical.starts_with(workspace.root()) {
@@ -1316,6 +1324,26 @@ name: specman-core
             .expect("handle builds tree");
 
         assert_eq!(tree.root.id.name, "specman-core");
+    }
+
+    #[test]
+    fn dependency_tree_reports_missing_handle_targets() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+
+        let mapper =
+            FilesystemDependencyMapper::new(FilesystemWorkspaceLocator::new(root.to_path_buf()));
+
+        let err = mapper
+            .dependency_tree_from_locator("spec://missing-spec")
+            .expect_err("missing handles should error");
+
+        if let SpecmanError::Dependency(msg) = err {
+            assert!(msg.contains("missing target"));
+        } else {
+            panic!("expected dependency error for missing handle target");
+        }
     }
 
     #[test]
@@ -1726,7 +1754,11 @@ version: "0.1.0"
 
         let err = validate_workspace_reference("spec://unknown", &parent_dir, &workspace)
             .expect_err("missing handles should error");
-        assert!(matches!(err, SpecmanError::Io(_)));
+        if let SpecmanError::Dependency(msg) = err {
+            assert!(msg.contains("missing target"));
+        } else {
+            panic!("expected dependency error for missing target");
+        }
     }
 
     #[test]

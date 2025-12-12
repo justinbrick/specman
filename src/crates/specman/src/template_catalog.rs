@@ -154,7 +154,14 @@ impl TemplateCatalog {
             ));
         }
 
-        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        // Remote template pointers must be HTTPS to avoid insecure downloads.
+        if trimmed.starts_with("http://") {
+            return Err(SpecmanError::Template(
+                "remote template pointers must use https".to_string(),
+            ));
+        }
+
+        if trimmed.starts_with("https://") {
             let url = Url::parse(trimmed).map_err(|err| {
                 SpecmanError::Template(format!(
                     "pointer locator {trimmed} is not a valid URL: {err}"
@@ -632,8 +639,6 @@ impl Drop for PointerLock {
 mod tests {
     use super::*;
     use crate::workspace::WorkspacePaths;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
 
     #[test]
     fn sets_pointer_to_workspace_file() {
@@ -691,40 +696,22 @@ mod tests {
     }
 
     #[test]
-    fn set_pointer_downloads_remote_cache_and_removal_purges_it() {
+    fn set_pointer_rejects_http_pointers() {
         let (_tempdir, workspace) = workspace_fixture();
         let catalog = TemplateCatalog::new(workspace.clone());
-        let (url, handle) = serve_once("# remote impl template");
 
-        let set_result = catalog
-            .set_pointer(TemplateScenario::Implementation, &url)
-            .expect("remote pointer set");
-        handle.join().unwrap();
+        let err = catalog
+            .set_pointer(
+                TemplateScenario::Implementation,
+                "http://example.com/template.md",
+            )
+            .expect_err("http pointers must be rejected");
 
-        assert!(matches!(
-            set_result.provenance.tier,
-            TemplateTier::PointerUrl
-        ));
-        let normalized_url = Url::parse(&url).unwrap().to_string();
-        let pointer_contents =
-            fs::read_to_string(catalog.templates_dir().join("IMPL")).expect("pointer file present");
-        assert_eq!(pointer_contents.trim(), normalized_url);
-        let cache_file = remote_cache_path(workspace.dot_specman(), &normalized_url);
-        assert!(cache_file.is_file());
-        assert!(
-            fs::read_to_string(&cache_file)
-                .unwrap()
-                .contains("remote impl")
-        );
-
-        let removal_result = catalog
-            .remove_pointer(TemplateScenario::Implementation)
-            .expect("remote pointer removal");
-        assert!(matches!(
-            removal_result.provenance.tier,
-            TemplateTier::EmbeddedDefault
-        ));
-        assert!(!cache_file.exists());
+        if let SpecmanError::Template(msg) = err {
+            assert!(msg.contains("https"));
+        } else {
+            panic!("expected template error for http pointer");
+        }
     }
 
     fn workspace_fixture() -> (tempfile::TempDir, WorkspacePaths) {
@@ -736,37 +723,6 @@ mod tests {
         fs::create_dir_all(root.join("spec")).unwrap();
         fs::create_dir_all(root.join("impl")).unwrap();
         (tempdir, WorkspacePaths::new(root, dot_specman))
-    }
-
-    fn serve_once(body: &str) -> (String, std::thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let body = body.to_string();
-        let handle = std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buffer = [0u8; 1024];
-                let _ = stream.read(&mut buffer);
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
-                    body.len(),
-                    body
-                );
-                let _ = stream.write_all(response.as_bytes());
-            }
-        });
-        (format!("http://{}", addr), handle)
-    }
-
-    fn remote_cache_path(dot_specman: &Path, url: &str) -> PathBuf {
-        let parsed = Url::parse(url).unwrap();
-        let mut hasher = Sha256::new();
-        hasher.update(parsed.as_str().as_bytes());
-        let digest = hasher.finalize();
-        let key = hex::encode(digest);
-        dot_specman
-            .join("cache")
-            .join("templates")
-            .join(format!("url-{key}.md"))
     }
 
     trait LocatorExt {
