@@ -65,11 +65,6 @@ The template catalog and its prompts share a fixed set of interpolation tokens t
 - Implementation templates MUST translate this token into the structured `references` metadata, mirroring how the data model represents upstream artifacts for implementations.
 - Scratch pad templates MUST expand this token to the dependency chain inferred from the scratch pad target so work logs reflect the same upstream set referenced in `{{context}}`.
 
-#### Token `{{arguments}}`
-
-- Templates and prompts MUST treat this token as caller-supplied free-form instructions and MUST preserve its contents verbatim when composing artifacts.
-- Implementations consuming the template catalog MAY use this token to pass scenario-specific guidance, but they MUST NOT override or rename the token without updating this specification.
-
 #### Token `{{target_path}}`
 
 - Scratch pad prompts and templates MUST treat this token as REQUIRED when present and MUST expect it to contain a unique scheme locator (`spec://` or `impl://`) that points to the target artifact.
