@@ -119,6 +119,7 @@ pub async fn describe_dependencies(
 
 - `resolve_handle` rejects workspace escapes and normalizes resource handles to canonical artifact identifiers.
 - `describe_dependencies` returns upstream/downstream trees; mutation handlers must consult this before writes and propagate errors when blocking dependents exist.
+- Context/prompt producers call the library's best-effort dependency traversal so missing handles still yield `resolved_path` + `resolution` metadata; clients can prefer the resolved path when handles are absent while keeping strict traversal for mutations.
 
 ### Concept: [Session Safety & Deterministic Execution](../../spec/specman-mcp/spec.md#concept-session-safety--deterministic-execution)
 

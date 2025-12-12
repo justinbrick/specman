@@ -211,6 +211,10 @@ impl<L: WorkspaceLocator> FilesystemDependencyMapper<L> {
     &self,
     reference: &str,
   ) -> Result<DependencyTree, SpecmanError>;
+  pub fn dependency_tree_from_locator_best_effort(
+    &self,
+    reference: &str,
+  ) -> Result<DependencyTree, SpecmanError>;
   pub fn dependency_tree_from_url(&self, url: &str) -> Result<DependencyTree, SpecmanError>;
 }
 
@@ -252,6 +256,7 @@ struct ResourceHandle { kind: ArtifactKind, slug: String }
 
 - Traversal stores the aggregate edge set so aggregate serialization (`serde_json::to_string(&tree)`) can be returned verbatim whenever a dependency cycle triggers a `SpecmanError::Dependency`. That serialized payload doubles as the JSON Schema example mandated by this concept.
 - `dependency_tree_from_locator` is the public entry point for every CLI/adapter call and delegates to the shared parser, so resource handles, workspace paths, and HTTPS URLs share identical validation + error messaging. The legacy URL helper remains as a thin shim for backwards compatibility.
+- `dependency_tree_from_locator_best_effort` is reserved for context/prompt emission; it annotates `ArtifactSummary.resolution` (strict vs. best-match file/url) and `ArtifactSummary.resolved_path` (workspace path or HTTPS URL) so callers can favor resolvable paths when strict handles are missing.
 - Upstream, downstream, and aggregate vectors follow the SpecMan Data Model entity definitions while `has_blocking_dependents()` enforces lifecycle guardrails for creation/deletion flows.
 - Downstream scans rely on `WorkspaceInventory::build` to walk every artifact under `spec/`, `impl/`, and `.specman/scratchpad`, guaranteeing that optional edges remain visible while never blocking deletions unless the `optional` flag is false (or the artifact is a scratch pad referencing another scratch pad).
 
@@ -444,6 +449,8 @@ pub struct ArtifactSummary {
   pub id: ArtifactId,
   pub version: Option<SemVer>,
   pub metadata: BTreeMap<String, String>,
+  pub resolved_path: Option<String>,
+  pub resolution: Option<ResolutionProvenance>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Default)]
@@ -463,6 +470,8 @@ pub struct DependencyTree {
 }
 ```
 
+- JSON schemas for these structs are produced at build time via `schemars` so tools can consume the canonical shape without this document duplicating the output.
+- `ResolutionProvenance` captures whether traversal used strict handle resolution, best-match docs, or best-match HTTPS; `resolved_path` carries the workspace path or URL chosen so context flows can still render actionable links.
 - JSON schemas for these structs are produced at build time via `schemars` so tools can consume the canonical shape without this document duplicating the output.
 - `DependencyTree::has_blocking_dependents()` enforces deletion guard policies referenced under Lifecycle Automation.
 

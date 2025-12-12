@@ -201,7 +201,7 @@ fn artifact_record(summary: &ArtifactSummary, workspace: &WorkspacePaths) -> Art
         ArtifactKind::ScratchPad => format!("scratch://{}", summary.id.name),
     };
 
-    let path = artifact_path(&summary.id, workspace).display().to_string();
+    let path = resolved_path_or_artifact_path(summary, workspace);
 
     ArtifactRecord {
         id: summary.id.clone(),
@@ -218,6 +218,13 @@ fn artifact_path(id: &ArtifactId, workspace: &WorkspacePaths) -> PathBuf {
         ArtifactKind::Implementation => workspace.impl_dir().join(&id.name).join("impl.md"),
         ArtifactKind::ScratchPad => workspace.scratchpad_dir().join(&id.name).join("scratch.md"),
     }
+}
+
+fn resolved_path_or_artifact_path(summary: &ArtifactSummary, workspace: &WorkspacePaths) -> String {
+    summary
+        .resolved_path
+        .clone()
+        .unwrap_or_else(|| artifact_path(&summary.id, workspace).display().to_string())
 }
 
 fn list_dir_entries(root: &Path) -> Vec<PathBuf> {
@@ -380,12 +387,10 @@ impl SpecmanMcpServer {
         let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
         let tree = self
             .dependency_mapper
-            .dependency_tree_from_locator(locator)
+            .dependency_tree_from_locator_best_effort(locator)
             .map_err(to_mcp_error)?;
 
-        let path = artifact_path(&tree.root.id, &workspace)
-            .display()
-            .to_string();
+        let path = resolved_path_or_artifact_path(&tree.root, &workspace);
         let handle = artifact_handle(&tree.root);
 
         Ok(ResolvedTarget {
@@ -489,9 +494,7 @@ fn dependency_lines(resolved: &ResolvedTarget) -> Vec<String> {
             continue;
         }
 
-        let path = artifact_path(&edge.to.id, &resolved.workspace)
-            .display()
-            .to_string();
+        let path = resolved_path_or_artifact_path(&edge.to, &resolved.workspace);
         lines.push(format!("- {} ({})", handle, path));
     }
 

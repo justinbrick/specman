@@ -71,6 +71,29 @@ pub enum ArtifactKind {
     ScratchPad,
 }
 
+/// Tracks how a locator was resolved so callers can distinguish strict paths from
+/// best-effort fallbacks that preserve context without guaranteeing mutability.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+)]
+pub enum ResolutionProvenance {
+    #[default]
+    Strict,
+    BestMatchFile,
+    BestMatchUrl,
+}
+
 /// Lightweight summary that includes version data for dependency planning.
 #[derive(
     Clone, Debug, Serialize, Deserialize, JsonSchema, Default, PartialEq, Eq, PartialOrd, Ord,
@@ -79,6 +102,10 @@ pub struct ArtifactSummary {
     pub id: ArtifactId,
     pub version: Option<SemVer>,
     pub metadata: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<ResolutionProvenance>,
 }
 
 /// Directed edge between two artifacts.
@@ -196,6 +223,16 @@ impl<L: WorkspaceLocator> FilesystemDependencyMapper<L> {
         self.graph.dependency_tree_from_locator(reference)
     }
 
+    /// Tolerant variant used for context emission; falls back to best-match locators when strict
+    /// handles are missing. Do not use for mutation flows.
+    pub fn dependency_tree_from_locator_best_effort(
+        &self,
+        reference: &str,
+    ) -> Result<DependencyTree, SpecmanError> {
+        self.graph
+            .dependency_tree_from_locator_best_effort(reference)
+    }
+
     /// Builds a dependency tree by fetching the artifact from the provided HTTPS URL.
     /// Prefer [`dependency_tree_from_locator`], which also supports resource handles and
     /// workspace-relative paths.
@@ -241,7 +278,12 @@ impl<L: WorkspaceLocator> DependencyGraphServices<L> {
     ) -> Result<DependencyTree, SpecmanError> {
         let workspace = self.workspace_paths()?;
         let locator = ArtifactLocator::from_path(path.as_ref(), &workspace, None)?;
-        self.build_tree_with_workspace(locator, workspace)
+        self.build_tree_with_workspace(
+            locator,
+            ResolutionProvenance::Strict,
+            workspace,
+            DependencyResolutionMode::Strict,
+        )
     }
 
     pub fn dependency_tree_from_locator(
@@ -250,7 +292,33 @@ impl<L: WorkspaceLocator> DependencyGraphServices<L> {
     ) -> Result<DependencyTree, SpecmanError> {
         let workspace = self.workspace_paths()?;
         let locator = ArtifactLocator::from_reference(reference, &workspace)?;
-        self.build_tree_with_workspace(locator, workspace)
+        self.build_tree_with_workspace(
+            locator,
+            ResolutionProvenance::Strict,
+            workspace,
+            DependencyResolutionMode::Strict,
+        )
+    }
+
+    /// Best-effort variant that tolerates missing strict handles by falling back to workspace
+    /// docs or HTTPS URLs. Intended for context emission only; mutations should prefer the
+    /// strict variants above.
+    pub fn dependency_tree_from_locator_best_effort(
+        &self,
+        reference: &str,
+    ) -> Result<DependencyTree, SpecmanError> {
+        let workspace = self.workspace_paths()?;
+        let (locator, resolution) = match ArtifactLocator::from_reference(reference, &workspace) {
+            Ok(locator) => (locator, ResolutionProvenance::Strict),
+            Err(err) => best_effort_locator(reference, &workspace).ok_or(err)?,
+        };
+
+        self.build_tree_with_workspace(
+            locator,
+            resolution,
+            workspace,
+            DependencyResolutionMode::BestEffort,
+        )
     }
 
     pub fn dependency_tree_from_url(&self, url: &str) -> Result<DependencyTree, SpecmanError> {
@@ -263,7 +331,12 @@ impl<L: WorkspaceLocator> DependencyGraphServices<L> {
     ) -> Result<DependencyTree, SpecmanError> {
         let workspace = self.workspace_paths()?;
         let locator = self.locator_for_artifact(root, &workspace)?;
-        self.build_tree_with_workspace(locator, workspace)
+        self.build_tree_with_workspace(
+            locator,
+            ResolutionProvenance::Strict,
+            workspace,
+            DependencyResolutionMode::Strict,
+        )
     }
 
     pub fn inventory_snapshot(&self) -> Result<WorkspaceInventorySnapshot, SpecmanError> {
@@ -282,10 +355,12 @@ impl<L: WorkspaceLocator> DependencyGraphServices<L> {
     fn build_tree_with_workspace(
         &self,
         root_locator: ArtifactLocator,
+        root_resolution: ResolutionProvenance,
         workspace: WorkspacePaths,
+        mode: DependencyResolutionMode,
     ) -> Result<DependencyTree, SpecmanError> {
-        let mut traversal = Traversal::new(workspace.clone(), self.fetcher.clone());
-        let root = traversal.visit(&root_locator)?;
+        let mut traversal = Traversal::new(workspace.clone(), self.fetcher.clone(), mode);
+        let root = traversal.visit(&root_locator, root_resolution)?;
         let mut aggregate: BTreeSet<_> = traversal.edges.clone();
 
         if let Some(root_path) = root_locator.workspace_path().map(Path::to_path_buf) {
@@ -417,6 +492,7 @@ struct ArtifactDocument {
 struct ArtifactDependency {
     locator: ArtifactLocator,
     optional: bool,
+    resolution: ResolutionProvenance,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -611,20 +687,30 @@ struct Traversal {
     visited: HashMap<String, ArtifactSummary>,
     stack: Vec<String>,
     fetcher: Arc<dyn ContentFetcher>,
+    mode: DependencyResolutionMode,
 }
 
 impl Traversal {
-    fn new(workspace: WorkspacePaths, fetcher: Arc<dyn ContentFetcher>) -> Self {
+    fn new(
+        workspace: WorkspacePaths,
+        fetcher: Arc<dyn ContentFetcher>,
+        mode: DependencyResolutionMode,
+    ) -> Self {
         Self {
             workspace,
             edges: BTreeSet::new(),
             visited: HashMap::new(),
             stack: Vec::new(),
             fetcher,
+            mode,
         }
     }
 
-    fn visit(&mut self, locator: &ArtifactLocator) -> Result<ArtifactSummary, SpecmanError> {
+    fn visit(
+        &mut self,
+        locator: &ArtifactLocator,
+        resolution: ResolutionProvenance,
+    ) -> Result<ArtifactSummary, SpecmanError> {
         let key = locator.key();
         if self.stack.contains(&key) {
             let cycle = self
@@ -679,12 +765,13 @@ impl Traversal {
             locator,
             &self.workspace,
             self.fetcher.as_ref(),
-            DependencyResolutionMode::Strict,
+            self.mode,
+            resolution,
         )?;
         let summary = document.summary.clone();
 
         for dependency in document.dependencies {
-            let child = self.visit(&dependency.locator)?;
+            let child = self.visit(&dependency.locator, dependency.resolution)?;
             self.record_edge(summary.clone(), child, dependency.optional);
         }
 
@@ -727,6 +814,7 @@ impl WorkspaceInventorySnapshot {
                 workspace,
                 fetcher.as_ref(),
                 DependencyResolutionMode::BestEffort,
+                ResolutionProvenance::Strict,
             )?;
             entries.push(InventoryEntry {
                 summary: document.summary,
@@ -812,10 +900,12 @@ impl ArtifactDocument {
         workspace: &WorkspacePaths,
         fetcher: &dyn ContentFetcher,
         mode: DependencyResolutionMode,
+        resolution: ResolutionProvenance,
     ) -> Result<Self, SpecmanError> {
         let raw = locator.load(fetcher)?;
         let mut metadata = BTreeMap::new();
         metadata.insert("locator".into(), locator.describe());
+        metadata.insert("resolution".into(), format!("{resolution:?}"));
 
         let (frontmatter, status) = front_matter::optional_front_matter(&raw);
         if let Some(status) = status {
@@ -855,6 +945,8 @@ impl ArtifactDocument {
             id: ArtifactId { kind, name },
             version,
             metadata,
+            resolved_path: Some(locator.describe()),
+            resolution: Some(resolution),
         };
 
         Ok(Self {
@@ -882,77 +974,101 @@ fn resolve_dependencies(
                     }
                 };
                 let locator = match resolve_dependency_locator(reference, locator, workspace) {
-                    Ok(locator) => Some(locator),
+                    Ok(locator) => Some((locator, ResolutionProvenance::Strict)),
                     Err(err) => {
                         if mode.is_strict() {
                             return Err(err);
                         }
-                        record_dependency_error(metadata, reference, &err);
-                        None
+                        if let Some(best) = best_effort_locator(reference, workspace) {
+                            Some(best)
+                        } else {
+                            record_dependency_error(metadata, reference, &err);
+                            None
+                        }
                     }
                 };
-                let Some(locator) = locator else {
+                let Some((locator, resolution)) = locator else {
                     continue;
                 };
-                deps.push(ArtifactDependency { locator, optional });
+                deps.push(ArtifactDependency {
+                    locator,
+                    optional,
+                    resolution,
+                });
             }
         }
         ArtifactFrontMatter::Implementation(implementation) => {
             if let Some(spec_ref) = implementation.spec.as_deref() {
                 let locator = match resolve_dependency_locator(spec_ref, locator, workspace) {
-                    Ok(locator) => Some(locator),
+                    Ok(locator) => Some((locator, ResolutionProvenance::Strict)),
                     Err(err) => {
                         if mode.is_strict() {
                             return Err(err);
                         }
-                        record_dependency_error(metadata, spec_ref, &err);
-                        None
+                        if let Some(best) = best_effort_locator(spec_ref, workspace) {
+                            Some(best)
+                        } else {
+                            record_dependency_error(metadata, spec_ref, &err);
+                            None
+                        }
                     }
                 };
-                if let Some(locator) = locator {
+                if let Some((locator, resolution)) = locator {
                     deps.push(ArtifactDependency {
                         locator,
                         optional: false,
+                        resolution,
                     });
                 }
             }
             for reference in &implementation.references {
                 let locator =
                     match resolve_dependency_locator(&reference.reference, locator, workspace) {
-                        Ok(locator) => Some(locator),
+                        Ok(locator) => Some((locator, ResolutionProvenance::Strict)),
                         Err(err) => {
                             if mode.is_strict() {
                                 return Err(err);
                             }
-                            record_dependency_error(metadata, &reference.reference, &err);
-                            None
+                            if let Some(best) = best_effort_locator(&reference.reference, workspace)
+                            {
+                                Some(best)
+                            } else {
+                                record_dependency_error(metadata, &reference.reference, &err);
+                                None
+                            }
                         }
                     };
-                let Some(locator) = locator else {
+                let Some((locator, resolution)) = locator else {
                     continue;
                 };
                 deps.push(ArtifactDependency {
                     locator,
                     optional: reference.optional.unwrap_or(false),
+                    resolution,
                 });
             }
         }
         ArtifactFrontMatter::Scratch(scratch) => {
             if let Some(target) = scratch.target.as_deref() {
                 let locator = match resolve_scratch_target_locator(target, locator, workspace) {
-                    Ok(locator) => Some(locator),
+                    Ok(locator) => Some((locator, ResolutionProvenance::Strict)),
                     Err(err) => {
                         if mode.is_strict() {
                             return Err(err);
                         }
-                        record_dependency_error(metadata, target, &err);
-                        None
+                        if let Some(best) = best_effort_locator(target, workspace) {
+                            Some(best)
+                        } else {
+                            record_dependency_error(metadata, target, &err);
+                            None
+                        }
                     }
                 };
-                if let Some(locator) = locator {
+                if let Some((locator, resolution)) = locator {
                     deps.push(ArtifactDependency {
                         locator,
                         optional: false,
+                        resolution,
                     });
                 }
             }
@@ -964,19 +1080,27 @@ fn resolve_dependencies(
                     }
                 };
                 let locator = match resolve_scratch_dependency_locator(reference, workspace) {
-                    Ok(locator) => Some(locator),
+                    Ok(locator) => Some((locator, ResolutionProvenance::Strict)),
                     Err(err) => {
                         if mode.is_strict() {
                             return Err(err);
                         }
-                        record_dependency_error(metadata, reference, &err);
-                        None
+                        if let Some(best) = best_effort_locator(reference, workspace) {
+                            Some(best)
+                        } else {
+                            record_dependency_error(metadata, reference, &err);
+                            None
+                        }
                     }
                 };
-                let Some(locator) = locator else {
+                let Some((locator, resolution)) = locator else {
                     continue;
                 };
-                deps.push(ArtifactDependency { locator, optional });
+                deps.push(ArtifactDependency {
+                    locator,
+                    optional,
+                    resolution,
+                });
             }
         }
     }
@@ -1060,6 +1184,50 @@ pub fn validate_workspace_reference(
     let candidate = Path::new(reference);
     resolve_workspace_path(candidate, Some(parent), workspace)?;
     Ok(())
+}
+
+/// Provides a tolerant locator resolution that prioritizes workspace-local Markdown files
+/// or fully-qualified HTTPS URLs when strict resolution fails. Used for context emission so
+/// callers still receive actionable paths even when handles are imperfect.
+fn best_effort_locator(
+    reference: &str,
+    workspace: &WorkspacePaths,
+) -> Option<(ArtifactLocator, ResolutionProvenance)> {
+    // Attempt to handle resource handles by falling back to docs-based Markdown when the
+    // canonical spec/impl/scratch layout is missing.
+    if let Ok(Some(handle)) = ResourceHandle::parse(reference) {
+        let doc_path = workspace
+            .root()
+            .join("docs")
+            .join(format!("{}.md", handle.slug));
+        if doc_path.is_file() {
+            return Some((
+                ArtifactLocator::File(doc_path),
+                ResolutionProvenance::BestMatchFile,
+            ));
+        }
+    }
+
+    // If the reference already looks like HTTPS, treat it as an external spec.
+    if reference.starts_with("https://") {
+        if let Ok(locator) = ArtifactLocator::from_url(reference) {
+            return Some((locator, ResolutionProvenance::BestMatchUrl));
+        }
+    }
+
+    // Bare domains without a scheme (e.g., spec.commonmark.org) can be promoted to HTTPS.
+    if !reference.contains("://")
+        && reference.contains('.')
+        && !reference.contains(' ')
+        && !reference.contains('\\')
+    {
+        let candidate = format!("https://{reference}");
+        if let Ok(locator) = ArtifactLocator::from_url(&candidate) {
+            return Some((locator, ResolutionProvenance::BestMatchUrl));
+        }
+    }
+
+    None
 }
 
 /// Resolves dependency references that may point to workspace-relative paths, HTTPS URLs, or
@@ -1343,6 +1511,65 @@ name: specman-core
             assert!(msg.contains("missing target"));
         } else {
             panic!("expected dependency error for missing handle target");
+        }
+    }
+
+    #[test]
+    fn dependency_tree_best_effort_returns_docs_when_handle_missing() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("docs")).unwrap();
+
+        fs::write(
+            root.join("docs/founding-spec.md"),
+            r#"---
+name: founding-spec
+---
+# Founding Spec
+"#,
+        )
+        .unwrap();
+
+        let mapper =
+            FilesystemDependencyMapper::new(FilesystemWorkspaceLocator::new(root.to_path_buf()));
+        let tree = mapper
+            .dependency_tree_from_locator_best_effort("spec://founding-spec")
+            .expect("best-effort docs fallback");
+
+        assert_eq!(tree.root.id.name, "founding-spec");
+        assert_eq!(
+            tree.root.resolution,
+            Some(ResolutionProvenance::BestMatchFile)
+        );
+        let resolved = tree
+            .root
+            .resolved_path
+            .as_ref()
+            .expect("best-effort should set resolved_path");
+        assert!(
+            resolved.ends_with("docs/founding-spec.md"),
+            "unexpected resolved path: {}",
+            resolved
+        );
+    }
+
+    #[test]
+    fn best_effort_locator_promotes_bare_domain_to_https() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        let workspace = WorkspacePaths::new(root.clone(), root.join(".specman"));
+
+        let (locator, resolution) =
+            best_effort_locator("spec.commonmark.org", &workspace).expect("domain promoted");
+
+        assert_eq!(resolution, ResolutionProvenance::BestMatchUrl);
+        match locator {
+            ArtifactLocator::Url(url) => {
+                assert_eq!(url.as_str(), "https://spec.commonmark.org/");
+            }
+            other => panic!("expected url locator, got {other:?}"),
         }
     }
 
