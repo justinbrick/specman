@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::error::SpecmanError;
 
@@ -131,6 +132,19 @@ impl TemplateEngine for MarkdownTemplateEngine {
                 "remote templates are not yet supported: {url}"
             ))),
         }
+    }
+}
+
+impl<T> TemplateEngine for Arc<T>
+where
+    T: TemplateEngine + ?Sized,
+{
+    fn render(
+        &self,
+        descriptor: &TemplateDescriptor,
+        tokens: &TokenMap,
+    ) -> Result<RenderedTemplate, SpecmanError> {
+        (**self).render(descriptor, tokens)
     }
 }
 
