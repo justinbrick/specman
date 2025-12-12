@@ -10,9 +10,6 @@ Before making changes, complete these reading prerequisites:
 Read the following dependencies before continuing:
 {{context}}
 
-User-provided input:
-{{arguments}}
-
 Steps:
 
 1. Create or refine a short, lowercase, hyphenated scratch pad name (≤4 words) that captures the defect scope, ensuring it meets SpecMan naming rules, and apply it to `{{output_name}}` for the remainder of this workflow.

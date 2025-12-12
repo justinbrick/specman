@@ -126,7 +126,6 @@ impl SpecmanMcpServer {
             SCRATCH_FEAT_TEMPLATE,
             &args.target,
             args.branch_name,
-            args.arguments,
             "feat",
         )
     }
@@ -139,13 +138,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ScratchPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(
-            SCRATCH_REF_TEMPLATE,
-            &args.target,
-            args.branch_name,
-            args.arguments,
-            "ref",
-        )
+        self.render_scratch_prompt(SCRATCH_REF_TEMPLATE, &args.target, args.branch_name, "ref")
     }
 
     #[prompt(
@@ -160,7 +153,6 @@ impl SpecmanMcpServer {
             SCRATCH_REVISION_TEMPLATE,
             &args.target,
             args.branch_name,
-            args.arguments,
             "revision",
         )
     }
@@ -173,13 +165,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ScratchPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(
-            SCRATCH_FIX_TEMPLATE,
-            &args.target,
-            args.branch_name,
-            args.arguments,
-            "fix",
-        )
+        self.render_scratch_prompt(SCRATCH_FIX_TEMPLATE, &args.target, args.branch_name, "fix")
     }
 }
 
@@ -380,8 +366,6 @@ fn resource_for_artifact(
 pub struct ScratchPromptArgs {
     pub target: String,
     pub branch_name: Option<String>,
-    #[serde(default)]
-    pub arguments: Option<String>,
 }
 
 struct ResolvedTarget {
@@ -418,7 +402,6 @@ impl SpecmanMcpServer {
         template: &str,
         locator: &str,
         branch_name: Option<String>,
-        arguments: Option<String>,
         work_type: &str,
     ) -> Result<Vec<PromptMessage>, McpError> {
         let resolved = self.resolve_target(locator)?;
@@ -448,18 +431,6 @@ impl SpecmanMcpServer {
         let context = bullet_list(&dependency_lines(&resolved));
         let dependencies = context.clone();
 
-        let mut argument_sections = Vec::new();
-
-        if let Some(user_args) = normalize_input(arguments) {
-            argument_sections.push(user_args);
-        }
-
-        let argument_text = if argument_sections.is_empty() {
-            "(no additional arguments provided)".to_string()
-        } else {
-            argument_sections.join("\n\n")
-        };
-
         let replacements = vec![
             ("{{output_name}}", scratch_name.clone()),
             ("{{branch_name_or_request}}", branch_instruction.clone()),
@@ -467,7 +438,6 @@ impl SpecmanMcpServer {
             ("{{target_path}}", resolved.handle.clone()),
             ("{{context}}", context),
             ("{{dependencies}}", dependencies),
-            ("{{arguments}}", argument_text),
             ("{{artifact_name_or_request}}", artifact_instruction),
         ];
 
@@ -803,7 +773,6 @@ mod tests {
             .scratch_feat_prompt(Parameters(ScratchPromptArgs {
                 target: "impl://testimpl".to_string(),
                 branch_name: None,
-                arguments: Some("user guidance".to_string()),
             }))
             .await?
             .pop()
@@ -816,7 +785,6 @@ mod tests {
 
         assert!(rendered.contains("Create and check out a branch"));
         assert!(rendered.contains("testimpl/feat/testimpl-feat"));
-        assert!(rendered.contains("user guidance"));
         assert!(rendered.contains("impl/testimpl/impl.md"));
 
         Ok(())
@@ -830,7 +798,6 @@ mod tests {
             .scratch_ref_prompt(Parameters(ScratchPromptArgs {
                 target: "impl://testimpl".to_string(),
                 branch_name: None,
-                arguments: None,
             }))
             .await?
             .pop()
@@ -857,7 +824,6 @@ mod tests {
             .scratch_revision_prompt(Parameters(ScratchPromptArgs {
                 target: "spec://testspec".to_string(),
                 branch_name: Some("custom-revision".to_string()),
-                arguments: Some("user adds notes".to_string()),
             }))
             .await?
             .pop()
@@ -871,7 +837,6 @@ mod tests {
 
         assert!(text.contains("spec/testspec/spec.md"));
         assert!(text.contains("Check out the provided branch \"custom-revision\""));
-        assert!(text.contains("user adds notes"));
 
         Ok(())
     }
@@ -884,7 +849,6 @@ mod tests {
             .scratch_fix_prompt(Parameters(ScratchPromptArgs {
                 target: "impl://testimpl".to_string(),
                 branch_name: None,
-                arguments: Some("fix bug".to_string()),
             }))
             .await?
             .pop()
@@ -899,7 +863,6 @@ mod tests {
         assert!(text.contains("impl/testimpl/impl.md"));
         assert!(text.contains("Create and check out a branch"));
         assert!(text.contains("testimpl/fix/testimpl-fix"));
-        assert!(text.contains("fix bug"));
 
         Ok(())
     }
@@ -986,7 +949,6 @@ mod tests {
                 .scratch_feat_prompt(Parameters(ScratchPromptArgs {
                     target: "impl://testimpl".to_string(),
                     branch_name: None,
-                    arguments: None,
                 }))
                 .await?,
         );
@@ -1006,7 +968,6 @@ mod tests {
                 .scratch_revision_prompt(Parameters(ScratchPromptArgs {
                     target: "spec://testspec".to_string(),
                     branch_name: None,
-                    arguments: None,
                 }))
                 .await?,
         );
@@ -1035,7 +996,6 @@ mod tests {
                     .scratch_feat_prompt(Parameters(ScratchPromptArgs {
                         target: "impl://testimpl".to_string(),
                         branch_name: None,
-                        arguments: Some("user args".to_string()),
                     }))
                     .await?,
             ),
@@ -1046,7 +1006,6 @@ mod tests {
                     .scratch_ref_prompt(Parameters(ScratchPromptArgs {
                         target: "impl://testimpl".to_string(),
                         branch_name: None,
-                        arguments: None,
                     }))
                     .await?,
             ),
@@ -1057,7 +1016,6 @@ mod tests {
                     .scratch_revision_prompt(Parameters(ScratchPromptArgs {
                         target: "spec://testspec".to_string(),
                         branch_name: None,
-                        arguments: Some("notes".to_string()),
                     }))
                     .await?,
             ),
@@ -1068,7 +1026,6 @@ mod tests {
                     .scratch_fix_prompt(Parameters(ScratchPromptArgs {
                         target: "impl://testimpl".to_string(),
                         branch_name: None,
-                        arguments: Some("fix".to_string()),
                     }))
                     .await?,
             ),

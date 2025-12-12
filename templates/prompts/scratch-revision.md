@@ -10,9 +10,6 @@ Before proceeding, satisfy these reading prerequisites:
 Read the following dependencies before continuing:
 {{context}}
 
-User-provided input:
-{{arguments}}
-
 Steps:
 
 1. Create or refine a short, lowercase, hyphenated scratch pad name (≤4 words) that reflects the revision scope, ensuring it meets SpecMan naming constraints, and set `{{output_name}}` to that value.
