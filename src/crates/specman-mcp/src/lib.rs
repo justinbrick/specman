@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -506,11 +506,22 @@ fn artifact_handle(summary: &ArtifactSummary) -> String {
 }
 
 fn dependency_lines(resolved: &ResolvedTarget) -> Vec<String> {
+    // Deduplicate on artifact handle while preserving first-seen order; always keep the root entry.
+    // If downstream context is added later, apply the same handle-level dedup there as well.
     let mut lines = Vec::new();
-    lines.push(format!("- {} ({})", resolved.handle, resolved.path));
+    let mut seen = HashSet::new();
+
+    let root_handle = resolved.handle.clone();
+    let root_line = format!("- {} ({})", root_handle, resolved.path);
+    lines.push(root_line);
+    seen.insert(root_handle);
 
     for edge in &resolved.tree.upstream {
         let handle = artifact_handle(&edge.to);
+        if !seen.insert(handle.clone()) {
+            continue;
+        }
+
         let path = artifact_path(&edge.to.id, &resolved.workspace)
             .display()
             .to_string();
@@ -894,6 +905,78 @@ mod tests {
         assert!(text.contains("impl/testimpl/impl.md"));
         assert!(text.contains("testimpl/fix/testimpl-fix"));
         assert!(text.contains("fix bug"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn dependency_lines_deduplicates_handle_entries() -> Result<(), Box<dyn std::error::Error>> {
+        use specman::{DependencyEdge, DependencyRelation};
+
+        let temp = tempfile::tempdir()?;
+        let root_path = temp.path();
+
+        fs::create_dir_all(root_path.join(".specman"))?;
+        fs::create_dir_all(root_path.join("impl/rootimpl"))?;
+        fs::create_dir_all(root_path.join("spec/dep"))?;
+
+        let workspace = WorkspacePaths::new(root_path.to_path_buf(), root_path.join(".specman"));
+
+        let root_id = ArtifactId {
+            kind: ArtifactKind::Implementation,
+            name: "rootimpl".to_string(),
+        };
+
+        let dep_id = ArtifactId {
+            kind: ArtifactKind::Specification,
+            name: "dep".to_string(),
+        };
+
+        let root_summary = ArtifactSummary {
+            id: root_id.clone(),
+            ..Default::default()
+        };
+
+        let dep_summary = ArtifactSummary {
+            id: dep_id.clone(),
+            ..Default::default()
+        };
+
+        let edge = DependencyEdge {
+            from: root_summary.clone(),
+            to: dep_summary.clone(),
+            relation: DependencyRelation::Upstream,
+            optional: false,
+        };
+
+        let tree = DependencyTree {
+            root: root_summary.clone(),
+            upstream: vec![edge.clone(), edge],
+            ..Default::default()
+        };
+
+        let resolved = ResolvedTarget {
+            tree,
+            workspace: workspace.clone(),
+            handle: artifact_handle(&root_summary),
+            path: artifact_path(&root_id, &workspace).display().to_string(),
+        };
+
+        let lines = dependency_lines(&resolved);
+
+        assert!(
+            lines
+                .first()
+                .expect("root line exists")
+                .starts_with("- impl://rootimpl ("),
+            "root entry must remain in list"
+        );
+
+        let dep_count = lines
+            .iter()
+            .filter(|line| line.contains("spec://dep"))
+            .count();
+        assert_eq!(dep_count, 1, "dependency handle should appear only once");
 
         Ok(())
     }
