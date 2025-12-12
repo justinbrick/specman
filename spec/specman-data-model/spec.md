@@ -5,6 +5,8 @@ dependencies:
   - https://spec.commonmark.org/0.31.2/
 ---
 
+# SpecMan Data Model
+
 ## Terminology & References
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119.
@@ -23,7 +25,7 @@ Implementations SHOULD treat the nearest ancestor directory containing a `.specm
 
 ## Scratch Pads
 
-Scratch pads are working documents that track in-progress efforts for SpecMan-aware tooling. 
+Scratch pads are working documents that track in-progress efforts for SpecMan-aware tooling.
 
 - Each scratch pad MUST reside in its own subdirectory whose name is all lowercase, uses hyphen separators, contains no more than four words, and MAY include verbs.
   - This will act as the **scratch pad name**.
@@ -48,6 +50,7 @@ Example:
 ### Target Artifact
 
 A scratch pad MUST have a target artifact associated with it.
+
 - The artifact MUST be either a specification or an implementation.
 - This artifact MUST be a relative file path, or a URL if the artifact is external.
 
@@ -57,10 +60,10 @@ A scratch pad MUST have a target artifact associated with it.
 - Scratch pad dependencies MUST reference other scratch pads only; specifications and implementations continue to be expressed through the `target` field.
 - A scratch pad MUST NOT be deleted while another scratch pad depends on it.
 
-
 ### Scratch Pad Content
 
 There MUST be specific content included inside of a scratch pad, for readability sake.
+
 - A scratch pad MUST contain a notes section.
   - This is to allow for any AI to resume from little to no context.
 - A scratch pad SHOULD have a tasks file.
@@ -69,7 +72,8 @@ There MUST be specific content included inside of a scratch pad, for readability
 
 ### Work Type
 
-A scratch pad MUST specify its work type, which specifies what kind of actions are being taken. 
+A scratch pad MUST specify its work type, which specifies what kind of actions are being taken.
+
 - A scratch pad MUST only have one work type.
 - Work types MUST be represented as objects, to store data unique to the work type.
   - If the work type does not have any data, it SHOULD be represented as an empty object.
@@ -101,17 +105,13 @@ A work type can be one of the following:
     - `fixed_headings`: a list of headings for concepts or entities impacted by the fix.
       - each fixed heading MUST be represented as a markdown fragment that exists within the implementation's referenced specifications.
 
-
-
 ### Git Branches
 
 Scratch pads SHOULD have a Git branch associated with them. A branch MAY be excluded if a Git repository is not present in the SpecMan workspace.
 
 Git branches MUST follow a naming scheme of:
 
-```
-{target_name}/{work_type}/{scratch_pad_name}
-```
+`{target_name}/{work_type}/{scratch_pad_name}`
 
 The meaning of these labels are defined below.
 
@@ -145,7 +145,8 @@ Specifications MUST be written in Markdown. Compliant specifications and contrib
 ### Specification Headings
 
 Each specification MUST categorize their content into [headings](https://spec.commonmark.org/0.31.2/#atx-headings).
-- Each heading within a specification MUST be unique to the implementation itself. 
+
+- Each heading within a specification MUST be unique to the implementation itself.
 - Specifications SHOULD include a top-level heading titled "Terminology & References" placed near the top of the file (immediately below the main title or any YAML frontmatter).
   - This heading SHOULD include a reference to RFC 2119 and a short statement indicating how the RFC 2119 normative keywords (for example, MUST, SHOULD, MAY, etc.) are to be interpreted for that document.
   - Other statements or notes SHOULD be added to this heading regarding referenced documents, but MAY be omitted or relocated under other headings as necessary.
@@ -173,7 +174,7 @@ Example:
 
 > ![NOTE] Standalone specifications are experimental, and may not be added to the non-draft version.
 
-A specification MAY NOT require a reference to an implementation to be used. For example, when a specification defines usage in a common format that can be used without requiring explicit implementation details (e.g. CLI commands) 
+A specification MAY NOT require a reference to an implementation to be used. For example, when a specification defines usage in a common format that can be used without requiring explicit implementation details (e.g. CLI commands)
 
 When a specification does not require an implementation, this SHOULD be recorded in the spec's top-of-file YAML frontmatter using a boolean field named `requires_implementation`. If `requires_implementation` is omitted, implementations and tooling MUST treat the value as `true` by default.
 
@@ -190,7 +191,6 @@ When a specification does not require an implementation, this SHOULD be recorded
     - `optional` (boolean): when true, indicates this dependency is optional.
 
 If a concept or key entity is referenced from one of the dependencies, it SHOULD be marked with an [inline link](https://spec.commonmark.org/0.31.2/#inline-link).
-
 
 ### Specification Metadata
 
@@ -231,6 +231,7 @@ dependencies:
 ### Implementation Headings
 
 Each implementation MUST categorize their content into [headings](https://spec.commonmark.org/0.31.2/#atx-headings).
+
 - A heading SHOULD be a link if it is a direct reference to a specification concept or key entity.
 - If multiple concepts or key entities are related, they SHOULD be linked directly under the heading in an unordered list that provides inline links to the concepts / entities.
 
@@ -245,6 +246,7 @@ Implementation documents MUST be stored in folders.
   - Related documents MUST be human-readable files, with no binary representation. (e.g. markdown, json, yml)
 
 Example:
+
 - [workspace](#specman-workspace)/
   - impl/
     - {impl_name}/
@@ -266,21 +268,34 @@ These objects MUST adhere to the listed fields below.
 
 ### Implementation Locators
 
-Implementation details are usually associated with code, or optionally as a library. As a result, details are required to properly reference implementations within other implementations if needed.
-- Implementation code MAY be referenced as a path, relative to the [Specman workspace](#specman-workspace).
-  - The code location MUST lead to a folder.
-- If the implementation has a library, it SHOULD be listed in the implementation.
+Implementation locators describe where implementation code lives and how it is published.
+
+- The `location` front-matter field MUST point to the root folder of the implementation’s code. It MAY be a workspace-relative path or a URL, and MUST remain inside the detected workspace when a workspace exists.
+- The `library` front-matter field SHOULD be present when the implementation is published as a library and MUST follow the library naming and versioning conventions defined in [Implementing Language](#implementing-language).
+- These locators are distinct from SpecMan locator schemes (`spec://`, `impl://`, `scratch://`); see [Locator Schemes](#locator-schemes) for scheme semantics.
+
+### Locator Schemes
+
+SpecMan locator schemes provide canonical handles for specifications, implementations, and scratch pads.
+
+- Supported schemes MUST be `spec://{artifact}`, `impl://{artifact}`, and `scratch://{artifact}`. Each handle identifies the canonical artifact and MUST be unique within a workspace.
+- When a locator handle appears in front matter, metadata, or the body of a specification or implementation, clients MUST resolve it using the active workspace root. If the handle is discovered while processing an artifact at `spec/{name}/spec.md` or `impl/{name}/impl.md` (or their HTTPS equivalents), the workspace root MUST be inferred as the directory one level above the `spec` or `impl` folder that contains the current artifact.
+- Resolution rules:
+  - `spec://{artifact}` MUST resolve to `spec/{artifact}/spec.md` under the workspace root.
+  - `impl://{artifact}` MUST resolve to `impl/{artifact}/impl.md` under the workspace root.
+  - `scratch://{artifact}` MUST resolve to `.specman/scratchpad/{artifact}/scratch.md` under the workspace root.
+- The same directory-inference rules MUST apply when the originating artifact is accessed via HTTPS: the parent of the `spec` or `impl` path segment is treated as the workspace root before applying the mappings above.
+- If a workspace root cannot be inferred or the resolved path would fall outside the workspace boundary, resolution MUST fail with a descriptive error instead of guessing.
 
 ### [References](../../docs/founding-spec.md#references)
 
-Implementations MAY reference external artifacts relied upon by the implementation. This is functionally equivalent to [specification dependencies](#dependencies), but MUST be expressed exclusively as a list of objects. 
+Implementations MAY reference external artifacts relied upon by the implementation. This is functionally equivalent to [specification dependencies](#dependencies), but MUST be expressed exclusively as a list of objects.
 
 These objects MUST adhere to the listed fields below.
 
 - `ref`: local path or URL to target artifact
 - `type`: the type of artifact. MUST be one of ("implementation", "specification").
 - `optional`: a boolean value indicating whether this reference is optional.
-
 
 ### [APIs](../../docs/founding-spec.md#apis)
 
@@ -294,7 +309,6 @@ These objects MUST adhere to the listed fields below.
     - When using markdown, the format SHOULD be an unordered list using [code spans](https://spec.commonmark.org/0.31.2/#code-spans).
     - When using code, the example SHOULD only show the bare structure - the fields of a structure, and nothing more.
   - The structure MUST define the data type for each field.
-
 
 ### Implementation Metadata
 

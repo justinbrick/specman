@@ -45,7 +45,7 @@ The template catalog includes prompt blueprints that equip AI systems to create 
 
 ### Concept: Template Token Contract
 
-The template catalog and its prompts share four interpolation tokens that MUST expand consistently across specifications, implementations, and scratch pads.
+The template catalog and its prompts share a fixed set of interpolation tokens that MUST expand consistently across specifications, implementations, and scratch pads. Templates and prompts MUST NOT introduce tokens outside the enumerated set.
 
 #### Token `{{output_name}}`
 
@@ -69,6 +69,21 @@ The template catalog and its prompts share four interpolation tokens that MUST e
 
 - Templates and prompts MUST treat this token as caller-supplied free-form instructions and MUST preserve its contents verbatim when composing artifacts.
 - Implementations consuming the template catalog MAY use this token to pass scenario-specific guidance, but they MUST NOT override or rename the token without updating this specification.
+
+#### Token `{{target_path}}`
+
+- Scratch pad prompts and templates MUST treat this token as REQUIRED when present and MUST expect it to contain a unique scheme locator (`spec://` or `impl://`) that points to the target artifact.
+- Callers supplying `{{target_path}}` MUST conform to the locator scheme rules in the [SpecMan Data Model](../specman-data-model/spec.md#locator-schemes).
+
+#### Token `{{artifact_name_or_request}}`
+
+- All prompts (specification, implementation, scratch pad) MUST accept this token to capture either the explicit artifact name or a markdown-formatted request asking the reader to supply a compliant artifact name when none is provided.
+- When the caller does not provide a value, the prompt MUST include guidance asking for a name that satisfies the relevant naming rules from the founding specification or scratch pad constraints.
+
+#### Token `{{branch_name}}`
+
+- Scratch pad prompts and templates MUST treat this token as OPTIONAL input. When not provided, the default branch name MUST follow the data model branch scheme `{target_name}/{work_type}/{scratch_pad_name}`.
+- When supplied, the value MUST comply with the same branch naming scheme defined in the [SpecMan Data Model](../specman-data-model/spec.md#git-branches).
 
 ## Key Entities
 
