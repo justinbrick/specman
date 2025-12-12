@@ -47,11 +47,12 @@ The template catalog includes prompt blueprints that equip AI systems to create 
 
 The template catalog and its prompts share a fixed set of interpolation tokens that MUST expand consistently across specifications, implementations, and scratch pads. Templates and prompts MUST NOT introduce tokens outside the enumerated set.
 
+Tokens ending in `_or_request` MUST expand to a complete instruction string on their own; prompt templates MUST place these tokens as standalone steps and MUST NOT wrap them with extra prose that repeats or adds to the instruction.
+
 #### Token `{{output_name}}`
 
-- Specification templates and prompts MUST resolve this token to the specification name declared in YAML front matter, following the naming rules in the [founding specification](../../docs/founding-spec.md#specification-name).
-- Implementation templates and prompts MUST resolve this token to the implementation name supplied in the front matter so generated artifacts align with published library identifiers.
-- Scratch pad templates and prompts MUST resolve this token to the scratch pad folder name, which MUST satisfy the naming constraints described in the [Scratch Pads](../specman-data-model/spec.md#scratch-pads) section of the data model.
+- Specification, implementation, and scratch pad **templates** MUST resolve this token to their artifact name (front matter `name` or folder name) following the naming rules in the [founding specification](../../docs/founding-spec.md#specification-name) and [Scratch Pads](../specman-data-model/spec.md#scratch-pads).
+- Prompt templates MUST NOT render or request `{{output_name}}`; prompts MUST gather artifact names via `{{artifact_name_or_request}}` and MAY derive the eventual output name from that input outside the prompt body.
 
 #### Token `{{context}}`
 
@@ -72,13 +73,13 @@ The template catalog and its prompts share a fixed set of interpolation tokens t
 
 #### Token `{{artifact_name_or_request}}`
 
-- Scratch pad prompts MUST accept this token to capture either the explicit artifact name or a markdown-formatted request asking the reader to supply a compliant artifact name when none is provided.
+- Scratch pad prompts MUST place this token as its own numbered step; the token text itself captures the provided artifact (scratch pad) name or asks the reader for one when absent. Prompt bodies MUST NOT add separate instructions about naming beyond the token.
 - Specification and implementation prompts MAY accept this token for consistency but are not required to surface it when the artifact name is already implied by context.
-- When the caller does not provide a value, the prompt MUST include guidance asking for a name that satisfies the relevant naming rules from the founding specification or scratch pad constraints.
+- When the caller does not provide a value, the token MUST emit guidance asking for a name that satisfies the relevant naming rules from the founding specification or scratch pad constraints; when provided, it MUST echo the supplied name.
 
 #### Token `{{branch_name_or_request}}`
 
-- Scratch pad prompts and templates MUST treat this token as OPTIONAL input and place it as its own numbered step. The token MUST expand to instructions:
+- Scratch pad prompts and templates MUST treat this token as OPTIONAL input and place it as its own numbered step. The token text is self-contained and MUST NOT be wrapped with additional branch-naming instructions. The token MUST expand to instructions:
   - When a branch name is provided, the token text MUST instruct the reader to check out that branch.
   - When a branch name is not provided, the token text MUST instruct the reader to generate a branch name that follows `{target_name}/{work_type}/{scratch_pad_name}` and show an example string rather than auto-populating.
 - When supplied, the value MUST comply with the branch naming scheme defined in the [SpecMan Data Model](../specman-data-model/spec.md#git-branches).

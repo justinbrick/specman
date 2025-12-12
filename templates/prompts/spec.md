@@ -8,6 +8,7 @@ Before interpreting any inputs, complete these reading prerequisites:
 - Review each dependency referenced for the target specification (from the provided context or prior drafts), opening the local files/URLs so you understand the upstream requirements those documents introduce.
 
 Read the following dependencies before continuing:
+
 {{context}}
 
 Steps:

@@ -412,11 +412,9 @@ impl SpecmanMcpServer {
         let resolved = self.resolve_target(locator)?;
 
         let target_name = resolved.tree.root.id.name.clone();
-        let inferred_scratch = format!("{}-{}", target_name, work_type);
-        let scratch_name = sanitize_slug(&inferred_scratch);
 
         let provided_branch = branch_name.and_then(|value| normalize_input(Some(value)));
-        let example_branch = format!("{}/{}/{}", target_name, work_type, scratch_name);
+        let example_branch = format!("{}/{}/{}", target_name, work_type, "some-action-here");
         let branch_instruction = match provided_branch {
             Some(branch) => format!(
                 "Check out the provided branch \"{}\" and keep it active while working on this {} scratch pad.",
@@ -428,16 +426,12 @@ impl SpecmanMcpServer {
             ),
         };
 
-        let artifact_instruction = format!(
-            "Artifact name inferred from the target locator: {}. If this is not correct, provide a compliant name before continuing.",
-            target_name
-        );
+        let artifact_instruction = "Provide a scratch pad name (lowercase, hyphenated, ≤4 words) that satisfies spec/specman-data-model naming rules.".to_string();
 
         let context = bullet_list(&dependency_lines(&resolved));
         let dependencies = context.clone();
 
         let replacements = vec![
-            ("{{output_name}}", scratch_name.clone()),
             ("{{branch_name_or_request}}", branch_instruction.clone()),
             ("{{branch_name}}", branch_instruction.clone()),
             ("{{target_path}}", resolved.handle.clone()),
@@ -506,31 +500,6 @@ fn bullet_list(items: &[String]) -> String {
         "- (no dependencies discovered)".to_string()
     } else {
         items.join("\n")
-    }
-}
-
-fn sanitize_slug(input: &str) -> String {
-    let mut slug: String = input
-        .trim()
-        .to_lowercase()
-        .chars()
-        .map(|c| match c {
-            '-' => '-',
-            ch if ch.is_ascii_alphanumeric() => ch,
-            ch if ch.is_whitespace() => '-',
-            _ => '-',
-        })
-        .collect();
-
-    while slug.contains("--") {
-        slug = slug.replace("--", "-");
-    }
-
-    let trimmed = slug.trim_matches('-').to_string();
-    if trimmed.is_empty() {
-        "scratch".to_string()
-    } else {
-        trimmed
     }
 }
 
