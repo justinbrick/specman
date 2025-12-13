@@ -235,7 +235,7 @@ fn dependency_matches(value: &Value, locator: &str) -> bool {
     match value {
         Value::String(existing) => existing == locator,
         Value::Mapping(map) => map
-            .get(&Value::String("ref".into()))
+            .get(Value::String("ref".into()))
             .and_then(Value::as_str)
             .map(|value| value == locator)
             .unwrap_or(false),
@@ -247,7 +247,7 @@ fn reference_matches(value: &Value, locator: &str) -> bool {
     match value {
         Value::String(existing) => existing == locator,
         Value::Mapping(map) => map
-            .get(&Value::String("ref".into()))
+            .get(Value::String("ref".into()))
             .and_then(Value::as_str)
             .map(|value| value == locator)
             .unwrap_or(false),

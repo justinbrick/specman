@@ -1,7 +1,7 @@
 ---
 spec: ../../spec/specman-cli/spec.md
 name: specman-cli-rust
-version: "0.1.0"
+version: "2.0.0"
 location: ../../src/crates/specman-cli
 primary_language:
   language: rust@1.91.0
@@ -59,7 +59,7 @@ Source lives under `src/crates/specman-cli`, a binary crate listed in the worksp
 
 - `src/main.rs` — entry point that calls `run_cli(std::env::args())`.
 - `src/cli.rs` — constructs the `clap::Command` tree, defines shared flags (`--workspace`, `--json`, `--force`, `--help`) and sets `subcommand_required(true)`.
-- `src/context.rs` — builds `CliSession` by resolving workspace paths via `specman::workspace::FilesystemWorkspaceLocator`, loading template overrides, and capturing verbosity flags.
+- `src/context.rs` — builds `CliSession` by resolving workspace paths via `specman::workspace::FilesystemWorkspaceLocator`, wiring the `specman::Specman` façade, and capturing verbosity flags.
 - `src/commands/` — modules for `status`, `spec`, `impl`, and `scratch` command groups. Each module contains helper structs plus typed responses used by the output formatter, covering `ls`, `new`, `delete`, and `dependencies` flows as described in the specification.
 - `src/formatter.rs` — houses JSON/text emitters plus sysexit mapping helpers shared across commands.
 
@@ -109,7 +109,7 @@ The four command groups expose symmetrical create/list/delete/dependencies flows
 ```
 Downstream: 2 edge(s)
     spec specman-cli@1.0.0
-    ├── impl specman-cli-rust@0.1.0
+  ├── impl specman-cli-rust@2.0.0
     └── scratch cli-entity-map
 ```
 
@@ -117,7 +117,7 @@ Delete commands always print at least one dependency-tree example like the above
 
 ### Concept: Data Model Activation ([spec/specman-cli/spec.md#concept-data-model-activation](../../spec/specman-cli/spec.md#concept-data-model-activation))
 
-`CliSession` wires the `specman` library’s `FilesystemDependencyMapper`, `WorkspacePersistence`, `MarkdownTemplateEngine`, `InMemoryAdapter`, and `DefaultLifecycleController` together so every CLI action goes through the same adapter stack. The binary depends on:
+`CliSession` wires the `specman` library’s workspace locator, dependency mapper, lifecycle controller, template catalog, and persistence into a single `specman::Specman` façade so every command reuses the same deterministic stack. The binary depends on:
 
 - `specman` — canonical dependency mapping, lifecycle automation, data-model persistence.
 - `clap@4` — declarative CLI definition with help output for every command.
@@ -127,13 +127,21 @@ Delete commands always print at least one dependency-tree example like the above
 
 ### Concept: Template Integration & Token Handling ([spec/specman-cli/spec.md#concept-template-integration--token-handling](../../spec/specman-cli/spec.md#concept-template-integration--token-handling))
 
-Workspace pointer files under `.specman/templates/{SPEC,IMPL,SCRATCH}` override the bundled catalog. `TemplateCatalog::descriptor` resolves those locators, after which `MarkdownTemplateEngine::render` enforces token completeness and preserves HTML directives until the generated artifact records how each instruction was satisfied.
+Workspace pointer files under `.specman/templates/{SPEC,IMPL,SCRATCH}` override the bundled catalog. The `specman` façade resolves templates via `TemplateCatalog::resolve(...)`, then renders deterministically via `MarkdownTemplateEngine`.
 
 ```rust
-let descriptor = session.templates.descriptor(TemplateKind::Specification)?;
-let mut rendered = session
-    .template_engine
-    .render(&descriptor, &TokenMap::new())?;
+use specman::{CreateRequest, SpecContext};
+
+let plan = session.specman.plan_create(CreateRequest::Specification {
+  context: SpecContext {
+    name: "workspace-lifecycle".to_string(),
+    title: "Workspace Lifecycle".to_string(),
+  },
+})?;
+
+let persisted = session
+  .specman
+  .persist_rendered(&plan.artifact, &plan.rendered, None)?;
 ```
 
 Tokens sourced from CLI flags (for example, `--dependencies` or `--language`) feed directly into the `TokenMap`, so template errors cite the originating concept and template path.
@@ -164,14 +172,12 @@ Structured logs accompany verbose output so operators can correlate stdout with 
 pub struct CliSession {
     pub workspace_paths: WorkspacePaths,
     pub dependency_mapper: Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
-    pub persistence: Arc<WorkspacePersistence<Arc<FilesystemWorkspaceLocator>>>,
-    pub template_engine: Arc<MarkdownTemplateEngine>,
-    pub templates: TemplateCatalog,
-    pub lifecycle: Arc<DefaultLifecycleController<
-        Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
-        Arc<MarkdownTemplateEngine>,
-        Arc<InMemoryAdapter>,
-    >>,
+  pub templates: TemplateCatalog,
+  pub specman: Specman<
+    Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
+    Arc<MarkdownTemplateEngine>,
+    Arc<FilesystemWorkspaceLocator>,
+  >,
     pub verbosity: Verbosity,
 }
 ```
@@ -201,14 +207,14 @@ Because `CliSession` holds a single `WorkspacePaths` instance, every command aut
 
 ### Entity: LifecycleRequest ([spec/specman-cli/spec.md#entity-lifecyclerequest](../../spec/specman-cli/spec.md#entity-lifecyclerequest))
 
-The spec’s `LifecycleRequest` maps directly to `specman::lifecycle::CreationRequest`. Each create command (spec/impl/scratch) populates this struct with the resolved `ArtifactId`, template descriptor, and token map prior to invoking the lifecycle controller.
+The CLI’s lifecycle create/delete operations map to the `specman` façade request types. Each create command (spec/impl/scratch) builds a `specman::CreateRequest` and calls `Specman::plan_create` before persisting. This keeps template resolution and lifecycle planning centralized.
 
 ```rust
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct CreationRequest {
-    pub target: ArtifactId,
-    pub template: TemplateDescriptor,
-    pub tokens: TokenMap,
+pub enum CreateRequest {
+  Specification { context: SpecContext },
+  Implementation { context: ImplContext },
+  ScratchPad { context: ScratchPadCreateContext },
+  Custom { /* advanced */ },
 }
 ```
 
@@ -216,30 +222,27 @@ Tokens originate from CLI arguments (`--dependencies`, `--language`, scratch wor
 
 ### Entity: DeletionPlan ([spec/specman-cli/spec.md#entity-deletionplan](../../spec/specman-cli/spec.md#entity-deletionplan))
 
-Forced and non-forced deletions rely on `specman::lifecycle::DeletionPlan`, which records whether downstream artifacts block removal and caches the dependency tree used for user confirmations.
+Forced and non-forced deletions rely on `specman::DeletePlan`, which records whether downstream artifacts block removal and caches the dependency tree used for user confirmations.
 
 ```rust
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct DeletionPlan {
-    pub dependencies: DependencyTree,
-    pub blocked: bool,
+pub struct DeletePlan {
+  pub target: ArtifactId,
+  pub dependencies: DependencyTree,
+  pub blocked: bool,
 }
 ```
 
-`commands/spec.rs`, `commands/implementation.rs`, and `commands/scratch.rs` all call `plan_deletion` before invoking `execute_deletion`, ensuring the CLI refuses to remove artifacts when `blocked` is true unless `--force` is provided.
+`commands/spec.rs`, `commands/implementation.rs`, and `commands/scratch.rs` call `plan_delete` before invoking `delete`, ensuring the CLI refuses to remove artifacts when `blocked` is true unless `--force` is provided.
 
 ### Entity: TemplateRenderPlan ([spec/specman-cli/spec.md#entity-templaterenderplan](../../spec/specman-cli/spec.md#entity-templaterenderplan))
 
-While the `specman` crate does not expose a struct literally named `TemplateRenderPlan`, the CLI satisfies the entity by combining a `TemplateDescriptor`, the `TemplateCatalog`, and the persistence layer before touching disk:
+While the `specman` crate does not expose a struct literally named `TemplateRenderPlan`, the CLI satisfies the entity via `Specman::plan_create` (template resolution + rendering) followed by persistence (either `Specman::create` or `Specman::persist_rendered` when post-processing is required):
 
 ```rust
-let descriptor = session.templates.descriptor(template_kind)?;
-let rendered = session
-    .template_engine
-    .render(&descriptor, &token_map)?;
+let plan = session.specman.plan_create(create_request)?;
 let persisted = session
-    .persistence
-    .persist(&artifact, &rendered)?;
+  .specman
+  .persist_rendered(&plan.artifact, &plan.rendered, None)?;
 ```
 
 This trio enforces the same guarantees described in the specification: every required token is validated before rendering, HTML directives stay intact until satisfied, and the resolved output path is computed prior to persistence so callers know exactly where artifacts land.
@@ -255,6 +258,4 @@ This trio enforces the same guarantees described in the specification: every req
 - **Logging & JSON Output:** Human-readable summaries are emitted by default. When `--json` is supplied, the CLI emits newline-delimited JSON records containing the command name, workspace root, adapter id, result payload, and reference to the governing specification section. `--verbose` enables structured `tracing` logs alongside textual summaries. Errors always cite the concept or entity that triggered the failure per the Observability guidance.
 - **Sysexits Enforcement:** Success paths use `EX_OK`. Validation issues (naming, missing tokens, dependency failures) map to `EX_DATAERR`. Incorrect CLI usage maps to `EX_USAGE`, filesystem or network issues map to `EX_IOERR`/`EX_OSERR`, and template pointer violations map to `EX_CONFIG`.
 
-
 This implementation keeps the CLI aligned with `specman-cli` governance while reusing the shared `specman` crate so downstream automation can rely on a single source of truth for workspace, dependency, and template logic.
-

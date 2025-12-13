@@ -443,7 +443,7 @@ fn detect_kind(mapping: &Mapping) -> FrontMatterKind {
 }
 
 fn has_key(mapping: &Mapping, name: &str) -> bool {
-    mapping.contains_key(&YamlValue::String(name.to_string()))
+    mapping.contains_key(YamlValue::String(name.to_string()))
 }
 
 fn variant_schema(key: &str, schema: Schema) -> Schema {

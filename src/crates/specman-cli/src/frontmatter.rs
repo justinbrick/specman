@@ -37,10 +37,10 @@ pub fn update_impl_document(
 
         let mut language_map = Mapping::new();
         language_map.insert(Value::from("language"), Value::from(language));
-        if !language_map.contains_key(&Value::from("properties")) {
+        if !language_map.contains_key(Value::from("properties")) {
             language_map.insert(Value::from("properties"), Value::Mapping(Mapping::new()));
         }
-        if !language_map.contains_key(&Value::from("libraries")) {
+        if !language_map.contains_key(Value::from("libraries")) {
             language_map.insert(Value::from("libraries"), Value::Sequence(Vec::new()));
         }
         doc.insert(
@@ -91,7 +91,7 @@ where
 }
 
 fn current_sequence(doc: &Mapping, key: &str) -> Vec<Value> {
-    doc.get(&Value::from(key))
+    doc.get(Value::from(key))
         .and_then(|value| value.as_sequence())
         .cloned()
         .unwrap_or_default()

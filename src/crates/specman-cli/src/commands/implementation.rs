@@ -96,12 +96,12 @@ fn create_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
     let location = matches
         .get_one::<String>("location")
         .cloned()
-        .unwrap_or_else(|| format!("src/{}", name));
+        .unwrap_or_else(|| format!("src/{name}"));
 
     let folder = session.workspace_paths.impl_dir().join(&name);
     if folder.exists() {
         return Err(CliError::new(
-            format!("implementation {} already exists", name),
+            format!("implementation {name} already exists"),
             ExitStatus::Usage,
         ));
     }
@@ -148,7 +148,7 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
     let folder = session.workspace_paths.impl_dir().join(&name);
     if !folder.exists() {
         return Err(CliError::new(
-            format!("implementation {} does not exist", name),
+            format!("implementation {name} does not exist"),
             ExitStatus::Usage,
         ));
     }
@@ -161,8 +161,7 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
     if plan.blocked && !forced {
         return Err(CliError::new(
             format!(
-                "refusing to delete {}; downstream artifacts detected (use --force)",
-                name
+                "refusing to delete {name}; downstream artifacts detected (use --force)"
             ),
             ExitStatus::Data,
         ));

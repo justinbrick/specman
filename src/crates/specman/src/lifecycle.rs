@@ -247,7 +247,7 @@ mod tests {
     }
 
     fn controller() -> DefaultLifecycleController<MockMapping, FakeTemplateEngine> {
-        DefaultLifecycleController::new(MockMapping, FakeTemplateEngine::default())
+        DefaultLifecycleController::new(MockMapping, FakeTemplateEngine)
     }
 
     #[test]
@@ -474,7 +474,7 @@ mod tests {
 
         let controller = DefaultLifecycleController::new(
             StaticTreeMapping { tree: tree.clone() },
-            FakeTemplateEngine::default(),
+            FakeTemplateEngine,
         );
 
         let plan = controller
@@ -510,7 +510,7 @@ mod tests {
 
         let controller = DefaultLifecycleController::new(
             StaticTreeMapping { tree: tree.clone() },
-            FakeTemplateEngine::default(),
+            FakeTemplateEngine,
         );
 
         let plan = controller
@@ -546,7 +546,7 @@ mod tests {
 
         let controller = DefaultLifecycleController::new(
             StaticTreeMapping { tree: tree.clone() },
-            FakeTemplateEngine::default(),
+            FakeTemplateEngine,
         );
 
         let plan = controller

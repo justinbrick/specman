@@ -402,7 +402,7 @@ mod tests {
                 ..Default::default()
             }),
         };
-        let controller = DefaultLifecycleController::new(mapping, UnusedTemplateEngine::default());
+        let controller = DefaultLifecycleController::new(mapping, UnusedTemplateEngine);
         let persistence = WorkspacePersistence::new(locator);
         let svc = Specman::new(controller, catalog, persistence);
 
@@ -469,7 +469,7 @@ mod tests {
         });
 
         let mapping = StaticTreeMapping { tree };
-        let controller = DefaultLifecycleController::new(mapping, UnusedTemplateEngine::default());
+        let controller = DefaultLifecycleController::new(mapping, UnusedTemplateEngine);
         let persistence = WorkspacePersistence::new(locator);
         let svc = Specman::new(controller, catalog, persistence);
 

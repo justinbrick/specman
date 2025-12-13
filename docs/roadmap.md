@@ -1,11 +1,13 @@
 # SpecMan Roadmap
 
-## MCP Server (v1.1.0)
-- **Target window:** Next few days
-- **Goal:** Deliver an MCP server layer that can execute SpecMan workflows without shell access, enabling AI agents to apply workspace changes safely through MCP protocols.
-- **Outcome:** Marks the v1.1.0 release once the server is stable and supports full command coverage for existing automation tasks.
+## MCP Server (v0.2.x)
+
+- **Status:** Shipped.
+- **Goal:** Provide an MCP server that can inspect SpecMan workspaces and generate scratch-pad prompts without shell access.
+- **Next:** Expand tool coverage to include more lifecycle operations with the same guardrails as the CLI.
 
 ## Relationship Graphing (GraphRAG)
+
 - **Target window:** Q2–Q3
 - **Goal:** Extend the current document parser to read inline Markdown links and headers, build a relationship graph, and feed it into GraphRAG-powered analysis.
 - **Outcome:** Smarter dependency insights and contextual responses driven by the inferred relationship graph.

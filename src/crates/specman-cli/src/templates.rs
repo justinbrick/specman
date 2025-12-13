@@ -58,6 +58,6 @@ impl fmt::Display for TemplateKind {
             TemplateKind::Implementation => "impl",
             TemplateKind::Scratch => "scratch",
         };
-        write!(f, "{}", label)
+        write!(f, "{label}")
     }
 }

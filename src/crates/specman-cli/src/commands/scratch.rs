@@ -174,7 +174,7 @@ fn delete_scratchpad(
     let folder = session.workspace_paths.scratchpad_dir().join(&name);
     if !folder.exists() {
         return Err(CliError::new(
-            format!("scratch pad {} does not exist", name),
+            format!("scratch pad {name} does not exist"),
             ExitStatus::Usage,
         ));
     }
@@ -188,8 +188,7 @@ fn delete_scratchpad(
     if plan.blocked && !forced {
         return Err(CliError::new(
             format!(
-                "refusing to delete {}; downstream artifacts detected (use --force)",
-                name
+                "refusing to delete {name}; downstream artifacts detected (use --force)"
             ),
             ExitStatus::Data,
         ));
@@ -375,7 +374,7 @@ fn infer_name_from_path(path: &Path) -> String {
 fn default_branch(target: &str, work_type: &str, scratch_name: &str) -> String {
     let target_slug = target
         .split('/')
-        .last()
+        .next_back()
         .and_then(|segment| segment.split('.').next())
         .unwrap_or(target);
     format!("{target_slug}/{work_type}/{scratch_name}")

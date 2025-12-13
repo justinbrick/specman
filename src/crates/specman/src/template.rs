@@ -12,18 +12,15 @@ pub type TokenMap = BTreeMap<String, serde_json::Value>;
 
 /// Identifies the tier that produced a template.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Default)]
 pub enum TemplateTier {
     WorkspaceOverride,
     PointerFile,
     PointerUrl,
+    #[default]
     EmbeddedDefault,
 }
 
-impl Default for TemplateTier {
-    fn default() -> Self {
-        TemplateTier::EmbeddedDefault
-    }
-}
 
 /// Records provenance metadata for persisted templates.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Default, PartialEq, Eq)]

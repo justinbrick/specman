@@ -1,10 +1,10 @@
 ---
 spec: ../../spec/specman-core/spec.md
 name: specman-library
-version: "0.1.0"
+version: "2.0.0"
 location: ../../src/crates/specman
 library:
-  name: specman-library@0.1.0
+  name: specman-library@2.0.0
 primary_language:
   language: rust@1.91.0
   properties:
@@ -323,6 +323,28 @@ pub enum SpecmanError {
 - Each module wraps lower-level failures using `SpecmanError::context(...)` so logs capture both the origin (e.g., dependency traversal, metadata mutation) and the root cause.
 - Determinism requirements translate into stable error messaging and major version bumps whenever new variants or behavior changes would affect observability guarantees.
 
+## Concept: Lifecycle Service Façade
+
+To make lifecycle flows easier to consume correctly from hosts (CLI/MCP), the library now provides a high-level façade (`specman::Specman`) that owns lifecycle orchestration + template resolution + persistence. This removes the need for callers to wire multiple low-level services (controller, catalog, persistence) for common operations.
+
+Key exported façade types:
+
+```rust
+pub struct Specman<M, T, L> { /* controller + catalog + persistence */ }
+
+pub enum CreateRequest { /* Specification | Implementation | ScratchPad | Custom */ }
+pub struct CreatePlan { pub artifact: ArtifactId, pub rendered: RenderedTemplate }
+
+pub struct DeleteRequest { pub target: ArtifactId, pub plan: Option<DeletePlan>, pub policy: DeletePolicy }
+pub struct DeletePlan { pub target: ArtifactId, pub dependencies: DependencyTree, pub blocked: bool }
+
+pub enum SpecmanError { /* ... */ Lifecycle(LifecycleError), /* ... */ }
+pub enum LifecycleError { DeletionBlocked { target: ArtifactId }, PlanTargetMismatch { requested: ArtifactId, planned: ArtifactId }, /* ... */ }
+```
+
+- The façade returns structured lifecycle failures (`SpecmanError::Lifecycle(...)`) so callers can branch on “blocked deletion” vs “plan mismatch” without string matching.
+- The façade keeps lower-level traits (`DependencyMapping`, `TemplateEngine`, `WorkspaceLocator`) reusable for tests and alternate hosts.
+
 ## Concept: Lifecycle Automation
 
 Lifecycle orchestration (per [Concept: Lifecycle Automation](../../spec/specman-core/spec.md#concept-lifecycle-automation)) coordinates dependency inspection, template rendering, persistence, and deletion guardrails. All deletion guard details live here, covering scratch pad exemptions and force overrides as requested.
@@ -361,7 +383,8 @@ pub struct DefaultLifecycleController<M, T, A> {
 ```
 
 - `plan_deletion` computes `blocked` by delegating to `DependencyTree::has_blocking_dependents()`. Scratch pads only block on other scratch pads, while specs and implementations block on any non-optional downstream edge.
-- `execute_deletion` recomputes the plan when necessary, rejects mismatched targets, consults `force` overrides, invokes `ArtifactRemovalStore::remove_artifact`, and invalidates cached dependency trees via the adapter. This keeps lifecycle behavior symmetric with creation flows.
+- `plan_creation` tolerates brand-new artifacts (missing target files) by planning against an empty `DependencyTree`, enabling “plan → render → persist” flows without pre-creating files.
+- `execute_deletion` recomputes the plan when necessary, rejects mismatched targets, consults `force` overrides, invokes `ArtifactRemovalStore::remove_artifact`, and surfaces structured lifecycle errors (`SpecmanError::Lifecycle(...)`) for blocked deletions and plan/target mismatches.
 - Scratch pad creation flows hydrate `ScratchPadProfile::token_map()` before persisting the rendered Markdown inside `.specman/scratchpad/{slug}` consistently with the SpecMan Data Model naming rules.
 
 ## Concept: Metadata Mutation

@@ -1312,7 +1312,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "specman"
-version = "1.0.1"
+version = "2.0.0"
 dependencies = [
  "handlebars",
  "hex",
@@ -1332,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "specman-cli"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1350,7 +1350,7 @@ dependencies = [
 
 [[package]]
 name = "specman-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rmcp",
  "schemars",

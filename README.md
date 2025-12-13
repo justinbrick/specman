@@ -28,3 +28,4 @@ CI should also run `cargo fmt` and `cargo clippy` to keep formatting and lint ga
 
 - `docs/about.md` — philosophy, goals, and why SpecMan replaces Speckit's poor prompting.
 - `docs/getting-started.md` — installation, workspace setup, CLI walkthrough.
+- `docs/lifecycle-ergonomics.md` — Dec 2025 lifecycle refactor notes (façade API, structured errors, CLI/MCP alignment).

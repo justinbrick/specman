@@ -83,7 +83,7 @@ fn create_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
     let folder = session.workspace_paths.spec_dir().join(&name);
     if folder.exists() {
         return Err(CliError::new(
-            format!("specification {} already exists", name),
+            format!("specification {name} already exists"),
             ExitStatus::Usage,
         ));
     }
@@ -129,7 +129,7 @@ fn delete_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
     let folder = session.workspace_paths.spec_dir().join(&name);
     if !folder.exists() {
         return Err(CliError::new(
-            format!("specification {} does not exist", name),
+            format!("specification {name} does not exist"),
             ExitStatus::Usage,
         ));
     }
@@ -143,8 +143,7 @@ fn delete_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
     if plan.blocked && !forced {
         return Err(CliError::new(
             format!(
-                "refusing to delete {}; downstream artifacts detected (use --force)",
-                name
+                "refusing to delete {name}; downstream artifacts detected (use --force)"
             ),
             ExitStatus::Data,
         ));

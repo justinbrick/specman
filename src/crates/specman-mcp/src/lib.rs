@@ -300,17 +300,15 @@ impl SpecmanMcpServer {
 
 #[prompt_handler]
 impl ServerHandler for SpecmanMcpServer {
-    fn list_resources(
+    async fn list_resources(
         &self,
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ListResourcesResult, McpError>> + Send + '_ {
-        async move {
-            let inventory = self.inventory().await?;
-            Ok(ListResourcesResult::with_all_items(
-                resources_from_inventory(&inventory),
-            ))
-        }
+    ) -> Result<ListResourcesResult, McpError> {
+        let inventory = self.inventory().await?;
+        Ok(ListResourcesResult::with_all_items(
+            resources_from_inventory(&inventory),
+        ))
     }
 
     fn list_resource_templates(
@@ -324,17 +322,15 @@ impl ServerHandler for SpecmanMcpServer {
         )))
     }
 
-    fn read_resource(
+    async fn read_resource(
         &self,
         request: ReadResourceRequestParam,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
-        async move {
-            let contents = self.read_resource_contents(&request.uri).await?;
-            Ok(ReadResourceResult {
-                contents: vec![contents],
-            })
-        }
+    ) -> Result<ReadResourceResult, McpError> {
+        let contents = self.read_resource_contents(&request.uri).await?;
+        Ok(ReadResourceResult {
+            contents: vec![contents],
+        })
     }
 
     fn get_info(&self) -> ServerInfo {
@@ -417,22 +413,19 @@ impl SpecmanMcpServer {
 
         // Provide a deterministic example name so callers see stable guidance.
         // This also keeps MCP prompt outputs easy to test and reason about.
-        let example_scratchpad_name = format!("{}-{}", target_name, work_type);
-        let example_branch = format!("{}/{}/{}", target_name, work_type, example_scratchpad_name);
+        let example_scratchpad_name = format!("{target_name}-{work_type}");
+        let example_branch = format!("{target_name}/{work_type}/{example_scratchpad_name}");
         let branch_instruction = match provided_branch {
             Some(branch) => format!(
-                "Check out the provided branch \"{}\" and keep it active while working on this {} scratch pad.",
-                branch, work_type
+                "Check out the provided branch \"{branch}\" and keep it active while working on this {work_type} scratch pad."
             ),
             None => format!(
-                "Create and check out a branch that follows {}/{}/{{scratch_pad_name}}; for this work, an example is \"{}\".",
-                target_name, work_type, example_branch
+                "Create and check out a branch that follows {target_name}/{work_type}/{{scratch_pad_name}}; for this work, an example is \"{example_branch}\"."
             ),
         };
 
         let artifact_instruction = format!(
-            "Provide a scratch pad name (lowercase, hyphenated, ≤4 words) that satisfies spec/specman-data-model naming rules. Example: {}.",
-            example_scratchpad_name
+            "Provide a scratch pad name (lowercase, hyphenated, ≤4 words) that satisfies spec/specman-data-model naming rules. Example: {example_scratchpad_name}."
         );
 
         let context = bullet_list(&dependency_lines(&resolved));
@@ -496,7 +489,7 @@ fn dependency_lines(resolved: &ResolvedTarget) -> Vec<String> {
         }
 
         let path = resolved_path_or_artifact_path(&edge.to, &resolved.workspace);
-        lines.push(format!("- {} ({})", handle, path));
+        lines.push(format!("- {handle} ({path})"));
     }
 
     lines
@@ -560,78 +553,71 @@ fn resources_from_inventory(inventory: &ArtifactInventory) -> Vec<Resource> {
 }
 
 fn resource_templates() -> Vec<ResourceTemplate> {
-    let mut templates = Vec::new();
-
-    templates.push(ResourceTemplate {
-        raw: RawResourceTemplate {
-            uri_template: "spec://{artifact}".to_string(),
-            name: "spec-resource".to_string(),
-            title: Some("Specification content".to_string()),
-            description: Some("Read a SpecMan specification as a resource".to_string()),
-            mime_type: Some("text/markdown".to_string()),
+    vec![
+        ResourceTemplate {
+            raw: RawResourceTemplate {
+                uri_template: "spec://{artifact}".to_string(),
+                name: "spec-resource".to_string(),
+                title: Some("Specification content".to_string()),
+                description: Some("Read a SpecMan specification as a resource".to_string()),
+                mime_type: Some("text/markdown".to_string()),
+            },
+            annotations: None,
         },
-        annotations: None,
-    });
-
-    templates.push(ResourceTemplate {
-        raw: RawResourceTemplate {
-            uri_template: "impl://{artifact}".to_string(),
-            name: "impl-resource".to_string(),
-            title: Some("Implementation content".to_string()),
-            description: Some("Read a SpecMan implementation as a resource".to_string()),
-            mime_type: Some("text/markdown".to_string()),
+        ResourceTemplate {
+            raw: RawResourceTemplate {
+                uri_template: "impl://{artifact}".to_string(),
+                name: "impl-resource".to_string(),
+                title: Some("Implementation content".to_string()),
+                description: Some("Read a SpecMan implementation as a resource".to_string()),
+                mime_type: Some("text/markdown".to_string()),
+            },
+            annotations: None,
         },
-        annotations: None,
-    });
-
-    templates.push(ResourceTemplate {
-        raw: RawResourceTemplate {
-            uri_template: "scratch://{artifact}".to_string(),
-            name: "scratch-resource".to_string(),
-            title: Some("Scratch pad content".to_string()),
-            description: Some("Read a SpecMan scratch pad as a resource".to_string()),
-            mime_type: Some("text/markdown".to_string()),
+        ResourceTemplate {
+            raw: RawResourceTemplate {
+                uri_template: "scratch://{artifact}".to_string(),
+                name: "scratch-resource".to_string(),
+                title: Some("Scratch pad content".to_string()),
+                description: Some("Read a SpecMan scratch pad as a resource".to_string()),
+                mime_type: Some("text/markdown".to_string()),
+            },
+            annotations: None,
         },
-        annotations: None,
-    });
-
-    templates.push(ResourceTemplate {
-        raw: RawResourceTemplate {
-            uri_template: "spec://{artifact}/dependencies".to_string(),
-            name: "spec-dependencies".to_string(),
-            title: Some("Specification dependency tree".to_string()),
-            description: Some("Return dependency tree JSON for a specification".to_string()),
-            mime_type: Some("application/json".to_string()),
+        ResourceTemplate {
+            raw: RawResourceTemplate {
+                uri_template: "spec://{artifact}/dependencies".to_string(),
+                name: "spec-dependencies".to_string(),
+                title: Some("Specification dependency tree".to_string()),
+                description: Some("Return dependency tree JSON for a specification".to_string()),
+                mime_type: Some("application/json".to_string()),
+            },
+            annotations: None,
         },
-        annotations: None,
-    });
-
-    templates.push(ResourceTemplate {
-        raw: RawResourceTemplate {
-            uri_template: "impl://{artifact}/dependencies".to_string(),
-            name: "impl-dependencies".to_string(),
-            title: Some("Implementation dependency tree".to_string()),
-            description: Some("Return dependency tree JSON for an implementation".to_string()),
-            mime_type: Some("application/json".to_string()),
+        ResourceTemplate {
+            raw: RawResourceTemplate {
+                uri_template: "impl://{artifact}/dependencies".to_string(),
+                name: "impl-dependencies".to_string(),
+                title: Some("Implementation dependency tree".to_string()),
+                description: Some("Return dependency tree JSON for an implementation".to_string()),
+                mime_type: Some("application/json".to_string()),
+            },
+            annotations: None,
         },
-        annotations: None,
-    });
-
-    templates.push(ResourceTemplate {
-        raw: RawResourceTemplate {
-            uri_template: "scratch://{artifact}/dependencies".to_string(),
-            name: "scratch-dependencies".to_string(),
-            title: Some("Scratch pad dependency tree".to_string()),
-            description: Some(
-                "Return dependency tree JSON for a scratch pad (if dependencies are tracked)"
-                    .to_string(),
-            ),
-            mime_type: Some("application/json".to_string()),
+        ResourceTemplate {
+            raw: RawResourceTemplate {
+                uri_template: "scratch://{artifact}/dependencies".to_string(),
+                name: "scratch-dependencies".to_string(),
+                title: Some("Scratch pad dependency tree".to_string()),
+                description: Some(
+                    "Return dependency tree JSON for a scratch pad (if dependencies are tracked)"
+                        .to_string(),
+                ),
+                mime_type: Some("application/json".to_string()),
+            },
+            annotations: None,
         },
-        annotations: None,
-    });
-
-    templates
+    ]
 }
 
 pub type McpError = ErrorData;
@@ -714,7 +700,7 @@ mod tests {
                 assert_eq!(mime_type.as_deref(), Some("text/markdown"));
                 assert!(text.contains("Spec Body"));
             }
-            other => panic!("unexpected variant: {:?}", other),
+            other => panic!("unexpected variant: {other:?}"),
         }
 
         let deps = workspace
@@ -730,7 +716,7 @@ mod tests {
                 let value: serde_json::Value = serde_json::from_str(&text)?;
                 assert_eq!(value["root"]["id"]["name"], "testspec");
             }
-            other => panic!("unexpected variant: {:?}", other),
+            other => panic!("unexpected variant: {other:?}"),
         }
 
         Ok(())
@@ -759,7 +745,7 @@ mod tests {
 
         let rendered = match message.content {
             PromptMessageContent::Text { text } => text,
-            other => panic!("unexpected content: {:?}", other),
+            other => panic!("unexpected content: {other:?}"),
         };
 
         assert!(rendered.contains("Create and check out a branch"));
@@ -785,7 +771,7 @@ mod tests {
 
         let text = match rendered {
             PromptMessageContent::Text { text } => text,
-            other => panic!("unexpected content: {:?}", other),
+            other => panic!("unexpected content: {other:?}"),
         };
 
         assert!(text.contains("impl/testimpl/impl.md"));
@@ -811,7 +797,7 @@ mod tests {
 
         let text = match rendered {
             PromptMessageContent::Text { text } => text,
-            other => panic!("unexpected content: {:?}", other),
+            other => panic!("unexpected content: {other:?}"),
         };
 
         assert!(text.contains("spec/testspec/spec.md"));
@@ -836,7 +822,7 @@ mod tests {
 
         let text = match rendered {
             PromptMessageContent::Text { text } => text,
-            other => panic!("unexpected content: {:?}", other),
+            other => panic!("unexpected content: {other:?}"),
         };
 
         assert!(text.contains("impl/testimpl/impl.md"));
@@ -1060,7 +1046,7 @@ mod tests {
 
         match message.content {
             PromptMessageContent::Text { text } => text,
-            other => panic!("unexpected content: {:?}", other),
+            other => panic!("unexpected content: {other:?}"),
         }
     }
 

@@ -32,6 +32,14 @@ pub struct ResolvedTemplate {
     pub provenance: TemplateProvenance,
 }
 
+#[derive(Default)]
+struct ResolvedFromPathOverrides {
+    pointer: Option<String>,
+    locator_override: Option<String>,
+    cache_override: Option<String>,
+    last_modified: Option<String>,
+}
+
 impl TemplateCatalog {
     pub fn new(workspace: WorkspacePaths) -> Self {
         Self { workspace }
@@ -110,8 +118,7 @@ impl TemplateCatalog {
         if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
             let url = Url::parse(trimmed).map_err(|err| {
                 SpecmanError::Template(format!(
-                    "pointer {} referenced invalid URL {}: {err}",
-                    pointer_name, trimmed
+                    "pointer {pointer_name} referenced invalid URL {trimmed}: {err}"
                 ))
             })?;
             let cache = TemplateCache::new(&self.workspace);
@@ -209,7 +216,7 @@ impl TemplateCatalog {
         })?;
         let pointer_path = dir.join(pointer);
         let tmp_path = pointer_path.with_extension("tmp");
-        fs::write(&tmp_path, format!("{}\n", contents)).map_err(|err| {
+        fs::write(&tmp_path, format!("{contents}\n")).map_err(|err| {
             let _ = fs::remove_file(&tmp_path);
             SpecmanError::Template(format!(
                 "failed to write temporary pointer {}: {}",
@@ -253,10 +260,7 @@ impl TemplateCatalog {
                     scenario,
                     candidate,
                     TemplateTier::WorkspaceOverride,
-                    None,
-                    None,
-                    None,
-                    None,
+                    ResolvedFromPathOverrides::default(),
                 )));
             }
         }
@@ -289,7 +293,7 @@ impl TemplateCatalog {
 
         if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
             let url = Url::parse(trimmed).map_err(|err| {
-                SpecmanError::Template(format!("invalid template pointer URL {}: {err}", trimmed))
+                SpecmanError::Template(format!("invalid template pointer URL {trimmed}: {err}"))
             })?;
             let cache = TemplateCache::new(&self.workspace);
             match cache.fetch_url(&url) {
@@ -299,10 +303,12 @@ impl TemplateCatalog {
                         scenario,
                         hit.path,
                         TemplateTier::PointerUrl,
-                        Some(pointer_name.to_string()),
-                        Some(url.to_string()),
-                        Some(cache_path),
-                        hit.last_modified,
+                        ResolvedFromPathOverrides {
+                            pointer: Some(pointer_name.to_string()),
+                            locator_override: Some(url.to_string()),
+                            cache_override: Some(cache_path),
+                            last_modified: hit.last_modified,
+                        },
                     )));
                 }
                 Err(_err) => {
@@ -318,10 +324,10 @@ impl TemplateCatalog {
             scenario,
             file_path,
             TemplateTier::PointerFile,
-            Some(pointer_name.to_string()),
-            None,
-            None,
-            None,
+            ResolvedFromPathOverrides {
+                pointer: Some(pointer_name.to_string()),
+                ..ResolvedFromPathOverrides::default()
+            },
         )))
     }
 
@@ -338,10 +344,11 @@ impl TemplateCatalog {
             scenario,
             path,
             TemplateTier::EmbeddedDefault,
-            None,
-            Some(format!("embedded://{key}")),
-            Some(cache_path),
-            None,
+            ResolvedFromPathOverrides {
+                locator_override: Some(format!("embedded://{key}")),
+                cache_override: Some(cache_path),
+                ..ResolvedFromPathOverrides::default()
+            },
         ))
     }
 
@@ -394,11 +401,14 @@ impl TemplateCatalog {
         scenario: &TemplateScenario,
         path: PathBuf,
         tier: TemplateTier,
-        pointer: Option<String>,
-        locator_override: Option<String>,
-        cache_override: Option<String>,
-        last_modified: Option<String>,
+        overrides: ResolvedFromPathOverrides,
     ) -> ResolvedTemplate {
+        let ResolvedFromPathOverrides {
+            pointer,
+            locator_override,
+            cache_override,
+            last_modified,
+        } = overrides;
         let locator = TemplateLocator::FilePath(path.clone());
         let provenance = TemplateProvenance {
             tier,
@@ -513,8 +523,7 @@ impl TemplateCache {
                     });
                 }
                 Err(SpecmanError::Template(format!(
-                    "failed to download template {}: {}",
-                    url, err
+                    "failed to download template {url}: {err}"
                 )))
             }
         }

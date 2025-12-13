@@ -28,16 +28,15 @@ impl ContentFetcher for HttpFetcher {
     fn fetch(&self, url: &Url) -> Result<String, SpecmanError> {
         let response = ureq::get(url.as_str())
             .call()
-            .map_err(|err| SpecmanError::Dependency(format!("failed to fetch {}: {}", url, err)))?;
+            .map_err(|err| SpecmanError::Dependency(format!("failed to fetch {url}: {err}")))?;
         let status = response.status();
         if !(200..300).contains(&status) {
             return Err(SpecmanError::Dependency(format!(
-                "received {} from {}",
-                status, url
+                "received {status} from {url}"
             )));
         }
         response.into_string().map_err(|err| {
-            SpecmanError::Dependency(format!("failed reading body from {}: {}", url, err))
+            SpecmanError::Dependency(format!("failed reading body from {url}: {err}"))
         })
     }
 }
@@ -267,7 +266,7 @@ impl<L: WorkspaceLocator> DependencyGraphServices<L> {
     pub fn new(workspace: L) -> Self {
         Self {
             workspace,
-            fetcher: Arc::new(HttpFetcher::default()),
+            fetcher: Arc::new(HttpFetcher),
             inventory_cache: Mutex::new(None),
         }
     }
@@ -554,8 +553,7 @@ impl ResourceHandle {
                 .map(|(scheme, _)| scheme)
                 .unwrap_or(reference);
             return Err(SpecmanError::Dependency(format!(
-                "unsupported locator scheme {}:// (expected https://, spec://, impl://, scratch://, or workspace-relative path)",
-                scheme
+                "unsupported locator scheme {scheme}:// (expected https://, spec://, impl://, scratch://, or workspace-relative path)"
             )));
         }
 
@@ -1259,8 +1257,7 @@ fn resolve_dependency_locator(
     if let ArtifactLocator::Url(url) = parent {
         let joined = url.join(reference).map_err(|err| {
             SpecmanError::Dependency(format!(
-                "invalid relative url {} for {}: {}",
-                reference, url, err
+                "invalid relative url {reference} for {url}: {err}"
             ))
         })?;
         return Ok(ArtifactLocator::Url(joined));
@@ -1373,7 +1370,7 @@ fn infer_name(locator: &ArtifactLocator) -> String {
         ArtifactLocator::File(path) => infer_name_from_file(path),
         ArtifactLocator::Url(url) => url
             .path_segments()
-            .and_then(|segments| segments.last())
+            .and_then(|mut segments| segments.next_back())
             .filter(|segment| !segment.is_empty())
             .map(|segment| segment.replace(",", "_"))
             .unwrap_or_else(|| url.host_str().unwrap_or("remote").to_string()),
@@ -1425,7 +1422,7 @@ mod tests {
             self.responses
                 .get(url.as_str())
                 .cloned()
-                .ok_or_else(|| SpecmanError::Dependency(format!("no stub for {}", url)))
+                .ok_or_else(|| SpecmanError::Dependency(format!("no stub for {url}")))
         }
     }
 
@@ -1554,8 +1551,7 @@ name: founding-spec
             .expect("best-effort should set resolved_path");
         assert!(
             resolved.ends_with("docs/founding-spec.md"),
-            "unexpected resolved path: {}",
-            resolved
+            "unexpected resolved path: {resolved}"
         );
     }
 
@@ -1924,7 +1920,7 @@ version: "0.1.0"
     fn parse_front_matter_handles_bom_and_crlf() {
         let doc = "\u{feff}---\r\nname: alpha\r\nversion: \"1.0.0\"\r\n---\r\n# Body";
         let (front, status) = front_matter::optional_front_matter(doc);
-        assert!(status.is_none(), "unexpected status: {:?}", status);
+        assert!(status.is_none(), "unexpected status: {status:?}");
         let normalized = front.unwrap().replace('\r', "");
         assert_eq!(normalized, "name: alpha\nversion: \"1.0.0\"");
     }

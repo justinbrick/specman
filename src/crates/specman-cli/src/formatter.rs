@@ -79,7 +79,7 @@ fn print_text(result: &CommandResult) {
                 let target_spec = imp
                     .spec_identifier
                     .as_deref()
-                    .or_else(|| imp.spec_locator.as_deref())
+                    .or(imp.spec_locator.as_deref())
                     .unwrap_or("unknown");
                 println!(
                     "  - {} (target: {}, lang: {}, version: {version})",
@@ -177,13 +177,13 @@ fn print_text(result: &CommandResult) {
             );
             println!("  Provenance locator: {}", report.provenance.locator);
             if let Some(pointer) = &report.provenance.pointer {
-                println!("  Pointer file: {}", pointer);
+                println!("  Pointer file: {pointer}");
             }
             if let Some(cache_path) = &report.provenance.cache_path {
-                println!("  Cache: {}", cache_path);
+                println!("  Cache: {cache_path}");
             }
             if let Some(last_modified) = &report.provenance.last_modified {
-                println!("  Last-Modified: {}", last_modified);
+                println!("  Last-Modified: {last_modified}");
             }
         }
     }
@@ -191,7 +191,7 @@ fn print_text(result: &CommandResult) {
 
 fn print_json(result: &CommandResult) -> Result<(), CliError> {
     let payload = json!(result);
-    println!("{}", payload);
+    println!("{payload}");
     Ok(())
 }
 
@@ -246,13 +246,13 @@ fn render_direction_section(
     let prefix = if indent_root { "    " } else { "  " };
     println!("{}{}", prefix, artifact_label(&tree.root));
     if edges.is_empty() {
-        println!("{}  (none)", prefix);
+        println!("{prefix}  (none)");
         return;
     }
 
     let children = build_children_map(edges, view);
     let mut stack = Vec::new();
-    render_children(&tree.root, &children, format!("{prefix}"), &mut stack);
+    render_children(&tree.root, &children, prefix.to_string(), &mut stack);
 }
 
 fn build_children_map(

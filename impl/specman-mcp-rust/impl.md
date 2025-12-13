@@ -1,17 +1,17 @@
 ---
 spec: ../../spec/specman-mcp/spec.md
 name: specman-mcp-rust
-version: "0.1.0"
+version: "0.2.0"
 location: ../../src/crates/specman-mcp
 library:
-  name: specman-mcp-server@0.1.0
+  name: specman-mcp-server@0.2.0
 primary_language:
   language: rust@1.91.0
   properties:
     edition: "2024"
   libraries:
     - name: rmcp@latest
-    - name: specman-library@0.1.0
+    - name: specman-library@2.0.0
     - name: schemars
     - name: serde_json
 secondary_languages: []
@@ -55,12 +55,15 @@ This adapter implements the [SpecMan MCP Server](../../spec/specman-mcp/spec.md)
 
 ### Code Location
 
-Source code resides (or will reside) under `src/crates/specman-mcp`, a library/binary crate that binds `rmcp` session handling to SpecMan Core services from `specman-library`. The crate exposes a STDIN-focused entry point (for example, `main.rs` wiring `run_stdio_server`) plus modules for capability registration, tool dispatch, and schema publishing.
+Source code resides under `src/crates/specman-mcp`.
+
+- `src/lib.rs` defines `SpecmanMcpServer` (the MCP handler) plus `run_stdio_server()`.
+- `src/bin/specman-mcp.rs` is the binary entry point that runs the server over stdio.
 
 ### Libraries
 
 - `rmcp@latest` — MCP server runtime used for STDIN lifecycle, tool/resource/prompt registration, streaming responses, and notifications.
-- `specman-library@0.1.0` — shared SpecMan Core implementation supplying workspace discovery, dependency mapping, lifecycle automation, metadata mutation, and schema derivation.
+- `specman-library@2.0.0` — shared SpecMan Core implementation supplying workspace discovery, dependency mapping, lifecycle automation, metadata mutation, and schema derivation.
 - `schemars` and `serde_json` — generate and serialize JSON Schemas for MCP tool parameters and outputs tied to SpecMan Data Model entities.
 
 ## Concept & Entity Breakdown
@@ -72,35 +75,31 @@ The adapter runs as a STDIN/STDOUT MCP server using `rmcp`, advertising supporte
 #### API Signatures — Transport
 
 ```rust
-pub async fn run_stdio_server(supported_versions: &[Version]) -> Result<(), McpError>;
+pub async fn run_stdio_server() -> Result<(), ServerInitializeError>;
 
-pub async fn initialize_session(
-    transport: &mut McpTransport,
-    workspace: Arc<dyn WorkspaceLocator>,
-    capabilities: Vec<SpecManCapabilityDescriptor>,
-) -> Result<MCPWorkspaceSession, McpError>;
+impl SpecmanMcpServer {
+  pub fn new() -> Result<Self, SpecmanError>;
+  pub fn new_with_root(root: impl Into<PathBuf>) -> Result<Self, SpecmanError>;
+  pub async fn run_stdio(self) -> Result<(), ServerInitializeError>;
+}
 ```
 
-- `run_stdio_server` wires `rmcp` STDIN transport, advertises protocol versions, and blocks until shutdown. Invariants: only STDIN transport; version negotiation must succeed before tool exposure.
-- `initialize_session` performs MCP handshake, binds a workspace (via SpecMan Core discovery), and returns session state used by tool handlers; errors propagate as MCP initialization failures with SpecMan references.
+- `run_stdio_server` builds the handler, serves it over `rmcp`’s stdio transport, and blocks until the peer closes the transport.
+- `new_with_root` allows hosts/tests to pin workspace discovery to a specific directory.
 
 ### Concept: [SpecMan Capability Parity](../../spec/specman-mcp/spec.md#concept-specman-capability-parity)
 
-Every SpecMan Core capability is exposed as an MCP tool with stable identifiers (`specman.core.<concept_snake_case>`). Tool handlers delegate to `specman-library` functions for workspace discovery, dependency mapping, lifecycle automation, metadata mutation, template orchestration, and prompt catalog access. Optional/experimental capabilities are labeled with their source spec/implementation.
+The adapter exposes a focused subset of SpecMan functionality as MCP tools/prompts, prioritizing safe inspection (workspace discovery/inventory) and deterministic prompt generation.
 
 #### API Signatures — Capability Parity
 
 ```rust
-pub fn capability_catalog(core: &SpecmanCore) -> Vec<SpecManCapabilityDescriptor>;
-
-pub async fn handle_tool_call(
-    session: &MCPWorkspaceSession,
-    request: ToolCallRequest,
-) -> Result<OperationEnvelope, McpError>;
+// Tools and prompts are registered via rmcp's `#[tool_router]` / `#[prompt_router]` macros.
+// Each handler is a method on `SpecmanMcpServer` annotated with `#[tool(...)]` or `#[prompt(...)]`.
 ```
 
-- `capability_catalog` assembles descriptors for all SpecMan Core concepts, including JSON Schemas derived from the data model.
-- `handle_tool_call` dispatches to SpecMan Core implementations, enforcing concept-specific invariants and returning an `OperationEnvelope` that records results, errors, and artifact paths.
+- Current tool surface: `workspace_discovery`, `workspace_inventory`.
+- Current prompt surface: `feat`, `ref`, `revision`, `fix` (scratch pad prompt templates).
 
 ### Concept: [Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance)
 
@@ -109,17 +108,12 @@ All filesystem access flows through SpecMan workspace discovery, and resource ha
 #### API Signatures — Governance
 
 ```rust
-pub fn resolve_handle(handle: &str, workspace: &WorkspacePaths) -> Result<ArtifactId, McpError>;
-
-pub async fn describe_dependencies(
-    mapper: &impl DependencyMapping,
-    root: &ArtifactId,
-) -> Result<DependencyTree, McpError>;
+fn artifact_path(id: &ArtifactId, workspace: &WorkspacePaths) -> PathBuf;
+fn artifact_handle(summary: &ArtifactSummary) -> String;
 ```
 
-- `resolve_handle` rejects workspace escapes and normalizes resource handles to canonical artifact identifiers.
-- `describe_dependencies` returns upstream/downstream trees; mutation handlers must consult this before writes and propagate errors when blocking dependents exist.
-- Context/prompt producers call the library's best-effort dependency traversal so missing handles still yield `resolved_path` + `resolution` metadata; clients can prefer the resolved path when handles are absent while keeping strict traversal for mutations.
+- Handles use the `spec://`, `impl://`, and `scratch://` schemes and are always emitted in normalized form.
+- Paths returned to MCP clients are workspace-resolved and never allow escaping outside the discovered root.
 
 ### Concept: [Session Safety & Deterministic Execution](../../spec/specman-mcp/spec.md#concept-session-safety--deterministic-execution)
 
