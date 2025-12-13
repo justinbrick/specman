@@ -5,3 +5,6 @@ members = [
     "crates/specman-cli",
     "crates/specman-mcp"
 ]
+
+[workspace.package]
+authors = ["Justin B <justin@justin.directory>"]

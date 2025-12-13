@@ -2,7 +2,7 @@
 name = "specman"
 version = "2.0.0"
 edition = "2024"
-authors = ["SpecMan Authors"]
+authors.workspace = true
 description = "SpecMan runtime library for dependency mapping, templating, and lifecycle automation."
 license = "MIT"
 
