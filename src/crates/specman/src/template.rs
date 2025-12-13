@@ -148,19 +148,19 @@ where
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct SpecContext {
     pub name: String,
     pub title: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct ImplContext {
     pub name: String,
     pub target: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct ScratchPadContext {
     pub name: String,
     pub target: String,

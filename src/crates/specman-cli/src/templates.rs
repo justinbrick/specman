@@ -24,12 +24,6 @@ impl TemplateCatalog {
         }
     }
 
-    pub fn descriptor(&self, kind: TemplateKind) -> Result<ResolvedTemplate, CliError> {
-        self.catalog
-            .resolve(kind.scenario())
-            .map_err(CliError::from)
-    }
-
     pub fn set_pointer(
         &self,
         kind: TemplateKind,

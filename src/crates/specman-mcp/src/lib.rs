@@ -414,10 +414,11 @@ impl SpecmanMcpServer {
         let target_name = resolved.tree.root.id.name.clone();
 
         let provided_branch = branch_name.and_then(|value| normalize_input(Some(value)));
-        let example_branch = format!(
-            "{}/{}/{}",
-            target_name, work_type, "verb-or-noun-scratchpad"
-        );
+
+        // Provide a deterministic example name so callers see stable guidance.
+        // This also keeps MCP prompt outputs easy to test and reason about.
+        let example_scratchpad_name = format!("{}-{}", target_name, work_type);
+        let example_branch = format!("{}/{}/{}", target_name, work_type, example_scratchpad_name);
         let branch_instruction = match provided_branch {
             Some(branch) => format!(
                 "Check out the provided branch \"{}\" and keep it active while working on this {} scratch pad.",
@@ -430,7 +431,8 @@ impl SpecmanMcpServer {
         };
 
         let artifact_instruction = format!(
-            "Provide a scratch pad name (lowercase, hyphenated, ≤4 words) that satisfies spec/specman-data-model naming rules. Example: verb-or-noun-scratchpad.",
+            "Provide a scratch pad name (lowercase, hyphenated, ≤4 words) that satisfies spec/specman-data-model naming rules. Example: {}.",
+            example_scratchpad_name
         );
 
         let context = bullet_list(&dependency_lines(&resolved));

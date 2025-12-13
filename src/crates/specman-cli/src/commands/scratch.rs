@@ -5,15 +5,15 @@ use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum, builder::EnumValuePar
 use serde::Serialize;
 use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyMapping, DependencyTree};
 use specman::front_matter::{self, ScratchFrontMatter};
-use specman::lifecycle::LifecycleController;
-use specman::template::{TemplateEngine, TokenMap};
+use specman::front_matter::{ScratchRefactorMetadata, ScratchRevisionMetadata, ScratchWorkType, ScratchWorkloadExtras};
+use specman::{CreateRequest, ScratchPadCreateContext};
+use specman::{DeletePolicy, DeleteRequest};
 
 use crate::commands::CommandResult;
 use crate::commands::dependencies::{self, DependencyScope};
 use crate::context::CliSession;
 use crate::error::{CliError, ExitStatus};
 use crate::frontmatter::update_scratch_document;
-use crate::templates::TemplateKind;
 use crate::util;
 
 #[derive(Clone, Debug, Serialize)]
@@ -118,21 +118,34 @@ fn create_scratchpad(
         .cloned()
         .unwrap_or_else(|| default_branch(&target, work_key, &name));
 
-    let resolved = session.templates.descriptor(TemplateKind::Scratch)?;
-    let mut rendered = session
-        .template_engine
-        .render(&resolved.descriptor, &TokenMap::new())
-        .map_err(CliError::from)?;
-    rendered.provenance = Some(resolved.provenance);
-    rendered.body = update_scratch_document(&rendered.body, &target, &branch, work_key)?;
-
     let artifact = ArtifactId {
         kind: ArtifactKind::ScratchPad,
         name: name.clone(),
     };
+
+    let work_type = match work_type {
+        ScratchType::Feat => ScratchWorkType::Feat(ScratchWorkloadExtras::default()),
+        ScratchType::Ref => ScratchWorkType::Refactor(ScratchRefactorMetadata::default()),
+        ScratchType::Revision => ScratchWorkType::Revision(ScratchRevisionMetadata::default()),
+    };
+
+    let plan = session
+        .specman
+        .plan_create(CreateRequest::ScratchPad {
+            context: ScratchPadCreateContext {
+                name: name.clone(),
+                target: target.clone(),
+                work_type,
+            },
+        })
+        .map_err(CliError::from)?;
+
+    let mut rendered = plan.rendered;
+    rendered.body = update_scratch_document(&rendered.body, &target, &branch, work_key)?;
+
     let persisted = session
-        .persistence
-        .persist(&artifact, &rendered)
+        .specman
+        .persist_rendered(&artifact, &rendered, None)
         .map_err(CliError::from)?;
     session
         .record_dependency_tree(&artifact)
@@ -169,8 +182,8 @@ fn delete_scratchpad(
     // Planning through the lifecycle controller keeps scratch deletions consistent with
     // the shared dependency guard rails and force semantics.
     let plan = session
-        .lifecycle
-        .plan_deletion(artifact.clone())
+        .specman
+        .plan_delete(artifact.clone())
         .map_err(CliError::from)?;
     if plan.blocked && !forced {
         return Err(CliError::new(
@@ -197,13 +210,12 @@ fn delete_scratchpad(
     };
 
     let removed = session
-        .lifecycle
-        .execute_deletion(
-            artifact.clone(),
-            Some(plan),
-            session.persistence.as_ref(),
-            forced,
-        )
+        .specman
+        .delete(DeleteRequest {
+            target: artifact.clone(),
+            plan: Some(plan),
+            policy: DeletePolicy { force: forced },
+        })
         .map_err(CliError::from)?;
     let removed_path = util::workspace_relative(session.workspace_paths.root(), &removed.directory);
 

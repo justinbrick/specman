@@ -1,8 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::dependency_tree::{ArtifactId, DependencyMapping, DependencyTree};
-use crate::error::SpecmanError;
+use crate::dependency_tree::{ArtifactId, ArtifactSummary, DependencyMapping, DependencyTree};
+use crate::error::{LifecycleError, SpecmanError};
 use crate::persistence::{ArtifactRemovalStore, RemovedArtifact};
 use crate::scratchpad::ScratchPadProfile;
 use crate::template::{
@@ -76,9 +76,17 @@ where
     T: TemplateEngine,
 {
     fn plan_creation(&self, request: CreationRequest) -> Result<CreationPlan, SpecmanError> {
-        let dependencies = self.mapping.dependency_tree(&request.target)?;
         let mut rendered = self.templates.render(&request.template, &request.tokens)?;
         rendered.provenance = request.provenance.clone();
+
+        let dependencies = match self.mapping.dependency_tree(&request.target) {
+            Ok(tree) => tree,
+            Err(SpecmanError::MissingTarget(_)) => DependencyTree::empty(ArtifactSummary {
+                id: request.target.clone(),
+                ..Default::default()
+            }),
+            Err(err) => return Err(err),
+        };
         Ok(CreationPlan {
             rendered,
             dependencies,
@@ -112,10 +120,11 @@ where
         let plan = match existing_plan {
             Some(plan) => {
                 if plan.dependencies.root.id != target {
-                    return Err(SpecmanError::Dependency(format!(
-                        "deletion plan target mismatch for {}",
-                        target.name
-                    )));
+                    return Err(LifecycleError::PlanTargetMismatch {
+                        requested: target,
+                        planned: plan.dependencies.root.id,
+                    }
+                    .into());
                 }
                 plan
             }
@@ -123,10 +132,7 @@ where
         };
 
         if plan.blocked && !force {
-            return Err(SpecmanError::Dependency(format!(
-                "cannot delete {}; downstream dependents detected",
-                target.name
-            )));
+            return Err(LifecycleError::DeletionBlocked { target }.into());
         }
 
         let removed = persistence.remove_artifact(&target)?;
@@ -392,7 +398,10 @@ mod tests {
         let err = controller
             .execute_deletion(artifact.clone(), Some(plan), &persistence, false)
             .expect_err("blocked deletion");
-        assert!(matches!(err, SpecmanError::Dependency(_)));
+        assert!(matches!(
+            err,
+            SpecmanError::Lifecycle(crate::error::LifecycleError::DeletionBlocked { .. })
+        ));
         assert!(adapter.invalidated_ids().is_empty());
     }
 

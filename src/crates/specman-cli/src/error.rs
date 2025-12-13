@@ -3,6 +3,7 @@ use std::process::ExitCode;
 
 use clap::error::ErrorKind as ClapErrorKind;
 use specman::SpecmanError;
+use specman::error::LifecycleError;
 
 const EX_OK: u8 = 0;
 const EX_USAGE: u8 = 64;
@@ -61,8 +62,19 @@ impl CliError {
 
 impl From<SpecmanError> for CliError {
     fn from(err: SpecmanError) -> Self {
-        let status = match err {
-            SpecmanError::Template(_) | SpecmanError::Dependency(_) => ExitStatus::Data,
+        let status = match &err {
+            SpecmanError::Template(_)
+            | SpecmanError::Dependency(_)
+            | SpecmanError::MissingTarget(_) => ExitStatus::Data,
+            SpecmanError::Lifecycle(err) => match err {
+                LifecycleError::DeletionBlocked { .. } => ExitStatus::Data,
+                LifecycleError::PlanTargetMismatch { .. } => ExitStatus::Software,
+                LifecycleError::Context { source, .. } => match source.as_ref() {
+                    LifecycleError::DeletionBlocked { .. } => ExitStatus::Data,
+                    LifecycleError::PlanTargetMismatch { .. } => ExitStatus::Software,
+                    LifecycleError::Context { .. } => ExitStatus::Software,
+                },
+            },
             SpecmanError::Workspace(_) => ExitStatus::Usage,
             SpecmanError::Serialization(_) => ExitStatus::Software,
             SpecmanError::Io(_) => ExitStatus::Io,

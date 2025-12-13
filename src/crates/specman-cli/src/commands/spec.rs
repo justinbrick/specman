@@ -7,15 +7,14 @@ use specman::dependency_tree::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyMapping, DependencyTree,
 };
 use specman::front_matter::{self, SpecificationFrontMatter};
-use specman::lifecycle::LifecycleController;
-use specman::template::{TemplateEngine, TokenMap};
+use specman::template::SpecContext;
+use specman::{CreateRequest, DeletePolicy, DeleteRequest};
 
 use crate::commands::CommandResult;
 use crate::commands::dependencies::{self, DependencyScope};
 use crate::context::CliSession;
 use crate::error::{CliError, ExitStatus};
 use crate::frontmatter::update_spec_document;
-use crate::templates::TemplateKind;
 use crate::util;
 
 pub type DeletionTree = DependencyTree;
@@ -89,24 +88,25 @@ fn create_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ));
     }
 
-    let resolved = session.templates.descriptor(TemplateKind::Specification)?;
-    let mut rendered = session
-        .template_engine
-        .render(&resolved.descriptor, &TokenMap::new())
+    let plan = session
+        .specman
+        .plan_create(CreateRequest::Specification {
+            context: SpecContext {
+                name: name.clone(),
+                title: name.clone(),
+            },
+        })
         .map_err(CliError::from)?;
-    rendered.provenance = Some(resolved.provenance);
+
+    let mut rendered = plan.rendered;
     rendered.body = update_spec_document(&rendered.body, &name, &version, &dependencies)?;
 
-    let artifact = ArtifactId {
-        kind: ArtifactKind::Specification,
-        name: name.clone(),
-    };
     let persisted = session
-        .persistence
-        .persist(&artifact, &rendered)
+        .specman
+        .persist_rendered(&plan.artifact, &rendered, None)
         .map_err(CliError::from)?;
     session
-        .record_dependency_tree(&artifact)
+        .record_dependency_tree(&plan.artifact)
         .map_err(CliError::from)?;
     let summary = read_spec_summary(&persisted.path)?;
 
@@ -137,8 +137,8 @@ fn delete_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
     // Delegate dependency checks to the shared lifecycle controller so CLI deletions
     // remain aligned with the library's guard rails.
     let plan = session
-        .lifecycle
-        .plan_deletion(artifact.clone())
+        .specman
+        .plan_delete(artifact.clone())
         .map_err(CliError::from)?;
     if plan.blocked && !forced {
         return Err(CliError::new(
@@ -152,13 +152,12 @@ fn delete_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
     let tree = plan.dependencies.clone();
 
     let removed = session
-        .lifecycle
-        .execute_deletion(
-            artifact.clone(),
-            Some(plan),
-            session.persistence.as_ref(),
-            forced,
-        )
+        .specman
+        .delete(DeleteRequest {
+            target: artifact.clone(),
+            plan: Some(plan),
+            policy: DeletePolicy { force: forced },
+        })
         .map_err(CliError::from)?;
     let removed_path = util::workspace_relative(session.workspace_paths.root(), &removed.directory);
 

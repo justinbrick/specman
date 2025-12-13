@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::error::SpecmanError;
+
+use std::fmt;
 use crate::front_matter::{self, ArtifactFrontMatter, DependencyEntry, FrontMatterKind};
 use crate::shared_function::SemVer;
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
@@ -47,6 +49,12 @@ impl ContentFetcher for HttpFetcher {
 pub struct ArtifactId {
     pub kind: ArtifactKind,
     pub name: String,
+}
+
+impl fmt::Display for ArtifactId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}://{}", self.kind, self.name)
+    }
 }
 
 /// Artifact kind segmentation.
@@ -1142,10 +1150,7 @@ fn resolve_workspace_path(
     };
 
     if !path.exists() {
-        return Err(SpecmanError::Dependency(format!(
-            "missing target: {}",
-            path.display()
-        )));
+        return Err(SpecmanError::MissingTarget(path));
     }
 
     let canonical = fs::canonicalize(&path)?;
@@ -1507,10 +1512,10 @@ name: specman-core
             .dependency_tree_from_locator("spec://missing-spec")
             .expect_err("missing handles should error");
 
-        if let SpecmanError::Dependency(msg) = err {
-            assert!(msg.contains("missing target"));
+        if let SpecmanError::MissingTarget(path) = err {
+            assert!(path.to_string_lossy().contains("missing-spec"));
         } else {
-            panic!("expected dependency error for missing handle target");
+            panic!("expected missing-target error for missing handle target");
         }
     }
 
@@ -1981,10 +1986,10 @@ version: "0.1.0"
 
         let err = validate_workspace_reference("spec://unknown", &parent_dir, &workspace)
             .expect_err("missing handles should error");
-        if let SpecmanError::Dependency(msg) = err {
-            assert!(msg.contains("missing target"));
+        if let SpecmanError::MissingTarget(path) = err {
+            assert!(path.to_string_lossy().contains("unknown"));
         } else {
-            panic!("expected dependency error for missing target");
+            panic!("expected missing-target error for missing target");
         }
     }
 
