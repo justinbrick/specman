@@ -411,21 +411,17 @@ impl SpecmanMcpServer {
 
         let provided_branch = branch_name.and_then(|value| normalize_input(Some(value)));
 
-        // Provide a deterministic example name so callers see stable guidance.
-        // This also keeps MCP prompt outputs easy to test and reason about.
-        let example_scratchpad_name = format!("{target_name}-{work_type}");
-        let example_branch = format!("{target_name}/{work_type}/{example_scratchpad_name}");
         let branch_instruction = match provided_branch {
             Some(branch) => format!(
                 "Check out the provided branch \"{branch}\" and keep it active while working on this {work_type} scratch pad."
             ),
             None => format!(
-                "Create and check out a branch that follows {target_name}/{work_type}/{{scratch_pad_name}}; for this work, an example is \"{example_branch}\"."
+                "Create and check out a branch that follows {target_name}/{work_type}/{{scratch_pad_name}}; for this work, an example is {target_name}/{work_type}/action-being-done."
             ),
         };
 
         let artifact_instruction = format!(
-            "Provide a scratch pad name (lowercase, hyphenated, ≤4 words) that satisfies spec/specman-data-model naming rules. Example: {example_scratchpad_name}."
+            "Provide a scratch pad name (lowercase, hyphenated, ≤4 words) that satisfies spec/specman-data-model naming rules. Example: action-being-done."
         );
 
         let context = bullet_list(&dependency_lines(&resolved));
