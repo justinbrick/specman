@@ -44,6 +44,35 @@ This concept ensures that every capability delivered by a SpecMan Core-compliant
 - The adapter MUST surface prompt-catalog tools that return authoring prompts for creating and modifying specifications, implementations, and scratch pads. Each prompt response MUST cite the corresponding template from the [SpecMan Templates](../specman-templates/spec.md) catalog, declare the intended work type (for scratch pads), and remind clients to honor HTML comment directives.
 - The adapter MUST provide lifecycle tools that execute the prompted create or modify flows for specs, implementations, and scratch pads. These tools MUST call into SpecMan Core lifecycle automation, enforce naming and metadata constraints from the SpecMan Data Model, and emit MCP errors when persistence or validation fails.
 
+#### Required Tool: `create_artifact`
+
+To make artifact creation consistently automatable across MCP clients, compliant adapters MUST expose a lifecycle tool named `create_artifact`.
+
+- The adapter MUST expose an MCP tool named `create_artifact` that creates SpecMan artifacts (specifications, implementations, scratch pads) by delegating to [SpecMan Core Lifecycle Automation](../specman-core/spec.md#concept-lifecycle-automation).
+- The tool MUST support creating each artifact class:
+  - specifications (`spec/{name}/spec.md`)
+  - implementations (`impl/{name}/impl.md`)
+  - scratch pads (`.specman/scratchpad/{name}/scratch.md`) for every supported scratch work type (`draft`, `revision`, `feat`, `ref`, `fix`).
+- The tool MUST accept inputs sufficient to populate all REQUIRED values in the selected artifact template and to write a data-model-compliant YAML front matter block for the addressed artifact kind.
+  - For scratch pads, this includes allowing callers to supply the work type object (including `revised_headings` / `refactored_headings` / `fixed_headings` as applicable) and the persisted `target` value.
+- The tool MUST enforce naming, metadata, and workspace-boundary constraints from the [SpecMan Data Model](../specman-data-model/spec.md) before persisting any files.
+- The tool MUST normalize any locator handles provided as inputs (for example `spec://{artifact}` / `impl://{artifact}` / `scratch://{artifact}`) into canonical workspace-relative paths before writing artifact content, including scratch pad front matter `target`.
+- The tool MUST honor template governance requirements from [SpecMan Templates](../specman-templates/spec.md): templates MUST be applied as the source of truth, HTML comment directives MUST be preserved until their guidance is satisfied, and required template substitutions MUST be validated.
+- The tool MUST return an `OperationEnvelope` that records at minimum: the created artifact handle(s), canonical file paths, the effective template locator(s), and any workspace mutations.
+
+##### Input Schema Requirements
+
+Because MCP requires explicit tool schemas, `create_artifact` MUST publish a deterministic parameter schema; however, the specific input *shape* is implementation-defined.
+
+- The adapter MUST document the `create_artifact` input schema it exposes, and it MUST be deterministic across releases except where versioned as a breaking change.
+- The schema MUST allow callers to provide enough information to:
+  - select the artifact class to create (specification vs implementation vs scratch pad)
+  - select (or allow the server to resolve) the effective template locator
+  - supply every required value needed to fully render the selected template (including any required template substitutions)
+  - for scratch pads, select the scratch pad work type variant and provide any required work-type-specific metadata (for example revised/refactored/fixed heading fragments)
+  - control persistence behavior (for example dry-run vs write) when such options are supported
+- When the schema accepts template-substitution inputs, the adapter MUST NOT permit substitutions for tokens outside the set governed by the [SpecMan Templates Template Token Contract](../specman-templates/spec.md#concept-template-token-contract).
+
 ### Concept: Workspace & Data Governance
 
 MCP calls interact with on-disk workspaces governed by the SpecMan Data Model.
