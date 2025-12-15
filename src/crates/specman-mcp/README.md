@@ -5,8 +5,7 @@
 ## What It Provides
 
 - **Tools**
-  - `workspace_discovery` — resolve canonical workspace directories via nearest `.specman` ancestor
-  - `workspace_inventory` — list specifications, implementations, and scratch pads as resource handles
+  - `create_artifact` — create a specification, implementation, or scratch pad from a `CreateRequest`
 - **Prompts**
   - `feat`, `ref`, `revision`, `fix` — generate deterministic scratch-pad prompts from the embedded templates
 

@@ -1,4 +1,6 @@
-use crate::dependency_tree::{ArtifactId, ArtifactKind, DependencyMapping, DependencyTree, FilesystemDependencyMapper};
+use crate::dependency_tree::{
+    ArtifactId, ArtifactKind, DependencyMapping, DependencyTree, FilesystemDependencyMapper,
+};
 use crate::error::{LifecycleError, SpecmanError};
 use crate::front_matter::ScratchWorkType;
 use crate::lifecycle::{
@@ -11,6 +13,8 @@ use crate::template::{
 };
 use crate::template_catalog::TemplateCatalog;
 use crate::workspace::{FilesystemWorkspaceLocator, WorkspaceLocator};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// High-level façade that bundles lifecycle planning/execution, template selection,
 /// and workspace persistence into a single ergonomic entry point.
@@ -81,8 +85,12 @@ where
         let persisted = self.persistence.persist(&plan.artifact, &plan.rendered)?;
 
         // Dependency trees can only be computed once the artifact exists on disk.
-        let deps = self.controller.plan_deletion(plan.artifact.clone())?.dependencies;
-        self.persistence.save_dependency_tree(&plan.artifact, &deps)?;
+        let deps = self
+            .controller
+            .plan_deletion(plan.artifact.clone())?
+            .dependencies;
+        self.persistence
+            .save_dependency_tree(&plan.artifact, &deps)?;
 
         Ok(persisted)
     }
@@ -252,7 +260,7 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub enum CreateRequest {
     Specification {
         context: SpecContext,
@@ -273,7 +281,7 @@ pub enum CreateRequest {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ScratchPadCreateContext {
     pub name: String,
     pub target: String,

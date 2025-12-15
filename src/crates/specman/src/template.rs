@@ -11,8 +11,7 @@ use crate::error::SpecmanError;
 pub type TokenMap = BTreeMap<String, serde_json::Value>;
 
 /// Identifies the tier that produced a template.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Default)]
 pub enum TemplateTier {
     WorkspaceOverride,
     PointerFile,
@@ -20,7 +19,6 @@ pub enum TemplateTier {
     #[default]
     EmbeddedDefault,
 }
-
 
 /// Records provenance metadata for persisted templates.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Default, PartialEq, Eq)]
@@ -145,13 +143,13 @@ where
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SpecContext {
     pub name: String,
     pub title: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ImplContext {
     pub name: String,
     pub target: String,

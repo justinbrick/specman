@@ -58,7 +58,7 @@ To make artifact creation consistently automatable across MCP clients, compliant
 - The tool MUST enforce naming, metadata, and workspace-boundary constraints from the [SpecMan Data Model](../specman-data-model/spec.md) before persisting any files.
 - The tool MUST normalize any locator handles provided as inputs (for example `spec://{artifact}` / `impl://{artifact}` / `scratch://{artifact}`) into canonical workspace-relative paths before writing artifact content, including scratch pad front matter `target`.
 - The tool MUST honor template governance requirements from [SpecMan Templates](../specman-templates/spec.md): templates MUST be applied as the source of truth, HTML comment directives MUST be preserved until their guidance is satisfied, and required template substitutions MUST be validated.
-- The tool MUST return an `OperationEnvelope` that records at minimum: the created artifact handle(s), canonical file paths, the effective template locator(s), and any workspace mutations.
+- The tool MUST return a deterministic result payload describing what was created. At minimum it MUST include the created artifact identifier(s) and canonical workspace-relative path(s). Implementations SHOULD also include the effective template locator/provenance used.
 
 ##### Input Schema Requirements
 
@@ -67,10 +67,10 @@ Because MCP requires explicit tool schemas, `create_artifact` MUST publish a det
 - The adapter MUST document the `create_artifact` input schema it exposes, and it MUST be deterministic across releases except where versioned as a breaking change.
 - The schema MUST allow callers to provide enough information to:
   - select the artifact class to create (specification vs implementation vs scratch pad)
-  - select (or allow the server to resolve) the effective template locator
+  - rely on the server to resolve the effective template via workspace template pointer files and scenario selection (callers MUST NOT provide template locator overrides)
   - supply every required value needed to fully render the selected template (including any required template substitutions)
   - for scratch pads, select the scratch pad work type variant and provide any required work-type-specific metadata (for example revised/refactored/fixed heading fragments)
-  - control persistence behavior (for example dry-run vs write) when such options are supported
+  - control persistence behavior when such options are supported
 - When the schema accepts template-substitution inputs, the adapter MUST NOT permit substitutions for tokens outside the set governed by the [SpecMan Templates Template Token Contract](../specman-templates/spec.md#concept-template-token-contract).
 
 ### Concept: Workspace & Data Governance
@@ -83,7 +83,7 @@ MCP calls interact with on-disk workspaces governed by the SpecMan Data Model.
 - Data returned to MCP clients (e.g., rendered specs, dependency graphs) MUST retain source references so downstream tools can trace each datum back to its origin document within the workspace.
 - Resource handles resolved via `spec://`, `impl://`, or `scratch://` MUST be normalized through workspace discovery, bound to canonical artifact paths, and rejected when they refer to artifacts outside the active workspace. Normalized handles MUST retain stable identifiers so MCP clients can reuse them across sessions.
 - `/dependencies` handles MUST be treated as derived read-only locators whose responses are generated exclusively by dependency mapping services; mutation attempts against these handles MUST fail with an MCP error explaining that only query operations are supported.
-- Prompt catalog and lifecycle tools MUST reference template locators managed by SpecMan Templates pointer files, validate that supplied names comply with the [founding specification](../../docs/founding-spec.md), and document any workspace mutations in the resulting OperationEnvelope.
+- Prompt catalog and lifecycle tools MUST reference template locators managed by SpecMan Templates pointer files, validate that supplied names comply with the [founding specification](../../docs/founding-spec.md), and document any workspace mutations in the lifecycle tool results.
 
 ### Concept: Session Safety & Deterministic Execution
 
@@ -112,18 +112,10 @@ Defines the MCP tool metadata for each SpecMan Core capability.
 - MUST embed JSON Schema fragments that match the SpecMan Data Model serialization for the capability’s inputs/outputs.
 - MAY reference implementation-specific extensions, but those entries MUST carry a `type: extension` label and cite the owning specification or implementation path.
 
-### Entity: OperationEnvelope
-
-Encapsulates a single SpecMan action executed via MCP, including deterministic results.
-
-- MUST capture the originating capability descriptor, sanitized inputs, execution timestamps, and resulting artifacts.
-- MUST record workspace mutations (created files, updated specs) so downstream auditing or rollback workflows can reason about side effects.
-- SHOULD provide a canonical transcript that MCP clients MAY store for provenance, including streamed messages and final status codes.
-
 ## Additional Notes
 
 - MCP deployments MAY shard workspaces across multiple processes, but every shard MUST adhere to this specification and expose a single consolidated capability catalog to clients.
-- Implementers MAY offer dry-run variants of mutating capabilities so MCP clients can request previews before persisting changes; dry-run responses MUST clearly indicate they are non-persistent.
+- Implementers MAY offer read-only planning tools as separate capabilities so MCP clients can request previews before persisting changes; preview responses MUST clearly indicate they are non-persistent.
 - Adapters MAY reuse off-the-shelf MCP libraries or frameworks; compliance is measured by the behavior defined in this document, not by re-implementing the protocol stack.
 - Because deployments are STDIN-based on local machines, additional network security controls are OPTIONAL; nonetheless, implementers SHOULD ensure logging and locking remain in place to preserve SpecMan Core guarantees.
 - MCP adapters SHOULD document the mapping between resource handles and human-readable artifact names so that clients can prompt users before invoking lifecycle operations.

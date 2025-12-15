@@ -23,8 +23,10 @@ use rmcp::{
 };
 use serde::{Deserialize, Serialize};
 use specman::{
-    ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree, FilesystemDependencyMapper,
-    FilesystemWorkspaceLocator, SemVer, SpecmanError, WorkspaceLocator, WorkspacePaths,
+    ArtifactId, ArtifactKind, ArtifactSummary, CreateRequest, DefaultLifecycleController,
+    DependencyTree, FilesystemDependencyMapper, FilesystemWorkspaceLocator, MarkdownTemplateEngine,
+    PersistedArtifact, SemVer, Specman, SpecmanError, TemplateCatalog, WorkspaceLocator,
+    WorkspacePaths, WorkspacePersistence,
 };
 
 const SCRATCH_FEAT_TEMPLATE: &str = include_str!("../templates/prompts/scratch-feat.md");
@@ -62,6 +64,15 @@ pub struct ArtifactInventory {
     pub scratchpads: Vec<ArtifactRecord>,
 }
 
+/// Deterministic result payload returned by the `create_artifact` MCP tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateArtifactResult {
+    pub id: ArtifactId,
+    pub handle: String,
+    /// Canonical workspace-relative path to the created artifact.
+    pub path: String,
+}
+
 #[derive(Clone)]
 pub struct SpecmanMcpServer {
     workspace: Arc<FilesystemWorkspaceLocator>,
@@ -91,27 +102,18 @@ impl SpecmanMcpServer {
     }
 
     #[tool(
-        name = "workspace_discovery",
-        description = "Return canonical workspace directories discovered via nearest .specman ancestor"
+        name = "create_artifact",
+        description = "Create a SpecMan artifact (spec, impl, or scratch pad) from a core CreateRequest"
     )]
-    async fn workspace_discovery(&self) -> Result<Json<WorkspaceInfo>, McpError> {
-        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
+    async fn create_artifact(
+        &self,
+        Parameters(request): Parameters<CreateRequest>,
+    ) -> Result<Json<CreateArtifactResult>, McpError> {
+        let normalized = self.normalize_create_request(request)?;
+        let specman = self.build_specman()?;
+        let persisted = specman.create(normalized).map_err(to_mcp_error)?;
 
-        Ok(Json(WorkspaceInfo {
-            root: workspace.root().display().to_string(),
-            dot_specman: workspace.dot_specman().display().to_string(),
-            spec_dir: workspace.spec_dir().display().to_string(),
-            impl_dir: workspace.impl_dir().display().to_string(),
-            scratchpad_dir: workspace.scratchpad_dir().display().to_string(),
-        }))
-    }
-
-    #[tool(
-        name = "workspace_inventory",
-        description = "List specifications, implementations, and scratch pads as SpecMan resource handles"
-    )]
-    async fn workspace_inventory(&self) -> Result<Json<ArtifactInventory>, McpError> {
-        Ok(Json(self.inventory().await?))
+        Ok(Json(create_artifact_result(&persisted)))
     }
 
     #[prompt(
@@ -192,6 +194,30 @@ pub async fn run_stdio_server() -> Result<(), ServerInitializeError> {
 
 fn to_mcp_error(err: SpecmanError) -> McpError {
     ErrorData::internal_error(err.to_string(), None)
+}
+
+fn invalid_params(message: impl Into<String>) -> McpError {
+    ErrorData::invalid_params(message.into(), None)
+}
+
+fn create_artifact_result(persisted: &PersistedArtifact) -> CreateArtifactResult {
+    let relative = workspace_relative_path(persisted.workspace.root(), &persisted.path)
+        .unwrap_or_else(|| persisted.path.display().to_string());
+    let handle = match persisted.artifact.kind {
+        ArtifactKind::Specification => format!("spec://{}", persisted.artifact.name),
+        ArtifactKind::Implementation => format!("impl://{}", persisted.artifact.name),
+        ArtifactKind::ScratchPad => format!("scratch://{}", persisted.artifact.name),
+    };
+    CreateArtifactResult {
+        id: persisted.artifact.clone(),
+        handle,
+        path: relative,
+    }
+}
+
+fn workspace_relative_path(root: &Path, absolute: &Path) -> Option<String> {
+    let relative = absolute.strip_prefix(root).ok()?;
+    Some(relative.to_string_lossy().replace('\\', "/"))
 }
 
 fn artifact_record(summary: &ArtifactSummary, workspace: &WorkspacePaths) -> ArtifactRecord {
@@ -619,6 +645,111 @@ fn resource_templates() -> Vec<ResourceTemplate> {
 pub type McpError = ErrorData;
 
 impl SpecmanMcpServer {
+    fn build_specman(
+        &self,
+    ) -> Result<
+        Specman<
+            FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>,
+            MarkdownTemplateEngine,
+            Arc<FilesystemWorkspaceLocator>,
+        >,
+        McpError,
+    > {
+        let locator = self.workspace.clone();
+        let workspace = locator.workspace().map_err(to_mcp_error)?;
+
+        let mapper = FilesystemDependencyMapper::new(locator.clone());
+        let inventory = mapper.inventory_handle();
+        let templates = MarkdownTemplateEngine::new();
+        let controller = DefaultLifecycleController::new(mapper, templates);
+        let catalog = TemplateCatalog::new(workspace);
+        let persistence = WorkspacePersistence::with_inventory(locator, inventory);
+
+        Ok(Specman::new(controller, catalog, persistence))
+    }
+
+    fn normalize_locator_to_workspace_path(&self, locator: &str) -> Result<String, McpError> {
+        let trimmed = locator.trim();
+        if trimmed.is_empty() {
+            return Err(invalid_params("locator must not be empty"));
+        }
+
+        if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
+            return Err(invalid_params(
+                "workspace target locators must not be URLs; use spec://, impl://, scratch://, or a workspace-relative path",
+            ));
+        }
+
+        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
+        let tree = self
+            .dependency_mapper
+            .dependency_tree_from_locator(trimmed)
+            .map_err(to_mcp_error)?;
+
+        let resolved = resolved_path_or_artifact_path(&tree.root, &workspace);
+        let absolute = PathBuf::from(resolved);
+        workspace_relative_path(workspace.root(), &absolute)
+            .ok_or_else(|| invalid_params("locator must resolve within the workspace"))
+    }
+
+    fn normalize_locator_to_handle(&self, locator: &str) -> Result<ArtifactSummary, McpError> {
+        let trimmed = locator.trim();
+        if trimmed.is_empty() {
+            return Err(invalid_params("locator must not be empty"));
+        }
+
+        if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
+            return Err(invalid_params(
+                "workspace target locators must not be URLs; use spec://, impl://, scratch://, or a workspace-relative path",
+            ));
+        }
+
+        let tree = self
+            .dependency_mapper
+            .dependency_tree_from_locator(trimmed)
+            .map_err(to_mcp_error)?;
+        Ok(tree.root)
+    }
+
+    fn normalize_create_request(&self, request: CreateRequest) -> Result<CreateRequest, McpError> {
+        match request {
+            CreateRequest::Custom { .. } => Err(invalid_params(
+                "CreateRequest::Custom is not supported via MCP; use Specification, Implementation, or ScratchPad",
+            )),
+            CreateRequest::Implementation { context } => {
+                let target_summary = self.normalize_locator_to_handle(&context.target)?;
+                if target_summary.id.kind != ArtifactKind::Specification {
+                    return Err(invalid_params(
+                        "implementation targets must resolve to a specification (spec://... or a spec path)",
+                    ));
+                }
+                let target = artifact_handle(&target_summary);
+                Ok(CreateRequest::Implementation {
+                    context: specman::ImplContext {
+                        name: context.name.trim().to_string(),
+                        target,
+                    },
+                })
+            }
+            CreateRequest::ScratchPad { context } => {
+                let target = self.normalize_locator_to_workspace_path(&context.target)?;
+                Ok(CreateRequest::ScratchPad {
+                    context: specman::ScratchPadCreateContext {
+                        name: context.name.trim().to_string(),
+                        target,
+                        work_type: context.work_type,
+                    },
+                })
+            }
+            CreateRequest::Specification { context } => Ok(CreateRequest::Specification {
+                context: specman::SpecContext {
+                    name: context.name.trim().to_string(),
+                    title: context.title.trim().to_string(),
+                },
+            }),
+        }
+    }
+
     async fn read_resource_contents(&self, uri: &str) -> Result<ResourceContents, McpError> {
         // Dependency resources use the same locator minus the /dependencies suffix for tree construction.
         let (is_dependencies, base_locator) = uri
@@ -658,6 +789,7 @@ impl SpecmanMcpServer {
 mod tests {
     use super::*;
     use rmcp::model::PromptMessageContent;
+    use specman::front_matter::{ScratchWorkType, ScratchWorkloadExtras};
     use std::io::Write;
     use tempfile::TempDir;
 
@@ -1031,6 +1163,111 @@ mod tests {
         }
     }
 
+    #[test]
+    fn create_artifact_schema_is_deterministic() {
+        let schema_a = rmcp::schemars::schema_for!(CreateRequest);
+        let schema_b = rmcp::schemars::schema_for!(CreateRequest);
+
+        let a = serde_json::to_string(&schema_a).expect("schema serializes");
+        let b = serde_json::to_string(&schema_b).expect("schema serializes");
+
+        assert_eq!(a, b, "schema serialization must be deterministic");
+    }
+
+    #[tokio::test]
+    async fn create_artifact_normalizes_scratchpad_target() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let workspace = TestWorkspace::create()?;
+
+        let Json(result) = workspace
+            .server
+            .create_artifact(Parameters(CreateRequest::ScratchPad {
+                context: specman::ScratchPadCreateContext {
+                    name: "mcpscratch".to_string(),
+                    target: "impl://testimpl".to_string(),
+                    work_type: ScratchWorkType::Feat(ScratchWorkloadExtras::default()),
+                },
+            }))
+            .await?;
+
+        assert_eq!(result.handle, "scratch://mcpscratch");
+        assert_eq!(result.path, ".specman/scratchpad/mcpscratch/scratch.md");
+
+        let workspace_paths = workspace.server.workspace.workspace()?;
+        let absolute = workspace_paths.root().join(&result.path);
+        let content = fs::read_to_string(&absolute)?;
+
+        assert!(
+            content.contains("target: impl/testimpl/impl.md"),
+            "scratchpad front matter must use normalized workspace-relative path"
+        );
+        assert!(
+            !content.contains("target: impl://testimpl"),
+            "scratchpad front matter must not retain the handle"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_artifact_normalizes_implementation_target()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let Json(result) = workspace
+            .server
+            .create_artifact(Parameters(CreateRequest::Implementation {
+                context: specman::ImplContext {
+                    name: "mcpimpl".to_string(),
+                    target: "spec://testspec".to_string(),
+                },
+            }))
+            .await?;
+
+        assert_eq!(result.handle, "impl://mcpimpl");
+        assert_eq!(result.path, "impl/mcpimpl/impl.md");
+
+        let workspace_paths = workspace.server.workspace.workspace()?;
+        let absolute = workspace_paths.root().join(&result.path);
+        let content = fs::read_to_string(&absolute)?;
+
+        assert!(
+            content.contains("spec: spec://testspec"),
+            "impl front matter must use a canonical spec handle"
+        );
+        assert!(
+            !content.contains("spec: spec/testspec/spec.md"),
+            "impl front matter must not embed a workspace path"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_artifact_rejects_url_locators() -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let result = workspace
+            .server
+            .create_artifact(Parameters(CreateRequest::ScratchPad {
+                context: specman::ScratchPadCreateContext {
+                    name: "bad".to_string(),
+                    target: "https://example.com".to_string(),
+                    work_type: ScratchWorkType::Feat(ScratchWorkloadExtras::default()),
+                },
+            }))
+            .await;
+
+        let err = result.err().expect("url targets must be rejected");
+
+        assert!(
+            err.message.contains("must not be URLs"),
+            "unexpected error: {err:?}"
+        );
+
+        Ok(())
+    }
+
     fn prompt_text(messages: Vec<PromptMessage>) -> String {
         let message = messages
             .into_iter()
@@ -1067,10 +1304,14 @@ mod tests {
         let spec_dir = root.join("spec/testspec");
         let impl_dir = root.join("impl/testimpl");
         let scratch_dir = root.join(".specman/scratchpad/testscratch");
+        let template_dir = root.join("templates");
+        let dot_specman_templates = root.join(".specman/templates");
 
         fs::create_dir_all(&spec_dir)?;
         fs::create_dir_all(&impl_dir)?;
         fs::create_dir_all(&scratch_dir)?;
+        fs::create_dir_all(&template_dir)?;
+        fs::create_dir_all(&dot_specman_templates)?;
 
         fs::write(
             spec_dir.join("spec.md"),
@@ -1112,6 +1353,40 @@ work_type:
         scratch_file.write_all(scratch_content.as_bytes())?;
 
         fs::create_dir_all(root.join(".specman"))?;
+
+        // Provide tokenized templates for core `Specman::create` so it doesn't fall back to
+        // embedded placeholder templates that reference non-existent artifacts.
+        fs::write(
+            template_dir.join("impl.md"),
+            r"---
+spec: {{target}}
+name: {{name}}
+version: '0.1.0'
+---
+
+# Impl — {{name}}
+",
+        )?;
+
+        fs::write(
+            template_dir.join("scratch.md"),
+            r"---
+target: {{target}}
+branch: main
+work_type:
+    {{work_type_kind}}: {}
+---
+
+# Scratch Pad — {{name}}
+",
+        )?;
+
+        // Point the workspace template pointers at the tokenized templates.
+        fs::write(dot_specman_templates.join("IMPL"), "templates/impl.md\n")?;
+        fs::write(
+            dot_specman_templates.join("SCRATCH"),
+            "templates/scratch.md\n",
+        )?;
 
         Ok(())
     }

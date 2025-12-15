@@ -1,10 +1,10 @@
 ---
 spec: ../../spec/specman-mcp/spec.md
 name: specman-mcp-rust
-version: "0.2.0"
+version: "0.3.0"
 location: ../../src/crates/specman-mcp
 library:
-  name: specman-mcp-server@0.2.0
+  name: specman-mcp-server@0.3.0
 primary_language:
   language: rust@1.91.0
   properties:
@@ -86,7 +86,7 @@ impl SpecmanMcpServer {
 
 ### Concept: [SpecMan Capability Parity](../../spec/specman-mcp/spec.md#concept-specman-capability-parity)
 
-The adapter exposes a focused subset of SpecMan functionality as MCP tools/prompts, prioritizing safe inspection (workspace discovery/inventory) and deterministic prompt generation.
+The adapter exposes a focused subset of SpecMan functionality as MCP tools/prompts, prioritizing deterministic prompt generation and safe, workspace-bound mutations.
 
 #### API Signatures — Capability Parity
 
@@ -95,7 +95,7 @@ The adapter exposes a focused subset of SpecMan functionality as MCP tools/promp
 // Each handler is a method on `SpecmanMcpServer` annotated with `#[tool(...)]` or `#[prompt(...)]`.
 ```
 
-- Current tool surface: `workspace_discovery`, `workspace_inventory`.
+- Current tool surface: `create_artifact`.
 - Current prompt surface: `feat`, `ref`, `revision`, `fix` (scratch pad prompt templates).
 
 ### Concept: [Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance)
@@ -107,10 +107,16 @@ All filesystem access flows through SpecMan workspace discovery, and resource ha
 ```rust
 fn artifact_path(id: &ArtifactId, workspace: &WorkspacePaths) -> PathBuf;
 fn artifact_handle(summary: &ArtifactSummary) -> String;
+
+// Tool handler (rmcp `#[tool]`) that delegates to SpecMan Core creation.
+async fn create_artifact(Parameters(request): Parameters<CreateRequest>)
+  -> Result<Json<CreateArtifactResult>, McpError>;
 ```
 
 - Handles use the `spec://`, `impl://`, and `scratch://` schemes and are always emitted in normalized form.
-- Paths returned to MCP clients are workspace-resolved and never allow escaping outside the discovered root.
+- For `create_artifact`, scratch pad `target` locators are normalized to canonical workspace-relative paths before persisting (so the scratch front matter stores a stable path).
+- For `create_artifact` implementation targets, the adapter normalizes the input into a canonical `spec://...` handle before persisting so dependency resolution is base-path independent.
+- Paths returned to MCP clients are canonical workspace-relative paths and never allow escaping outside the discovered root.
 
 ### Concept: [Session Safety & Deterministic Execution](../../spec/specman-mcp/spec.md#concept-session-safety--deterministic-execution)
 
@@ -127,7 +133,7 @@ pub async fn with_session_lock<F, T>(
 where
     F: FnOnce() -> Result<T, McpError>;
 
-pub fn audit_event(session: &MCPWorkspaceSession, envelope: &OperationEnvelope);
+pub fn audit_event(session: &MCPWorkspaceSession, capability_id: &str, artifacts: &[ArtifactId]);
 ```
 
 - `with_session_lock` enforces single-writer semantics per artifact; rejects conflicting calls.
@@ -185,44 +191,10 @@ pub struct SpecManCapabilityDescriptor {
 
 - Invariants: `id` uses `specman.core.<concept_snake_case>`; schemas align with SpecMan Data Model entities; extensions clearly labeled.
 
-### Entity: [OperationEnvelope](../../spec/specman-mcp/spec.md#entity-operationenvelope)
-
-Encapsulates a SpecMan action executed via MCP, capturing capability id, sanitized inputs, execution timestamps, artifacts, streamed messages, and final status for provenance.
-
-#### API Signatures — OperationEnvelope
-
-```rust
-pub fn record_operation(
-    descriptor: &SpecManCapabilityDescriptor,
-    inputs: serde_json::Value,
-    result: serde_json::Value,
-    artifacts: Vec<ArtifactId>,
-    logs: Vec<LogEntry>,
-) -> OperationEnvelope;
-```
-
-#### Data Model — OperationEnvelope
-
-```rust
-pub struct OperationEnvelope {
-    pub capability_id: String,
-    pub concept_ref: String,
-    pub inputs: serde_json::Value,
-    pub outputs: serde_json::Value,
-    pub artifacts: Vec<ArtifactId>,
-    pub started_at: DateTime<Utc>,
-    pub finished_at: DateTime<Utc>,
-    pub transcript: Vec<LogEntry>,
-    pub status: OperationStatus,
-}
-```
-
-- Invariants: inputs are sanitized and schema-validated; transcript preserves ordering; status encodes success, partial, or error with SpecMan error codes retained.
-
 ## Operational Notes
 
 - Build/run: `cargo build -p specman-mcp` (once the crate exists). Run the STDIN server via `cargo run -p specman-mcp` to start the `rmcp` stdio transport.
 - Transport: Only STDIN/STDOUT transport is supported per [Concept: MCP Transport Compliance](../../spec/specman-mcp/spec.md#concept-mcp-transport-compliance); advertise supported MCP versions and honor negotiation before exposing tools. No additional MCP primitives beyond tools/resources/prompts are exposed at this stage.
 - Integration: All tool handlers call into `specman-library` for workspace discovery, dependency mapping, lifecycle automation, and metadata mutation, preserving SpecMan Core invariants.
-- Observability: Emit structured telemetry (capability id, workspace root, artifact paths, durations) for each `OperationEnvelope`. Logging should note conflict handling and dependency checks.
+- Observability: Emit structured telemetry (capability id, workspace root, artifact paths, durations) for each tool invocation. Logging should note conflict handling and dependency checks.
 - Concurrency: Use per-artifact locks to serialize mutating operations; read-only operations can proceed concurrently but still validate workspace resolution.
