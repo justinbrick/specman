@@ -22,14 +22,11 @@ references:
   - ref: ../../spec/specman-data-model/spec.md
     type: specification
     optional: false
-  - ref: ../../spec/specman-templates/spec.md
-    type: specification
+  - ref: ../markdown-templates/impl.md
+    type: implementation
     optional: false
   - ref: ../specman-library/impl.md
     type: implementation
-    optional: false
-  - ref: https://modelcontextprotocol.io/docs/learn/architecture
-    type: specification
     optional: false
 ---
 

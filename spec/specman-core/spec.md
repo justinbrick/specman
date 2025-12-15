@@ -24,6 +24,8 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 Workspace discovery ensures every SpecMan-aware tool can deterministically locate the active workspace root and its `.specman` directory from any starting location.
 
+!concept-workspace-discovery.requirements:
+
 - The implementation MUST identify the workspace root by scanning the current directory and its ancestors for the nearest `.specman` folder, treating the containing directory as canonical.
 - When no `.specman` folder exists along the ancestry chain, the implementation MUST return a descriptive error that callers MAY surface directly to users.
 - Workspace discovery utilities MUST expose the absolute path to both the workspace root and the `.specman` directory so downstream services can reference shared metadata without recomputing filesystem state.
@@ -33,6 +35,8 @@ Workspace discovery ensures every SpecMan-aware tool can deterministically locat
 ### Concept: Data Model Backing Implementation
 
 This concept ties runtime behavior to the data model’s authoritative structures.
+
+!concept-data-model-backing-implementation.requirements:
 
 - The implementation MUST persist or retrieve entities exactly as defined in the data model specification.
 - Internal storage representations MAY vary, provided they preserve the documented semantics.
@@ -45,6 +49,8 @@ This concept ties runtime behavior to the data model’s authoritative structure
 ### Concept: Dependency Mapping Services
 
 Dependency mapping provides visibility into upstream and downstream relationships across specifications and implementations.
+
+!concept-dependency-mapping-services.requirements:
 
 - The implementation MUST construct dependency trees that enumerate upstream providers, downstream consumers, and full transitive relationships.
 - Dependency lookups MUST return results in upstream, downstream, and aggregate forms to support targeted impact analysis.
@@ -60,6 +66,8 @@ Dependency mapping provides visibility into upstream and downstream relationship
 ### Concept: Template Orchestration
 
 Template orchestration governs how reusable content is discovered and rendered.
+
+!concept-template-orchestration.requirements:
 
 - Templates MUST declare substitution tokens using double braces (`{{token_name}}`), and rendering engines MUST refuse to materialize output until every declared token is supplied.
 - Template consumers MUST accept locator inputs expressed as absolute filesystem paths, workspace-relative paths rooted at the discovered workspace, HTTPS URLs, or packaged-default identifiers bundled with the runtime.
@@ -79,12 +87,16 @@ Template orchestration governs how reusable content is discovered and rendered.
 
 Deterministic execution codifies behavioral guarantees so downstream consumers can rely on predictable, side-effect-aware APIs.
 
+!concept-deterministic-execution.requirements:
+
 - Consumers MUST treat all SpecMan Core functions as pure unless the documentation explicitly calls out side effects; implementers MUST document any deviations before release.
 - Breaking changes to function signatures or observable behaviors MUST trigger a major version increment of this specification so dependent tooling can coordinate adoption.
 
 ### Concept: Lifecycle Automation
 
 Lifecycle automation standardizes creation and deletion workflows for specifications, implementations, and scratch pads.
+
+!concept-lifecycle-automation.requirements:
 
 - Automated creation flows MUST require an associated template locator and MUST validate that required tokens are supplied.
 - Lifecycle operations MUST enforce template usage for all new specifications, implementations, and scratch pads so generated artifacts remain data-model compliant.
@@ -103,6 +115,8 @@ Lifecycle automation standardizes creation and deletion workflows for specificat
 
 Metadata mutation ensures YAML front matter for specifications and implementations can be updated without rewriting the surrounding Markdown content.
 
+!concept-metadata-mutation.requirements:
+
 - Implementations MUST expose metadata mutation helpers that accept a filesystem path or HTTPS URL to a specification or implementation, merge updated values into the YAML front matter, and leave the Markdown body unchanged.
 - Metadata mutation helpers MUST support adding dependencies or references by artifact locator and MUST be idempotent when the supplied locator already exists in the corresponding list.
 - Callers MUST be able to choose whether metadata mutation helpers immediately persist the updated artifact to disk or return the full document content; when returning content, the helpers MUST emit the complete file with differences limited to the front matter block.
@@ -117,6 +131,8 @@ Metadata mutation ensures YAML front matter for specifications and implementatio
 
 Adapter responsible for translating runtime interactions to persisted data model instances.
 
+!entity-datamodeladapter.requirements:
+
 - MUST ensure transformations honor data model invariants.
 - SHOULD provide observability hooks for auditing cross-cutting behaviors.
 - MAY cache read-mostly projections when it does not compromise consistency guarantees.
@@ -125,6 +141,8 @@ Adapter responsible for translating runtime interactions to persisted data model
 
 Aggregated representation of upstream and downstream relationships for a given artifact.
 
+!entity-dependencytree.requirements:
+
 - MUST capture root artifact metadata together with its direct and transitive dependencies.
 - MUST expose traversal helpers to retrieve upstream-only, downstream-only, or combined views.
 - SHOULD provide serialization compatible with the [SpecMan Data Model](../specman-data-model/spec.md) for interchange.
@@ -132,6 +150,8 @@ Aggregated representation of upstream and downstream relationships for a given a
 ### Entity: TemplateDescriptor
 
 Metadata describing how templates are located and rendered.
+
+!entity-templatedescriptor.requirements:
 
 - MUST record the locator URI or absolute path and the intended template scenario (specification, implementation, scratch pad, or derivative work type).
 - SHOULD list required substitution tokens so callers MAY validate inputs before rendering.
@@ -142,6 +162,8 @@ Metadata describing how templates are located and rendered.
 
 Cache store that retains remote template content referenced by pointer files.
 
+!entity-templatecache.requirements:
+
 - MUST persist downloads inside `.specman/cache/templates/` using deterministic filenames derived from the source locator.
 - MUST record the original locator, retrieval timestamp, and any validator metadata (for example `ETag`) so Template Orchestration can determine staleness before reuse.
 - SHOULD expose purge and refresh helpers so lifecycle controllers can invalidate entries when pointer files change or when users request a clean refresh.
@@ -149,6 +171,8 @@ Cache store that retains remote template content referenced by pointer files.
 ### Entity: LifecycleController
 
 Controller responsible for enforcing lifecycle policies across specifications, implementations, and scratch pads.
+
+!entity-lifecyclecontroller.requirements:
 
 - MUST orchestrate create and delete operations for every artifact type, delegating to dependency mapping and templating subsystems.
 - MUST terminate deletion attempts that would orphan dependents and MUST return the blocking dependency tree to the caller.
@@ -160,13 +184,18 @@ Controller responsible for enforcing lifecycle policies across specifications, i
 
 Defines the characteristics and template linkages for scratch pad variants.
 
+!entity-scratchpadprofile.requirements:
+
 - MUST enumerate available scratch pad types alongside their required templates.
 - SHOULD expose optional configuration fields to tailor scratch pad content to team workflows.
 - MAY reuse `TemplateDescriptor` instances to avoid duplication across related profiles.
 
 ## Additional Notes
 
-- Migration guides MAY accompany minor releases to help downstream integrators adopt new optional capabilities.
-- Implementers MAY provide caching or indexing strategies for dependency trees when doing so preserves freshness guarantees.
-- Template repositories SHOULD be discoverable through configuration so administrators CAN extend or swap template sources without code changes.
-- Scratch pad workflows MAY integrate with collaboration tooling (e.g., team workspaces) to streamline drafting phases.
+Migration guides MAY accompany minor releases to help downstream integrators adopt new optional capabilities.
+
+Implementers MAY provide caching or indexing strategies for dependency trees when doing so preserves freshness guarantees.
+
+Template repositories SHOULD be discoverable through configuration so administrators CAN extend or swap template sources without code changes.
+
+Scratch pad workflows MAY integrate with collaboration tooling (e.g., team workspaces) to streamline drafting phases.
