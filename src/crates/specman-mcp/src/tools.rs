@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 use specman::{
     ArtifactId, ArtifactKind, CreateRequest, DefaultLifecycleController,
     FilesystemDependencyMapper, FilesystemWorkspaceLocator, MarkdownTemplateEngine,
-    PersistedArtifact, Specman, TemplateCatalog, WorkspaceLocator,
-    WorkspacePersistence,
+    PersistedArtifact, Specman, TemplateCatalog, WorkspaceLocator, WorkspacePersistence,
 };
 
 use crate::error::{McpError, invalid_params, to_mcp_error};
