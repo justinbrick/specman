@@ -142,9 +142,7 @@ fn delete_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         .map_err(CliError::from)?;
     if plan.blocked && !forced {
         return Err(CliError::new(
-            format!(
-                "refusing to delete {name}; downstream artifacts detected (use --force)"
-            ),
+            format!("refusing to delete {name}; downstream artifacts detected (use --force)"),
             ExitStatus::Data,
         ));
     }

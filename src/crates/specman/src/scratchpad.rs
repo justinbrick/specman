@@ -33,8 +33,7 @@ impl Default for ScratchPadProfileKind {
 }
 
 /// Profiles describe scratch pad templates and optional configuration.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[derive(Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ScratchPadProfile {
     pub kind: ScratchPadProfileKind,
     /// Caller-provided scratch pad slug; falls back to the canonical kind slug when empty.
@@ -46,7 +45,6 @@ pub struct ScratchPadProfile {
     #[serde(default)]
     pub configuration: BTreeMap<String, serde_json::Value>,
 }
-
 
 impl ScratchPadProfile {
     /// Returns the canonical slug for this profile.

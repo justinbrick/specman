@@ -10,10 +10,10 @@ use url::Url;
 
 use crate::error::SpecmanError;
 
-use std::fmt;
 use crate::front_matter::{self, ArtifactFrontMatter, DependencyEntry, FrontMatterKind};
 use crate::shared_function::SemVer;
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
+use std::fmt;
 
 /// Fetches remote artifact content (e.g., HTTPS markdown documents).
 pub trait ContentFetcher: Send + Sync {
@@ -1256,9 +1256,7 @@ fn resolve_dependency_locator(
 
     if let ArtifactLocator::Url(url) = parent {
         let joined = url.join(reference).map_err(|err| {
-            SpecmanError::Dependency(format!(
-                "invalid relative url {reference} for {url}: {err}"
-            ))
+            SpecmanError::Dependency(format!("invalid relative url {reference} for {url}: {err}"))
         })?;
         return Ok(ArtifactLocator::Url(joined));
     }

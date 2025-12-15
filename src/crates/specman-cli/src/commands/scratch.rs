@@ -5,7 +5,9 @@ use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum, builder::EnumValuePar
 use serde::Serialize;
 use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyMapping, DependencyTree};
 use specman::front_matter::{self, ScratchFrontMatter};
-use specman::front_matter::{ScratchRefactorMetadata, ScratchRevisionMetadata, ScratchWorkType, ScratchWorkloadExtras};
+use specman::front_matter::{
+    ScratchRefactorMetadata, ScratchRevisionMetadata, ScratchWorkType, ScratchWorkloadExtras,
+};
 use specman::{CreateRequest, ScratchPadCreateContext};
 use specman::{DeletePolicy, DeleteRequest};
 
@@ -187,9 +189,7 @@ fn delete_scratchpad(
         .map_err(CliError::from)?;
     if plan.blocked && !forced {
         return Err(CliError::new(
-            format!(
-                "refusing to delete {name}; downstream artifacts detected (use --force)"
-            ),
+            format!("refusing to delete {name}; downstream artifacts detected (use --force)"),
             ExitStatus::Data,
         ));
     }

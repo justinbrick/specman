@@ -3,12 +3,12 @@ use std::path::{Path, PathBuf};
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
+use specman::CreateRequest;
 use specman::dependency_tree::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyMapping, DependencyTree,
 };
 use specman::front_matter::{self, ImplementationFrontMatter, SpecificationFrontMatter};
 use specman::template::ImplContext;
-use specman::CreateRequest;
 use specman::{DeletePolicy, DeleteRequest};
 
 use crate::commands::CommandResult;
@@ -160,9 +160,7 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         .map_err(CliError::from)?;
     if plan.blocked && !forced {
         return Err(CliError::new(
-            format!(
-                "refusing to delete {name}; downstream artifacts detected (use --force)"
-            ),
+            format!("refusing to delete {name}; downstream artifacts detected (use --force)"),
             ExitStatus::Data,
         ));
     }
