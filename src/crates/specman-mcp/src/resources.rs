@@ -15,7 +15,7 @@ use rmcp::service::{RequestContext, RoleServer};
 use serde::{Deserialize, Serialize};
 
 use specman::{
-    ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree, SemVer, SpecmanError,
+    ArtifactId, ArtifactKind, ArtifactSummary, SemVer, SpecmanError,
     WorkspaceLocator, WorkspacePaths,
 };
 

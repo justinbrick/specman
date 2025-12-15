@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use rmcp::handler::server::tool::ToolRouter;
@@ -10,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use specman::{
     ArtifactId, ArtifactKind, CreateRequest, DefaultLifecycleController,
     FilesystemDependencyMapper, FilesystemWorkspaceLocator, MarkdownTemplateEngine,
-    PersistedArtifact, SemVer, Specman, SpecmanError, TemplateCatalog, WorkspaceLocator,
+    PersistedArtifact, Specman, TemplateCatalog, WorkspaceLocator,
     WorkspacePersistence,
 };
 
