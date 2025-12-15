@@ -430,12 +430,15 @@ Implementation locators describe where implementation code lives and how it is p
 SpecMan locator schemes provide canonical handles for specifications, implementations, and scratch pads.
 
 - Supported schemes MUST be `spec://{artifact}`, `impl://{artifact}`, and `scratch://{artifact}`. Each handle identifies the canonical artifact and MUST be unique within a workspace.
-- When a locator handle appears in front matter, metadata, or the body of a specification or implementation, clients MUST resolve it using the active workspace root. If the handle is discovered while processing an artifact at `spec/{name}/spec.md` or `impl/{name}/impl.md` (or their HTTPS equivalents), the workspace root MUST be inferred as the directory one level above the `spec` or `impl` folder that contains the current artifact.
+- Locator handles MUST be treated as **client inputs and client-facing identifiers**, not artifact content.
+  - Specifications, implementations, and scratch pads MUST NOT contain `spec://` / `impl://` / `scratch://` handles in front matter, metadata, or body content.
+  - Artifact-to-artifact references stored inside files MUST be expressed as workspace-relative paths or HTTPS URLs.
+  - Clients (for example the CLI, MCP adapters, or APIs) MAY accept locator handles as user input and MAY emit locator handles in responses, but they MUST normalize handles to canonical paths before persisting anything into an artifact.
 - Resolution rules:
   - `spec://{artifact}` MUST resolve to `spec/{artifact}/spec.md` under the workspace root.
   - `impl://{artifact}` MUST resolve to `impl/{artifact}/impl.md` under the workspace root.
   - `scratch://{artifact}` MUST resolve to `.specman/scratchpad/{artifact}/scratch.md` under the workspace root.
-- The same directory-inference rules MUST apply when the originating artifact is accessed via HTTPS: the parent of the `spec` or `impl` path segment is treated as the workspace root before applying the mappings above.
+- Clients MUST resolve locator handles using the active workspace root (via workspace discovery or an explicit workspace context).
 - If a workspace root cannot be inferred or the resolved path would fall outside the workspace boundary, resolution MUST fail with a descriptive error instead of guessing.
 
 ### [References](../../docs/founding-spec.md#references)

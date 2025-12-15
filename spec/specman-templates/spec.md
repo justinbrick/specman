@@ -68,8 +68,9 @@ Tokens ending in `_or_request` MUST expand to a complete instruction string on t
 
 #### Token `{{target_path}}`
 
-- Scratch pad prompts and templates MUST treat this token as REQUIRED when present and MUST expect it to contain a unique scheme locator (`spec://` or `impl://`) that points to the target artifact.
-- Callers supplying `{{target_path}}` MUST conform to the locator scheme rules in the [SpecMan Data Model](../specman-data-model/spec.md#locator-schemes).
+- Scratch pad prompts and templates MUST treat this token as REQUIRED when present.
+- The value of `{{target_path}}` MAY be any locator string that a human or AI can use with a client (for example: a workspace-relative path, an HTTPS URL, or a client-only handle like `spec://{artifact}` / `impl://{artifact}` / `scratch://{artifact}`).
+- When rendering a scratch pad **artifact**, clients MUST ensure the scratch pad front matter `target` field conforms to the [SpecMan Data Model target artifact rules](../specman-data-model/spec.md#target-artifact) (workspace-relative path or HTTPS URL). If `{{target_path}}` was provided as a handle, the client MUST normalize it to a canonical workspace-relative path before writing the artifact.
 
 #### Token `{{artifact_name_or_request}}`
 
