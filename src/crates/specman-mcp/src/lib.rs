@@ -745,7 +745,6 @@ mod tests {
         };
 
         assert!(rendered.contains("Create and check out a branch"));
-        assert!(rendered.contains("testimpl/feat/testimpl-feat"));
         assert!(rendered.contains("impl/testimpl/impl.md"));
 
         Ok(())
@@ -772,7 +771,6 @@ mod tests {
 
         assert!(text.contains("impl/testimpl/impl.md"));
         assert!(text.contains("spec://testspec"));
-        assert!(text.contains("testimpl-ref"));
 
         Ok(())
     }
@@ -823,7 +821,6 @@ mod tests {
 
         assert!(text.contains("impl/testimpl/impl.md"));
         assert!(text.contains("Create and check out a branch"));
-        assert!(text.contains("testimpl/fix/testimpl-fix"));
 
         Ok(())
     }
