@@ -13,7 +13,7 @@ Read the following dependencies before continuing:
 
 Steps:
 
-1. Decide the implementation name and ensure it matches the governing naming rules.
+1. {{artifact_name_or_request}}
 2. Call the MCP tool `create_artifact` to create the Implementation, then set `spec` to {{target_spec_path}}, fill `location`, `library` (if applicable), and describe `primary_language` plus optional `secondary_languages`, replacing the references list with {{reference_items}}.
 3. Summarize architecture and intent in Overview, explain language details, References, Implementation Details, and Operational Notes with concise prose that cites specification headings via inline links, grounding content in the User Input section.
 4. In `## Concept & Entity Breakdown`, enumerate every concept and entity from the governing specification that this implementation covers. Each heading MUST include an inline link to the originating spec fragment (for example `[Concept: Lifecycle](../spec/spec.md#concept-lifecycle)`) and contain:

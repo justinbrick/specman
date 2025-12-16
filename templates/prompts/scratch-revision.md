@@ -2,6 +2,22 @@
 
 You are applying user suggestions to revise the specification referenced by {{target_path}} using a scratch pad.
 
+## Standards Quick Reference (Standalone)
+
+### Specification-structure reminders (apply to the revised spec)
+
+- Headings that represent concepts MUST begin with the literal prefix `Concept:` followed by a space.
+- Headings that represent key entities MUST begin with the literal prefix `Entity:` followed by a space.
+
+Constraint groups (when adding/updating constraints):
+
+- A constraint section starts with a standalone identifier line in the form `!group.set:`.
+- The group set MUST contain at least two dot-delimited groups:
+  - Group 1: the heading slug of the constrained concept/entity.
+  - Group 2: a short category label (for example `formatting`, `ordering`, `referencing`).
+- Each constraint identifier line MUST be the only content on its line.
+- Each group set MUST be unique within the document.
+
 Before proceeding, satisfy these reading prerequisites:
 
 - Review the SpecMan Data Model specification and every dependency it lists (notably the Founding Spec) so revision notes stay aligned with the canonical rules.

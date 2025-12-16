@@ -13,8 +13,8 @@ Read the following dependencies before continuing:
 
 Steps:
 
-1. Decide the scratch pad name (lowercase, hyphenated, and no more than 4 words) unless already provided by your environment.
-2. Create and check out the git branch derived from the scratch pad rules (or use the branch name provided by your environment).
+1. {{artifact_name_or_request}}
+2. {{branch_name_or_request}}
 3. Call the MCP tool `create_artifact` to create the Scratch Pad, ensuring:
     - `target` is set to {{target_path}}.
     - `work_type` is `ref` and `refactored_headings` is populated from the refactor focus described in the User Input section.
