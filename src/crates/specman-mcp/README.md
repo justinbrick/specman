@@ -5,7 +5,7 @@
 ## What It Provides
 
 - **Tools**
-  - `create_artifact` — create a specification, implementation, or scratch pad from a `CreateRequest`
+  - `create_artifact` — create a specification, implementation, or scratch pad (tagged input schema; server maps into a SpecMan `CreateRequest`)
 - **Prompts**
   - `feat`, `ref`, `revision`, `fix` — generate deterministic scratch-pad prompts from the embedded templates
 

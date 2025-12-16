@@ -109,8 +109,16 @@ fn artifact_path(id: &ArtifactId, workspace: &WorkspacePaths) -> PathBuf;
 fn artifact_handle(summary: &ArtifactSummary) -> String;
 
 // Tool handler (rmcp `#[tool]`) that delegates to SpecMan Core creation.
-async fn create_artifact(Parameters(request): Parameters<CreateRequest>)
+async fn create_artifact(Parameters(args): Parameters<CreateArtifactArgs>)
   -> Result<Json<CreateArtifactResult>, McpError>;
+
+// `CreateArtifactArgs` is a tagged enum (tag field: `kind`) with variant-specific fields.
+// This keeps the MCP tool schema deterministic and avoids "bags of optional fields".
+
+// Example shapes:
+// - { kind: "specification", intent?: string, name?: string, title?: string }
+// - { kind: "implementation", target: "spec://...", intent?: string, name?: string }
+// - { kind: "scratch_pad", target: "impl://...", scratch_kind: "ref", intent?: string, name?: string, branch?: string }
 ```
 
 - Handles use the `spec://`, `impl://`, and `scratch://` schemes and are always emitted in normalized form.

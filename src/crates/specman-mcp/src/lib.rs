@@ -455,13 +455,11 @@ mod tests {
             .server
             .create_artifact_internal(
                 None,
-                crate::tools::CreateArtifactArgs {
-                    kind: crate::tools::CreateArtifactKind::ScratchPad,
-                    target: Some("impl://testimpl".to_string()),
-                    scratch_kind: Some(crate::tools::ScratchKind::Feat),
+                crate::tools::CreateArtifactArgs::ScratchPad {
+                    target: "impl://testimpl".to_string(),
+                    scratch_kind: crate::tools::ScratchKind::Feat,
                     intent: None,
                     name: Some("mcpscratch".to_string()),
-                    title: None,
                     branch: None,
                 },
             )
@@ -496,14 +494,10 @@ mod tests {
             .server
             .create_artifact_internal(
                 None,
-                crate::tools::CreateArtifactArgs {
-                    kind: crate::tools::CreateArtifactKind::Implementation,
-                    target: Some("spec://testspec".to_string()),
-                    scratch_kind: None,
+                crate::tools::CreateArtifactArgs::Implementation {
+                    target: "spec://testspec".to_string(),
                     intent: None,
                     name: Some("mcpimpl".to_string()),
-                    title: None,
-                    branch: None,
                 },
             )
             .await
@@ -536,13 +530,11 @@ mod tests {
             .server
             .create_artifact_internal(
                 None,
-                crate::tools::CreateArtifactArgs {
-                    kind: crate::tools::CreateArtifactKind::ScratchPad,
-                    target: Some("https://example.com".to_string()),
-                    scratch_kind: Some(crate::tools::ScratchKind::Feat),
+                crate::tools::CreateArtifactArgs::ScratchPad {
+                    target: "https://example.com".to_string(),
+                    scratch_kind: crate::tools::ScratchKind::Feat,
                     intent: None,
                     name: Some("bad".to_string()),
-                    title: None,
                     branch: None,
                 },
             )

@@ -30,13 +30,7 @@ type SpecmanInstance = Specman<
     std::sync::Arc<FilesystemWorkspaceLocator>,
 >;
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum CreateArtifactKind {
-    Specification,
-    Implementation,
-    ScratchPad,
-}
+// NOTE: The MCP tool schema is derived from `CreateArtifactArgs` below.
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -60,43 +54,72 @@ impl ScratchKind {
     }
 }
 
-/// New (simplified) `create_artifact` input schema for MCP.
+/// `create_artifact` input schema for MCP.
 ///
-/// This intentionally does NOT accept arbitrary template substitutions. The MCP server is
-/// responsible for gathering any missing details via MCP sampling + elicitation and then mapping
+/// This uses an internally-tagged enum (`kind`) so that each artifact type can have a
+/// clear, typed, and schema-enforced set of inputs.
+///
+/// The server intentionally does NOT accept arbitrary template substitutions. It is responsible
+/// for gathering any missing details via MCP sampling + elicitation and then mapping
 /// the result into a SpecMan core `CreateRequest`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateArtifactArgs {
-    pub kind: CreateArtifactKind,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CreateArtifactArgs {
+    /// Create a specification under `spec/`.
+    Specification {
+        /// Optional natural-language intent provided by the caller.
+        /// Used to guide sampling (e.g. title/name suggestions, affected headings).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
 
-    /// Target locator for implementation or scratch pad creation.
-    ///
-    /// - Implementation: MUST resolve to a specification (e.g. `spec://...`)
-    /// - ScratchPad: MUST resolve within the workspace and MUST NOT be an HTTP(S) URL
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
+        /// Optional name hint. The server MAY still request explicit confirmation via elicitation.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
 
-    /// Scratch work type selector. Required when `kind = ScratchPad`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scratch_kind: Option<ScratchKind>,
+        /// Optional title hint.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+    },
 
-    /// Optional natural-language intent provided by the caller.
-    /// Used to guide sampling (e.g. title/name suggestions, affected headings).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub intent: Option<String>,
+    /// Create an implementation under `impl/`.
+    Implementation {
+        /// Target locator for implementation creation.
+        ///
+        /// MUST resolve to a specification (e.g. `spec://...`).
+        target: String,
 
-    /// Optional name hint. The server MAY still request explicit confirmation via elicitation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
+        /// Optional natural-language intent provided by the caller.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
 
-    /// Optional title hint (specifications only).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
+        /// Optional name hint.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
 
-    /// Optional explicit branch name (scratch pads only).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub branch: Option<String>,
+    /// Create a scratch pad under `templates/scratch/` (or project scratchpad dir).
+    ScratchPad {
+        /// Target locator for scratch pad creation.
+        ///
+        /// MUST resolve within the workspace and MUST NOT be an HTTP(S) URL.
+        target: String,
+
+        /// Scratch work type selector.
+        #[serde(rename = "scratchKind", alias = "scratch_kind")]
+        scratch_kind: ScratchKind,
+
+        /// Optional natural-language intent provided by the caller.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+
+        /// Optional name hint.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+
+        /// Optional explicit branch name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        branch: Option<String>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -179,9 +202,14 @@ impl SpecmanMcpServer {
             .await?;
         let normalized = self.normalize_create_request(request)?;
 
+        let branch = match &args {
+            CreateArtifactArgs::ScratchPad { branch, .. } => branch.as_deref(),
+            _ => None,
+        };
+
         let persisted = match &normalized {
             CreateRequest::ScratchPad { context } => {
-                self.create_scratchpad_with_front_matter(&specman, context, args.branch.as_deref())?
+                self.create_scratchpad_with_front_matter(&specman, context, branch)?
             }
             _ => specman.create(normalized).map_err(to_mcp_error)?,
         };
@@ -194,30 +222,34 @@ impl SpecmanMcpServer {
         peer: Option<&Peer<RoleServer>>,
         args: &CreateArtifactArgs,
     ) -> Result<CreateRequest, McpError> {
-        match args.kind {
-            CreateArtifactKind::Specification => {
-                let suggestion =
-                    if let (Some(name), Some(title)) = (args.name.as_ref(), args.title.as_ref()) {
-                        SpecSuggestion {
-                            name: name.clone(),
-                            title: title.clone(),
-                        }
-                    } else {
-                        self.sample_json::<SpecSuggestion>(
-                            peer,
-                            "Propose a SpecMan specification name + title",
-                            &format!(
-                                "Return JSON matching this schema (and ONLY JSON):\n\n{}\n\n\
+        match args {
+            CreateArtifactArgs::Specification {
+                name,
+                title,
+                intent,
+            } => {
+                let suggestion = if let (Some(name), Some(title)) = (name.as_ref(), title.as_ref())
+                {
+                    SpecSuggestion {
+                        name: name.clone(),
+                        title: title.clone(),
+                    }
+                } else {
+                    self.sample_json::<SpecSuggestion>(
+                        peer,
+                        "Propose a SpecMan specification name + title",
+                        &format!(
+                            "Return JSON matching this schema (and ONLY JSON):\n\n{}\n\n\
 Intent (optional): {}\n\n\
 Constraints:\n\
 - name must be a slug (lowercase, digits, hyphens).\n\
 - title should be human readable.\n",
-                                schema_json_for::<SpecSuggestion>(),
-                                args.intent.clone().unwrap_or_default()
-                            ),
-                        )
-                        .await?
-                    };
+                            schema_json_for::<SpecSuggestion>(),
+                            intent.clone().unwrap_or_default()
+                        ),
+                    )
+                    .await?
+                };
 
                 let name = self
                     .confirm_name(peer, suggestion.name, "specification")
@@ -231,16 +263,14 @@ Constraints:\n\
                     },
                 })
             }
-            CreateArtifactKind::Implementation => {
-                let target = args
-                    .target
-                    .as_ref()
-                    .ok_or_else(|| {
-                        invalid_params("target is required for implementation creation")
-                    })?
-                    .clone();
+            CreateArtifactArgs::Implementation {
+                target,
+                intent,
+                name,
+            } => {
+                let target = target.clone();
 
-                let suggested = match args.name.as_ref() {
+                let suggested = match name.as_ref() {
                     Some(name) => NameSuggestion { name: name.clone() },
                     None => {
                         self.sample_json::<NameSuggestion>(
@@ -253,7 +283,7 @@ Intent (optional): {}\n\n\
 Constraints: name must be a slug (lowercase, digits, hyphens).\n",
                                 schema_json_for::<NameSuggestion>(),
                                 target,
-                                args.intent.clone().unwrap_or_default()
+                                intent.clone().unwrap_or_default()
                             ),
                         )
                         .await?
@@ -269,21 +299,17 @@ Constraints: name must be a slug (lowercase, digits, hyphens).\n",
                     context: specman::ImplContext { name, target },
                 })
             }
-            CreateArtifactKind::ScratchPad => {
-                let target = args
-                    .target
-                    .as_ref()
-                    .ok_or_else(|| invalid_params("target is required for scratch pad creation"))?
-                    .clone();
-                let kind = args
-                    .scratch_kind
-                    .as_ref()
-                    .ok_or_else(|| {
-                        invalid_params("scratch_kind is required when kind = scratch_pad")
-                    })?
-                    .clone();
+            CreateArtifactArgs::ScratchPad {
+                target,
+                scratch_kind,
+                intent,
+                name,
+                branch: _,
+            } => {
+                let target = target.clone();
+                let kind = scratch_kind.clone();
 
-                let suggested = match args.name.as_ref() {
+                let suggested = match name.as_ref() {
                     Some(name) => NameSuggestion { name: name.clone() },
                     None => {
                         self.sample_json::<NameSuggestion>(
@@ -300,7 +326,7 @@ Constraints:\n\
                                 schema_json_for::<NameSuggestion>(),
                                 target,
                                 kind.as_work_type_key(),
-                                args.intent.clone().unwrap_or_default()
+                                intent.clone().unwrap_or_default()
                             ),
                         )
                         .await?
@@ -313,7 +339,7 @@ Constraints:\n\
                 validate_slug_max_words(&name, "scratch pad", 4)?;
 
                 let work_type = self
-                    .build_scratch_work_type(peer, &kind, args.intent.as_deref())
+                    .build_scratch_work_type(peer, &kind, intent.as_deref())
                     .await?;
 
                 Ok(CreateRequest::ScratchPad {
@@ -485,13 +511,37 @@ Documents:\n\n--- spec/specman-mcp/spec.md ---\n{spec_mcp}\n\n--- spec/specman-t
             .map(|t| t.text.clone())
             .unwrap_or_default();
 
-        serde_json::from_str::<T>(text.trim()).map_err(|err| {
+        let normalized = Self::normalize_sampled_json(&text);
+        serde_json::from_str::<T>(normalized.trim()).map_err(|err| {
             invalid_params(format!(
                 "sampling response did not match expected JSON schema: {err}; raw={text}"
             ))
         })
     }
 
+    fn normalize_sampled_json(text: &str) -> String {
+        let trimmed = text.trim();
+        if !trimmed.starts_with("```") {
+            return trimmed.to_string();
+        }
+
+        let mut lines = trimmed.lines();
+        let first = lines.next().unwrap_or_default();
+        if !first.starts_with("```") {
+            return trimmed.to_string();
+        }
+
+        let mut out = String::new();
+        for line in lines {
+            if line.trim_start().starts_with("```") {
+                break;
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+
+        out.trim().to_string()
+    }
     fn create_scratchpad_with_front_matter(
         &self,
         specman: &SpecmanInstance,
