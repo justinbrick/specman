@@ -1,5 +1,5 @@
 ---
-target: ../relative/path/to/implementation.md
+target: {{target_path}}
 branch: target-name/fix/scratch-name
 work_type:
   fix:

@@ -633,25 +633,25 @@ work_type:
         fs::write(
             template_dir.join("impl.md"),
             r"---
-spec: {{target}}
-name: {{name}}
+spec: {{target_path}}
+name: {{output_name}}
 version: '0.1.0'
 ---
 
-# Impl — {{name}}
+# Impl — {{output_name}}
 ",
         )?;
 
         fs::write(
             template_dir.join("scratch.md"),
             r"---
-target: {{target}}
+target: {{target_path}}
 branch: main
 work_type:
     {{work_type_kind}}: {}
 ---
 
-# Scratch Pad — {{name}}
+# Scratch Pad — {{output_name}}
 ",
         )?;
 

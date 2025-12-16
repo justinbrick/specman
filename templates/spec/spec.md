@@ -1,5 +1,5 @@
 ---
-name: your-spec-name
+name: {{output_name}}
 version: "1.0.0"
 dependencies: []
 ---

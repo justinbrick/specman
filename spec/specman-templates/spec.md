@@ -2,7 +2,7 @@
 name: specman-templates
 version: "1.0.0"
 dependencies:
-  - ref: https://raw.githubusercontent.com/jbrickley-tcs/specman/refs/heads/main/spec/specman-data-model/spec.md
+  - ref: ../specman-data-model/spec.md
     optional: false
 ---
 

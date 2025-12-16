@@ -156,7 +156,7 @@ where
 
                 let mut tokens = TokenMap::new();
                 tokens.insert(
-                    "name".to_string(),
+                    "output_name".to_string(),
                     serde_json::Value::String(context.name.clone()),
                 );
                 tokens.insert(
@@ -183,11 +183,11 @@ where
 
                 let mut tokens = TokenMap::new();
                 tokens.insert(
-                    "name".to_string(),
+                    "output_name".to_string(),
                     serde_json::Value::String(context.name.clone()),
                 );
                 tokens.insert(
-                    "target".to_string(),
+                    "target_path".to_string(),
                     serde_json::Value::String(context.target.clone()),
                 );
 
@@ -212,11 +212,11 @@ where
 
                 let mut tokens = TokenMap::new();
                 tokens.insert(
-                    "name".to_string(),
+                    "output_name".to_string(),
                     serde_json::Value::String(context.name.clone()),
                 );
                 tokens.insert(
-                    "target".to_string(),
+                    "target_path".to_string(),
                     serde_json::Value::String(context.target.clone()),
                 );
                 tokens.insert(
@@ -343,8 +343,11 @@ impl DefaultSpecman {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dependency_tree::{ArtifactSummary, DependencyEdge, DependencyRelation};
-    use crate::template::{RenderedTemplate, TemplateDescriptor, TokenMap};
+    use crate::dependency_tree::{
+        ArtifactSummary, DependencyEdge, DependencyRelation, FilesystemDependencyMapper,
+    };
+    use crate::front_matter::ScratchFixMetadata;
+    use crate::template::{MarkdownTemplateEngine, RenderedTemplate, TemplateDescriptor, TokenMap};
     use crate::workspace::FilesystemWorkspaceLocator;
     use std::fs;
     use tempfile::tempdir;
@@ -495,5 +498,111 @@ mod tests {
             }
             other => panic!("unexpected error: {other}"),
         }
+    }
+
+    #[test]
+    fn create_scratchpad_does_not_fail_when_dependency_tree_computed_post_create() {
+        let (_temp, locator, catalog) = workspace_fixture();
+        let workspace = locator.workspace().unwrap();
+        let workspace_root = workspace.root().to_path_buf();
+
+        // Create a minimal target implementation (and its spec) so dependency mapping succeeds.
+        fs::create_dir_all(workspace.spec_dir().join("specman-core")).unwrap();
+        fs::write(
+            workspace.spec_dir().join("specman-core/spec.md"),
+            "---\nname: specman-core\nversion: \"1.0.0\"\n---\n# Core\n",
+        )
+        .unwrap();
+
+        fs::create_dir_all(workspace.impl_dir().join("specman-library")).unwrap();
+        fs::write(
+            workspace.impl_dir().join("specman-library/impl.md"),
+            "---\nspec: ../../spec/specman-core/spec.md\nname: specman-library\nversion: \"0.1.0\"\nreferences: []\n---\n# Impl\n",
+        )
+        .unwrap();
+
+        let mapping_locator = FilesystemWorkspaceLocator::new(workspace_root.join("impl"));
+        let mapping = FilesystemDependencyMapper::new(mapping_locator);
+        let templates = MarkdownTemplateEngine::new();
+        let controller = DefaultLifecycleController::new(mapping, templates);
+        let persistence_locator = FilesystemWorkspaceLocator::new(workspace_root.join("impl"));
+        let persistence = WorkspacePersistence::new(persistence_locator);
+        let svc = Specman::new(controller, catalog, persistence);
+
+        let persisted = svc
+            .create(CreateRequest::ScratchPad {
+                context: ScratchPadCreateContext {
+                    name: "post-create-deps".into(),
+                    target: "impl://specman-library".into(),
+                    work_type: ScratchWorkType::Fix(ScratchFixMetadata {
+                        fixed_headings: Vec::new(),
+                        extras: Default::default(),
+                    }),
+                },
+            })
+            .expect("scratch pad create should succeed");
+
+        assert!(persisted.path.exists());
+    }
+
+    #[test]
+    fn create_implementation_does_not_fail_when_dependency_tree_computed_post_create() {
+        let (_temp, locator, catalog) = workspace_fixture();
+        let workspace = locator.workspace().unwrap();
+        let workspace_root = workspace.root().to_path_buf();
+
+        // Seed the workspace with a spec so the implementation's `spec:` reference resolves.
+        fs::create_dir_all(workspace.spec_dir().join("specman-core")).unwrap();
+        fs::write(
+            workspace.spec_dir().join("specman-core/spec.md"),
+            "---\nname: specman-core\nversion: \"1.0.0\"\n---\n# Core\n",
+        )
+        .unwrap();
+
+        let mapping_locator = FilesystemWorkspaceLocator::new(workspace_root.join("impl"));
+        let mapping = FilesystemDependencyMapper::new(mapping_locator);
+        let templates = MarkdownTemplateEngine::new();
+        let controller = DefaultLifecycleController::new(mapping, templates);
+        let persistence_locator: FilesystemWorkspaceLocator =
+            FilesystemWorkspaceLocator::new(workspace_root.join("impl"));
+        let persistence = WorkspacePersistence::new(persistence_locator);
+        let svc = Specman::new(controller, catalog, persistence);
+
+        let persisted = svc
+            .create(CreateRequest::Implementation {
+                context: ImplContext {
+                    name: "impl-post-create-deps".into(),
+                    target: "spec://specman-core".into(),
+                },
+            })
+            .expect("implementation create should succeed");
+
+        assert!(persisted.path.exists());
+    }
+
+    #[test]
+    fn create_specification_does_not_fail_when_dependency_tree_computed_post_create() {
+        let (_temp, locator, catalog) = workspace_fixture();
+        let workspace = locator.workspace().unwrap();
+        let workspace_root = workspace.root().to_path_buf();
+
+        let mapping_locator = FilesystemWorkspaceLocator::new(workspace_root.join("impl"));
+        let mapping = FilesystemDependencyMapper::new(mapping_locator);
+        let templates = MarkdownTemplateEngine::new();
+        let controller = DefaultLifecycleController::new(mapping, templates);
+        let persistence_locator = FilesystemWorkspaceLocator::new(workspace_root.join("impl"));
+        let persistence = WorkspacePersistence::new(persistence_locator);
+        let svc = Specman::new(controller, catalog, persistence);
+
+        let persisted = svc
+            .create(CreateRequest::Specification {
+                context: SpecContext {
+                    name: "spec-post-create-deps".into(),
+                    title: "Spec Post Create Deps".into(),
+                },
+            })
+            .expect("spec create should succeed");
+
+        assert!(persisted.path.exists());
     }
 }

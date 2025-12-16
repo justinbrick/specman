@@ -1,6 +1,6 @@
 ---
-spec: ../../spec/target-spec/spec.md
-name: your-implementation-name
+spec: {{target_path}}
+name: {{output_name}}
 version: "1.0.0"
 location: ../relative/path/to/source
 library:
