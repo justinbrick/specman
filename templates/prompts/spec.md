@@ -24,14 +24,7 @@ Before interpreting any inputs, complete these reading prerequisites:
 
 Steps:
 
-1. {{artifact_name_or_request}}
-2. Decide the specification version constraints from the User Input and context.
-3. Call the MCP tool `create_artifact` to create the Specification, then update the YAML front matter with the specification name, semantic version, and dependency list.
-4. Keep the "Terminology & References" heading and RFC 2119 guidance intact, and flesh out Concepts, Key Entities, Constraints, and Additional Notes with declarative content aligned to the dependencies and the User Input section.
-5. Reference related specifications or entities inline, ensuring headings remain unique and dependencies stay non-conflicting while HTML comments are removed only after fulfillment.
-6. Conduct an adversarial review by deliberately misinterpreting statements made and all context (including the User Input section): list potential misunderstandings, edge cases, or missing constraints, cite the impacted headings, and turn each finding into a clarifying question for the user before committing to final prose.
-7. Summarize the discovered ambiguities/conflicts as issues presented back to the user (for example a table of "risk → why it matters → required clarification"), then integrate any resolved guidance into the draft while clearly flagging unresolved blockers.
-8. Validate the result against the SpecMan Data Model requirements for Specifications, Dependencies, and Specification Metadata before returning the result.
+1. Call the MCP tool `create_artifact` with `kind = specification`.
 
 ## User Input
 

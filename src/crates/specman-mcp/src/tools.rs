@@ -1,5 +1,13 @@
 use std::path::PathBuf;
 
+use rmcp::RoleServer;
+use rmcp::elicit_safe;
+use rmcp::model::{
+    Content, ContextInclusion, CreateMessageRequestParam, Role as SamplingRole, SamplingMessage,
+};
+use rmcp::service::Peer;
+use serde_yaml::{Mapping, Value as YamlValue};
+
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::schemars::JsonSchema;
@@ -15,6 +23,110 @@ use specman::{
 use crate::error::{McpError, invalid_params, to_mcp_error};
 use crate::resources::{artifact_handle, resolved_path_or_artifact_path, workspace_relative_path};
 use crate::server::SpecmanMcpServer;
+
+type SpecmanInstance = Specman<
+    FilesystemDependencyMapper<std::sync::Arc<FilesystemWorkspaceLocator>>,
+    MarkdownTemplateEngine,
+    std::sync::Arc<FilesystemWorkspaceLocator>,
+>;
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CreateArtifactKind {
+    Specification,
+    Implementation,
+    ScratchPad,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ScratchKind {
+    Draft,
+    Revision,
+    Feat,
+    Ref,
+    Fix,
+}
+
+impl ScratchKind {
+    fn as_work_type_key(&self) -> &'static str {
+        match self {
+            ScratchKind::Draft => "draft",
+            ScratchKind::Revision => "revision",
+            ScratchKind::Feat => "feat",
+            ScratchKind::Ref => "ref",
+            ScratchKind::Fix => "fix",
+        }
+    }
+}
+
+/// New (simplified) `create_artifact` input schema for MCP.
+///
+/// This intentionally does NOT accept arbitrary template substitutions. The MCP server is
+/// responsible for gathering any missing details via MCP sampling + elicitation and then mapping
+/// the result into a SpecMan core `CreateRequest`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateArtifactArgs {
+    pub kind: CreateArtifactKind,
+
+    /// Target locator for implementation or scratch pad creation.
+    ///
+    /// - Implementation: MUST resolve to a specification (e.g. `spec://...`)
+    /// - ScratchPad: MUST resolve within the workspace and MUST NOT be an HTTP(S) URL
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+
+    /// Scratch work type selector. Required when `kind = ScratchPad`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scratch_kind: Option<ScratchKind>,
+
+    /// Optional natural-language intent provided by the caller.
+    /// Used to guide sampling (e.g. title/name suggestions, affected headings).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent: Option<String>,
+
+    /// Optional name hint. The server MAY still request explicit confirmation via elicitation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// Optional title hint (specifications only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+
+    /// Optional explicit branch name (scratch pads only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct NameSuggestion {
+    name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct SpecSuggestion {
+    name: String,
+    title: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct HeadingsSuggestion {
+    headings: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct NameOverride {
+    /// Leave empty to accept the proposed name.
+    #[serde(default)]
+    name: String,
+}
+
+elicit_safe!(NameOverride);
 
 pub(crate) fn build_tool_router() -> ToolRouter<SpecmanMcpServer> {
     SpecmanMcpServer::tool_router()
@@ -43,18 +155,455 @@ pub struct CreateArtifactResult {
 impl SpecmanMcpServer {
     #[tool(
         name = "create_artifact",
-        description = "Create a SpecMan artifact (spec, impl, or scratch pad) from a core CreateRequest"
+        description = "Create a SpecMan artifact (spec, impl, or scratch pad). Accepts minimal inputs and uses MCP sampling + elicitation to fill gaps."
     )]
     pub(crate) async fn create_artifact(
         &self,
-        Parameters(request): Parameters<CreateRequest>,
+        peer: Peer<RoleServer>,
+        Parameters(args): Parameters<CreateArtifactArgs>,
     ) -> Result<Json<CreateArtifactResult>, McpError> {
-        let normalized = self.normalize_create_request(request)?;
+        self.create_artifact_internal(Some(&peer), args).await
+    }
+}
+
+impl SpecmanMcpServer {
+    pub(crate) async fn create_artifact_internal(
+        &self,
+        peer: Option<&Peer<RoleServer>>,
+        args: CreateArtifactArgs,
+    ) -> Result<Json<CreateArtifactResult>, McpError> {
         let specman = self.build_specman()?;
-        let persisted = specman.create(normalized).map_err(to_mcp_error)?;
+
+        let request = self
+            .build_create_request_via_sampling_and_elicitation(peer, &args)
+            .await?;
+        let normalized = self.normalize_create_request(request)?;
+
+        let persisted = match &normalized {
+            CreateRequest::ScratchPad { context } => {
+                self.create_scratchpad_with_front_matter(&specman, context, args.branch.as_deref())?
+            }
+            _ => specman.create(normalized).map_err(to_mcp_error)?,
+        };
 
         Ok(Json(create_artifact_result(&persisted)))
     }
+
+    async fn build_create_request_via_sampling_and_elicitation(
+        &self,
+        peer: Option<&Peer<RoleServer>>,
+        args: &CreateArtifactArgs,
+    ) -> Result<CreateRequest, McpError> {
+        match args.kind {
+            CreateArtifactKind::Specification => {
+                let suggestion =
+                    if let (Some(name), Some(title)) = (args.name.as_ref(), args.title.as_ref()) {
+                        SpecSuggestion {
+                            name: name.clone(),
+                            title: title.clone(),
+                        }
+                    } else {
+                        self.sample_json::<SpecSuggestion>(
+                            peer,
+                            "Propose a SpecMan specification name + title",
+                            &format!(
+                                "Return JSON matching this schema (and ONLY JSON):\n\n{}\n\n\
+Intent (optional): {}\n\n\
+Constraints:\n\
+- name must be a slug (lowercase, digits, hyphens).\n\
+- title should be human readable.\n",
+                                schema_json_for::<SpecSuggestion>(),
+                                args.intent.clone().unwrap_or_default()
+                            ),
+                        )
+                        .await?
+                    };
+
+                let name = self
+                    .confirm_name(peer, suggestion.name, "specification")
+                    .await?;
+                validate_slug(&name, "specification")?;
+
+                Ok(CreateRequest::Specification {
+                    context: specman::SpecContext {
+                        name,
+                        title: suggestion.title,
+                    },
+                })
+            }
+            CreateArtifactKind::Implementation => {
+                let target = args
+                    .target
+                    .as_ref()
+                    .ok_or_else(|| {
+                        invalid_params("target is required for implementation creation")
+                    })?
+                    .clone();
+
+                let suggested = match args.name.as_ref() {
+                    Some(name) => NameSuggestion { name: name.clone() },
+                    None => {
+                        self.sample_json::<NameSuggestion>(
+                            peer,
+                            "Propose a SpecMan implementation name",
+                            &format!(
+                                "Return JSON matching this schema (and ONLY JSON):\n\n{}\n\n\
+Target: {}\n\
+Intent (optional): {}\n\n\
+Constraints: name must be a slug (lowercase, digits, hyphens).\n",
+                                schema_json_for::<NameSuggestion>(),
+                                target,
+                                args.intent.clone().unwrap_or_default()
+                            ),
+                        )
+                        .await?
+                    }
+                };
+
+                let name = self
+                    .confirm_name(peer, suggested.name, "implementation")
+                    .await?;
+                validate_slug(&name, "implementation")?;
+
+                Ok(CreateRequest::Implementation {
+                    context: specman::ImplContext { name, target },
+                })
+            }
+            CreateArtifactKind::ScratchPad => {
+                let target = args
+                    .target
+                    .as_ref()
+                    .ok_or_else(|| invalid_params("target is required for scratch pad creation"))?
+                    .clone();
+                let kind = args
+                    .scratch_kind
+                    .as_ref()
+                    .ok_or_else(|| {
+                        invalid_params("scratch_kind is required when kind = scratch_pad")
+                    })?
+                    .clone();
+
+                let suggested = match args.name.as_ref() {
+                    Some(name) => NameSuggestion { name: name.clone() },
+                    None => {
+                        self.sample_json::<NameSuggestion>(
+                            peer,
+                            "Propose a SpecMan scratch pad name",
+                            &format!(
+                                "Return JSON matching this schema (and ONLY JSON):\n\n{}\n\n\
+Target: {}\n\
+Work type: {}\n\
+Intent (optional): {}\n\n\
+Constraints:\n\
+- name must be all lowercase, digits, hyphen-separated, <=4 words.\n\
+- prefer action verbs.\n",
+                                schema_json_for::<NameSuggestion>(),
+                                target,
+                                kind.as_work_type_key(),
+                                args.intent.clone().unwrap_or_default()
+                            ),
+                        )
+                        .await?
+                    }
+                };
+
+                let name = self
+                    .confirm_name(peer, suggested.name, "scratch pad")
+                    .await?;
+                validate_slug_max_words(&name, "scratch pad", 4)?;
+
+                let work_type = self
+                    .build_scratch_work_type(peer, &kind, args.intent.as_deref())
+                    .await?;
+
+                Ok(CreateRequest::ScratchPad {
+                    context: specman::ScratchPadCreateContext {
+                        name,
+                        target,
+                        work_type,
+                    },
+                })
+            }
+        }
+    }
+
+    async fn confirm_name(
+        &self,
+        peer: Option<&Peer<RoleServer>>,
+        proposed: String,
+        artifact_kind: &str,
+    ) -> Result<String, McpError> {
+        let proposed = proposed.trim().to_string();
+        if proposed.is_empty() {
+            return Err(invalid_params("sampled name must not be empty"));
+        }
+
+        // If the client supports elicitation, confirm explicitly.
+        if let Some(peer) = peer {
+            if peer.supports_elicitation() {
+                let message = format!(
+                    "Proposed {artifact_kind} name: '{proposed}'.\n\
+Enter an alternate name, or leave blank to accept."
+                );
+                // Per prompt contract: blank OR no response means "accept proposed".
+                // Elicitation is a best-effort UX improvement; if it fails (timeout, cancel,
+                // client quirks), fall back to the proposed value.
+                if let Ok(Some(override_name)) = peer
+                    .elicit_with_timeout::<NameOverride>(message, None)
+                    .await
+                {
+                    let trimmed = override_name.name.trim();
+                    if !trimmed.is_empty() {
+                        return Ok(trimmed.to_string());
+                    }
+                }
+            }
+        }
+
+        Ok(proposed)
+    }
+
+    async fn build_scratch_work_type(
+        &self,
+        peer: Option<&Peer<RoleServer>>,
+        kind: &ScratchKind,
+        intent: Option<&str>,
+    ) -> Result<specman::front_matter::ScratchWorkType, McpError> {
+        use specman::front_matter::{
+            ScratchFixMetadata, ScratchRefactorMetadata, ScratchRevisionMetadata, ScratchWorkType,
+            ScratchWorkloadExtras,
+        };
+
+        match kind {
+            ScratchKind::Draft => Ok(ScratchWorkType::Draft(ScratchWorkloadExtras::default())),
+            ScratchKind::Feat => Ok(ScratchWorkType::Feat(ScratchWorkloadExtras::default())),
+            ScratchKind::Revision => {
+                let headings = self
+                    .sample_headings(peer, "revised_headings", intent)
+                    .await?;
+                Ok(ScratchWorkType::Revision(ScratchRevisionMetadata {
+                    revised_headings: headings,
+                    ..Default::default()
+                }))
+            }
+            ScratchKind::Ref => {
+                let headings = self
+                    .sample_headings(peer, "refactored_headings", intent)
+                    .await?;
+                Ok(ScratchWorkType::Refactor(ScratchRefactorMetadata {
+                    refactored_headings: headings,
+                    ..Default::default()
+                }))
+            }
+            ScratchKind::Fix => {
+                let headings = self.sample_headings(peer, "fixed_headings", intent).await?;
+                Ok(ScratchWorkType::Fix(ScratchFixMetadata {
+                    fixed_headings: headings,
+                    ..Default::default()
+                }))
+            }
+        }
+    }
+
+    async fn sample_headings(
+        &self,
+        peer: Option<&Peer<RoleServer>>,
+        field: &str,
+        intent: Option<&str>,
+    ) -> Result<Vec<String>, McpError> {
+        // For now we focus on the core docs that govern MCP lifecycle + templates.
+        // This keeps sampling requests deterministic and bounded.
+        let spec_mcp = self.read_workspace_file("spec/specman-mcp/spec.md")?;
+        let spec_templates = self.read_workspace_file("spec/specman-templates/spec.md")?;
+
+        // Ask for heading fragments as an array of strings.
+        let schema = schema_json_for::<HeadingsSuggestion>();
+        let prompt = format!(
+            "You are selecting Markdown heading fragments (like '#some-heading') that may be affected.\n\n\
+Return JSON matching this schema (and ONLY JSON):\n\n{schema}\n\n\
+Requirements:\n\
+- Every entry MUST be a string starting with '#'.\n\
+- Prefer stable, specific headings (avoid overly broad).\n\
+- Return at least 1 entry if any apply, otherwise return an empty list.\n\n\
+User intent:\n{}\n\n\
+Documents:\n\n--- spec/specman-mcp/spec.md ---\n{spec_mcp}\n\n--- spec/specman-templates/spec.md ---\n{spec_templates}\n",
+            intent.unwrap_or_default()
+        );
+
+        let mut result = self
+            .sample_json::<HeadingsSuggestion>(peer, "Affected heading fragments", &prompt)
+            .await?
+            .headings;
+
+        // Validate basic fragment shape.
+        result.retain(|h| !h.trim().is_empty());
+        for fragment in &result {
+            if !fragment.starts_with('#') {
+                return Err(invalid_params(format!(
+                    "{field} entries must start with '#': got '{fragment}'"
+                )));
+            }
+        }
+
+        Ok(result)
+    }
+
+    async fn sample_json<T: for<'de> Deserialize<'de> + JsonSchema>(
+        &self,
+        peer: Option<&Peer<RoleServer>>,
+        purpose: &str,
+        prompt: &str,
+    ) -> Result<T, McpError> {
+        let peer = peer.ok_or_else(|| {
+            invalid_params("sampling is required to infer missing inputs, but no peer is available")
+        })?;
+        let request = CreateMessageRequestParam {
+            messages: vec![SamplingMessage {
+                role: SamplingRole::User,
+                content: Content::text(prompt.to_string()),
+            }],
+            model_preferences: None,
+            system_prompt: Some(format!(
+                "You are a deterministic assistant. Purpose: {purpose}. Output MUST be valid JSON only."
+            )),
+            include_context: Some(ContextInclusion::ThisServer),
+            temperature: Some(0.0),
+            max_tokens: 1200,
+            stop_sequences: None,
+            metadata: None,
+        };
+
+        let response = peer
+            .create_message(request)
+            .await
+            .map_err(|err| invalid_params(err.to_string()))?;
+
+        let text = response
+            .message
+            .content
+            .as_text()
+            .map(|t| t.text.clone())
+            .unwrap_or_default();
+
+        serde_json::from_str::<T>(text.trim()).map_err(|err| {
+            invalid_params(format!(
+                "sampling response did not match expected JSON schema: {err}; raw={text}"
+            ))
+        })
+    }
+
+    fn create_scratchpad_with_front_matter(
+        &self,
+        specman: &SpecmanInstance,
+        context: &specman::ScratchPadCreateContext,
+        branch_override: Option<&str>,
+    ) -> Result<PersistedArtifact, McpError> {
+        let persisted = specman
+            .create(CreateRequest::ScratchPad {
+                context: context.clone(),
+            })
+            .map_err(to_mcp_error)?;
+
+        let branch = match branch_override.map(str::trim) {
+            None | Some("") | Some("main") => default_branch_from_target(
+                &context.target,
+                scratch_work_type_key(&context.work_type),
+                &context.name,
+            ),
+            Some(value) => value.to_string(),
+        };
+
+        let content = std::fs::read_to_string(&persisted.path)
+            .map_err(|err| invalid_params(format!("failed to read scratch pad: {err}")))?;
+        let rewritten =
+            rewrite_scratch_front_matter(&content, &context.target, &branch, &context.work_type)?;
+        std::fs::write(&persisted.path, rewritten)
+            .map_err(|err| invalid_params(format!("failed to write scratch pad: {err}")))?;
+
+        Ok(persisted)
+    }
+}
+
+fn schema_json_for<T: JsonSchema>() -> String {
+    serde_json::to_string_pretty(&schemars::schema_for!(T)).unwrap_or_else(|_| "{}".to_string())
+}
+
+fn validate_slug(value: &str, kind: &str) -> Result<(), McpError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(invalid_params(format!("{kind} name must not be empty")));
+    }
+    if trimmed
+        .chars()
+        .any(|ch| !(ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-'))
+    {
+        return Err(invalid_params(format!(
+            "{kind} name '{trimmed}' must be lowercase alphanumeric with hyphen separators"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_slug_max_words(value: &str, kind: &str, max_words: usize) -> Result<(), McpError> {
+    validate_slug(value, kind)?;
+    let segments: Vec<_> = value.split('-').filter(|seg| !seg.is_empty()).collect();
+    if segments.len() > max_words {
+        return Err(invalid_params(format!(
+            "{kind} name '{value}' must contain no more than {max_words} hyphenated words"
+        )));
+    }
+    Ok(())
+}
+
+fn default_branch_from_target(target: &str, work_type: &str, scratch_name: &str) -> String {
+    let target_slug = if let Some(rest) = target.strip_prefix("impl/") {
+        rest.split('/').next().unwrap_or(rest)
+    } else if let Some(rest) = target.strip_prefix("spec/") {
+        rest.split('/').next().unwrap_or(rest)
+    } else if let Some(rest) = target.strip_prefix(".specman/scratchpad/") {
+        rest.split('/').next().unwrap_or(rest)
+    } else {
+        target
+            .split('/')
+            .next_back()
+            .and_then(|segment| segment.split('.').next())
+            .unwrap_or(target)
+    };
+    format!("{target_slug}/{work_type}/{scratch_name}")
+}
+
+fn scratch_work_type_key(work_type: &specman::front_matter::ScratchWorkType) -> &'static str {
+    use specman::front_matter::ScratchWorkType;
+    match work_type {
+        ScratchWorkType::Draft(_) => "draft",
+        ScratchWorkType::Revision(_) => "revision",
+        ScratchWorkType::Feat(_) => "feat",
+        ScratchWorkType::Refactor(_) => "ref",
+        ScratchWorkType::Fix(_) => "fix",
+    }
+}
+
+fn rewrite_scratch_front_matter(
+    content: &str,
+    target: &str,
+    branch: &str,
+    work_type: &specman::front_matter::ScratchWorkType,
+) -> Result<String, McpError> {
+    let split = specman::front_matter::split_front_matter(content).map_err(to_mcp_error)?;
+    let mut doc: Mapping = serde_yaml::from_str(split.yaml)
+        .map_err(|err| invalid_params(format!("invalid scratch front matter: {err}")))?;
+
+    doc.insert(YamlValue::from("target"), YamlValue::from(target));
+    doc.insert(YamlValue::from("branch"), YamlValue::from(branch));
+
+    // Build `work_type` YAML from the strongly typed model.
+    let work_type_yaml: YamlValue = serde_yaml::to_value(work_type)
+        .map_err(|err| invalid_params(format!("failed to encode work_type yaml: {err}")))?;
+    doc.insert(YamlValue::from("work_type"), work_type_yaml);
+
+    let yaml = serde_yaml::to_string(&doc)
+        .map_err(|err| invalid_params(format!("failed to write front matter: {err}")))?;
+    Ok(format!("---\n{}---\n{}", yaml, split.body))
 }
 
 fn create_artifact_result(persisted: &PersistedArtifact) -> CreateArtifactResult {
@@ -73,16 +622,7 @@ fn create_artifact_result(persisted: &PersistedArtifact) -> CreateArtifactResult
 }
 
 impl SpecmanMcpServer {
-    fn build_specman(
-        &self,
-    ) -> Result<
-        Specman<
-            FilesystemDependencyMapper<std::sync::Arc<FilesystemWorkspaceLocator>>,
-            MarkdownTemplateEngine,
-            std::sync::Arc<FilesystemWorkspaceLocator>,
-        >,
-        McpError,
-    > {
+    fn build_specman(&self) -> Result<SpecmanInstance, McpError> {
         let locator = self.workspace.clone();
         let workspace = locator.workspace().map_err(to_mcp_error)?;
 
@@ -94,6 +634,13 @@ impl SpecmanMcpServer {
         let persistence = WorkspacePersistence::with_inventory(locator, inventory);
 
         Ok(Specman::new(controller, catalog, persistence))
+    }
+
+    fn read_workspace_file(&self, relative: &str) -> Result<String, McpError> {
+        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
+        let path = workspace.root().join(relative);
+        std::fs::read_to_string(&path)
+            .map_err(|err| invalid_params(format!("failed to read {relative}: {err}")))
     }
 
     fn normalize_locator_to_workspace_path(&self, locator: &str) -> Result<String, McpError> {

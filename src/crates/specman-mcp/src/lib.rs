@@ -20,10 +20,8 @@ mod tests {
     use rmcp::handler::server::wrapper::{Json, Parameters};
     use rmcp::model::PromptMessageContent;
     use rmcp::model::{PromptMessage, ResourceContents};
-    use specman::front_matter::{ScratchWorkType, ScratchWorkloadExtras};
     use specman::{
-        ArtifactId, ArtifactKind, ArtifactSummary, CreateRequest, DependencyTree, WorkspaceLocator,
-        WorkspacePaths,
+        ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree, WorkspaceLocator, WorkspacePaths,
     };
     use std::io::Write;
     use tempfile::TempDir;
@@ -439,8 +437,8 @@ mod tests {
 
     #[test]
     fn create_artifact_schema_is_deterministic() {
-        let schema_a = rmcp::schemars::schema_for!(CreateRequest);
-        let schema_b = rmcp::schemars::schema_for!(CreateRequest);
+        let schema_a = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
+        let schema_b = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
 
         let a = serde_json::to_string(&schema_a).expect("schema serializes");
         let b = serde_json::to_string(&schema_b).expect("schema serializes");
@@ -455,14 +453,20 @@ mod tests {
 
         let Json(result) = workspace
             .server
-            .create_artifact(Parameters(CreateRequest::ScratchPad {
-                context: specman::ScratchPadCreateContext {
-                    name: "mcpscratch".to_string(),
-                    target: "impl://testimpl".to_string(),
-                    work_type: ScratchWorkType::Feat(ScratchWorkloadExtras::default()),
+            .create_artifact_internal(
+                None,
+                crate::tools::CreateArtifactArgs {
+                    kind: crate::tools::CreateArtifactKind::ScratchPad,
+                    target: Some("impl://testimpl".to_string()),
+                    scratch_kind: Some(crate::tools::ScratchKind::Feat),
+                    intent: None,
+                    name: Some("mcpscratch".to_string()),
+                    title: None,
+                    branch: None,
                 },
-            }))
-            .await?;
+            )
+            .await
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, format!("{err:?}")))?;
 
         assert_eq!(result.handle, "scratch://mcpscratch");
         assert_eq!(result.path, ".specman/scratchpad/mcpscratch/scratch.md");
@@ -490,13 +494,20 @@ mod tests {
 
         let Json(result) = workspace
             .server
-            .create_artifact(Parameters(CreateRequest::Implementation {
-                context: specman::ImplContext {
-                    name: "mcpimpl".to_string(),
-                    target: "spec://testspec".to_string(),
+            .create_artifact_internal(
+                None,
+                crate::tools::CreateArtifactArgs {
+                    kind: crate::tools::CreateArtifactKind::Implementation,
+                    target: Some("spec://testspec".to_string()),
+                    scratch_kind: None,
+                    intent: None,
+                    name: Some("mcpimpl".to_string()),
+                    title: None,
+                    branch: None,
                 },
-            }))
-            .await?;
+            )
+            .await
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, format!("{err:?}")))?;
 
         assert_eq!(result.handle, "impl://mcpimpl");
         assert_eq!(result.path, "impl/mcpimpl/impl.md");
@@ -523,13 +534,18 @@ mod tests {
 
         let result = workspace
             .server
-            .create_artifact(Parameters(CreateRequest::ScratchPad {
-                context: specman::ScratchPadCreateContext {
-                    name: "bad".to_string(),
-                    target: "https://example.com".to_string(),
-                    work_type: ScratchWorkType::Feat(ScratchWorkloadExtras::default()),
+            .create_artifact_internal(
+                None,
+                crate::tools::CreateArtifactArgs {
+                    kind: crate::tools::CreateArtifactKind::ScratchPad,
+                    target: Some("https://example.com".to_string()),
+                    scratch_kind: Some(crate::tools::ScratchKind::Feat),
+                    intent: None,
+                    name: Some("bad".to_string()),
+                    title: None,
+                    branch: None,
                 },
-            }))
+            )
             .await;
 
         let err = result.err().expect("url targets must be rejected");

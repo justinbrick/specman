@@ -172,18 +172,14 @@ impl SpecmanMcpServer {
             ),
         };
 
-        let artifact_instruction = "Provide a scratch pad name (lowercase, hyphenated, <=4 words) that satisfies SpecMan naming rules. Prefer an action verb for scratch pads. Example: action-being-done.".to_string();
-
         let context = bullet_list(&dependency_lines(&resolved));
         let dependencies = context.clone();
 
         let replacements = vec![
-            ("{{branch_name_or_request}}", branch_instruction.clone()),
             ("{{branch_name}}", branch_instruction.clone()),
             ("{{target_path}}", resolved.handle.clone()),
             ("{{context}}", context),
             ("{{dependencies}}", dependencies),
-            ("{{artifact_name_or_request}}", artifact_instruction),
         ];
 
         let rendered = apply_tokens(template, &replacements)?;
@@ -196,11 +192,7 @@ impl SpecmanMcpServer {
     /// Render the specification-creation prompt. Since a new specification has no canonical locator yet,
     /// callers may optionally provide an existing locator (`seed_target`) to prefill dependency context.
     fn render_spec_prompt(&self, template: &str) -> Result<Vec<PromptMessage>, McpError> {
-        let artifact_instruction = "Provide a specification name (lowercase, hyphenated, <=4 words) that satisfies SpecMan naming rules. Example: workspace-lifecycle.".to_string();
-
-        let replacements = vec![("{{artifact_name_or_request}}", artifact_instruction)];
-
-        let rendered = apply_tokens(template, &replacements)?;
+        let rendered = apply_tokens(template, &[])?;
         Ok(vec![PromptMessage::new_text(
             PromptMessageRole::User,
             rendered,
@@ -218,14 +210,11 @@ impl SpecmanMcpServer {
         let context = bullet_list(&dependency_lines(&resolved));
         let dependencies = context.clone();
 
-        let artifact_instruction = "Provide an implementation name (lowercase, hyphenated, <=4 words) that satisfies SpecMan naming rules. If language-specific, suffix the language (example: specman-mcp-rust).".to_string();
-
         let replacements = vec![
             ("{{target_path}}", resolved.handle.clone()),
             ("{{target_spec_path}}", resolved.handle.clone()),
             ("{{context}}", context),
             ("{{dependencies}}", dependencies),
-            ("{{artifact_name_or_request}}", artifact_instruction),
         ];
 
         let rendered = apply_tokens(template, &replacements)?;

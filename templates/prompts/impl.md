@@ -12,16 +12,7 @@ Read the following dependencies before continuing:
 
 Steps:
 
-1. {{artifact_name_or_request}}
-2. Call the MCP tool `create_artifact` to create the Implementation, then set `spec` to {{target_spec_path}}, fill `location`, `library` (if applicable), and describe `primary_language` plus optional `secondary_languages`.
-3. Summarize architecture and intent in Overview, explain language details, References, Implementation Details, and Operational Notes with concise prose that cites specification headings via inline links, grounding content in the User Input section.
-4. In `## Concept & Entity Breakdown`, enumerate every concept and entity from the governing specification that this implementation covers. Each heading MUST include an inline link to the originating spec fragment (for example `[Concept: Lifecycle](../spec/spec.md#concept-lifecycle)`) and contain:
-
-   - A narrative describing how the concept/entity is realized, with additional inline links to related headings.
-   - API signatures scoped to that concept/entity (fenced code blocks with notes on inputs, outputs, invariants, and dependencies).
-   - For entities, an embedded Data Model snippet plus any constraints.
-
-5. Remove HTML comment directives only after their guidance is satisfied and validate against SpecMan Data Model sections for Implementations, Implementing Language, References, APIs, and Implementation Metadata before returning the result.
+1. Call the MCP tool `create_artifact` with `kind = implementation` and `target = {{target_spec_path}}`.
 
 ## User Input
 

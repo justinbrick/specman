@@ -1356,6 +1356,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "serde_yaml",
  "specman",
  "tempfile",
  "tokio",
