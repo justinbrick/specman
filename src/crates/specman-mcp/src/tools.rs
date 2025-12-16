@@ -10,6 +10,8 @@ use serde_yaml::{Mapping, Value as YamlValue};
 
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
+use std::borrow::Cow;
+
 use rmcp::schemars::JsonSchema;
 use rmcp::{tool, tool_router};
 use serde::{Deserialize, Serialize};
@@ -62,7 +64,7 @@ impl ScratchKind {
 /// The server intentionally does NOT accept arbitrary template substitutions. It is responsible
 /// for gathering any missing details via MCP sampling + elicitation and then mapping
 /// the result into a SpecMan core `CreateRequest`.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CreateArtifactArgs {
     /// Create a specification under `spec/`.
@@ -120,6 +122,72 @@ pub enum CreateArtifactArgs {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         branch: Option<String>,
     },
+}
+
+// NOTE:
+// The MCP Inspector currently expects tool `inputSchema.type` to be exactly
+// the string "object".
+//
+// For an internally-tagged enum, schemars can emit a schema whose top-level
+// object does not include a concrete `type: "object"` (e.g. only `oneOf`).
+// That’s valid JSON Schema, but it fails MCP Inspector validation.
+//
+// We keep the expressive variant schema (via `CreateArtifactArgsSchema`), but
+// wrap it in a top-level schema object with `type: "object"`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum CreateArtifactArgsSchema {
+    Specification {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+    },
+
+    Implementation {
+        target: String,
+
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+
+    ScratchPad {
+        target: String,
+
+        #[serde(rename = "scratchKind", alias = "scratch_kind")]
+        scratch_kind: ScratchKind,
+
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        intent: Option<String>,
+
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        branch: Option<String>,
+    },
+}
+
+impl JsonSchema for CreateArtifactArgs {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("CreateArtifactArgs")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let inner = generator.subschema_for::<CreateArtifactArgsSchema>();
+
+        schemars::json_schema!({
+            "type": "object",
+            "allOf": [inner]
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]

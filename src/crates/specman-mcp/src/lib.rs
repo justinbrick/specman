@@ -446,6 +446,45 @@ mod tests {
         assert_eq!(a, b, "schema serialization must be deterministic");
     }
 
+    #[test]
+    fn create_artifact_input_schema_is_object_type() {
+        let schema = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
+        let value = serde_json::to_value(&schema).expect("schema serializes");
+        let ty = value
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+
+        assert_eq!(
+            ty, "object",
+            "MCP Inspector expects tool inputSchema.type to be exactly 'object'"
+        );
+    }
+
+    #[test]
+    fn list_tools_returns_object_input_schema() {
+        let server = SpecmanMcpServer::new().expect("server should start");
+        let tools = server.tool_router.list_all();
+
+        assert!(!tools.is_empty(), "expected at least one tool");
+
+        for tool in tools {
+            let tool_value = serde_json::to_value(&tool).expect("tool serializes");
+            let schema = tool_value.get("inputSchema").expect("tool has inputSchema");
+
+            let ty = schema
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+
+            assert_eq!(
+                ty, "object",
+                "tool '{}' inputSchema.type must be 'object' for MCP Inspector",
+                tool.name
+            );
+        }
+    }
+
     #[tokio::test]
     async fn create_artifact_normalizes_scratchpad_target() -> Result<(), Box<dyn std::error::Error>>
     {
