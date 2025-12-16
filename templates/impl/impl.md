@@ -10,10 +10,7 @@ primary_language:
   properties: {}
   libraries: []
 secondary_languages: []
-references:
-  - ref: ../path/to/related-artifact.md
-    type: specification
-    optional: false
+references: []
 ---
 
 <!-- AI TODO: Replace the placeholder metadata, remove unused fields, and ensure the `references` list only contains actual artifacts linked to this implementation. -->
