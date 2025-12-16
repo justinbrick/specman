@@ -4,7 +4,6 @@ You are gathering refactor discovery insights in a scratch pad focusing on imple
 
 Before any analysis, complete these reading prerequisites:
 
-- Study the SpecMan Data Model specification and its dependencies (including the Founding Spec) so the refactor aligns with current guidance.
 - Read {{target_path}}, its governing specification, and every dependency/reference declared in those files to ensure the refactor considers all touchpoints.
 
 Read the following dependencies before continuing:

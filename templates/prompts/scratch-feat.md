@@ -4,7 +4,6 @@ You are capturing active feature execution in a scratch pad, targeting implement
 
 Before you begin, complete these reading prerequisites:
 
-- Review the SpecMan Data Model specification and every dependency it lists (for example the Founding Spec) so the scratch pad complies with the latest rules.
 - Open {{target_path}}, the specification it references, and every dependency/reference enumerated in that implementation so you understand upstream and downstream contracts.
 
 Read the following dependencies before continuing:

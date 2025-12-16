@@ -4,7 +4,6 @@ You are documenting an implementation and must use the MCP tool `create_artifact
 
 Before doing anything else, complete these prerequisites:
 
-- Study the SpecMan Data Model specification plus its declared dependencies (for example the Founding Spec) so you apply the latest implementation rules.
 - Open the governing specification at {{target_spec_path}} and read every dependency listed inside it to understand upstream constraints.
 - Review the existing implementation materials referenced in the provided context, along with every item in the implementation's `references` list, so you know all downstream contracts.
 
@@ -14,7 +13,7 @@ Read the following dependencies before continuing:
 Steps:
 
 1. {{artifact_name_or_request}}
-2. Call the MCP tool `create_artifact` to create the Implementation, then set `spec` to {{target_spec_path}}, fill `location`, `library` (if applicable), and describe `primary_language` plus optional `secondary_languages`, replacing the references list with {{reference_items}}.
+2. Call the MCP tool `create_artifact` to create the Implementation, then set `spec` to {{target_spec_path}}, fill `location`, `library` (if applicable), and describe `primary_language` plus optional `secondary_languages`.
 3. Summarize architecture and intent in Overview, explain language details, References, Implementation Details, and Operational Notes with concise prose that cites specification headings via inline links, grounding content in the User Input section.
 4. In `## Concept & Entity Breakdown`, enumerate every concept and entity from the governing specification that this implementation covers. Each heading MUST include an inline link to the originating spec fragment (for example `[Concept: Lifecycle](../spec/spec.md#concept-lifecycle)`) and contain:
 

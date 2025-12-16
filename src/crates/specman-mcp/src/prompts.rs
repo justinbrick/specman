@@ -21,11 +21,26 @@ const SCRATCH_FEAT_TEMPLATE: &str = include_str!("../templates/prompts/scratch-f
 const SCRATCH_FIX_TEMPLATE: &str = include_str!("../templates/prompts/scratch-fix.md");
 const SCRATCH_REF_TEMPLATE: &str = include_str!("../templates/prompts/scratch-ref.md");
 const SCRATCH_REVISION_TEMPLATE: &str = include_str!("../templates/prompts/scratch-revision.md");
+const SPEC_TEMPLATE: &str = include_str!("../templates/prompts/spec.md");
+const IMPL_TEMPLATE: &str = include_str!("../templates/prompts/impl.md");
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ScratchPromptArgs {
     pub target: String,
     pub branch_name: Option<String>,
+}
+
+/// Arguments for rendering a prompt that creates a new specification.
+///
+/// New specifications do not have stable dependency context until the author defines it,
+/// so this prompt intentionally accepts no dependency-prefill arguments.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct SpecPromptArgs {}
+
+/// Arguments for rendering a prompt that creates a new implementation from a governing specification.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ImplPromptArgs {
+    pub spec: String,
 }
 
 pub(crate) struct ResolvedTarget {
@@ -90,6 +105,29 @@ impl SpecmanMcpServer {
     ) -> Result<Vec<PromptMessage>, McpError> {
         self.render_scratch_prompt(SCRATCH_FIX_TEMPLATE, &args.target, args.branch_name, "fix")
     }
+
+    #[prompt(
+        name = "spec",
+        description = "Generate a SpecMan prompt for creating a new specification using the standard template"
+    )]
+    pub async fn spec_prompt(
+        &self,
+        Parameters(args): Parameters<SpecPromptArgs>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let _ = args;
+        self.render_spec_prompt(SPEC_TEMPLATE)
+    }
+
+    #[prompt(
+        name = "impl",
+        description = "Generate a SpecMan prompt for creating a new implementation using the standard template"
+    )]
+    pub async fn impl_prompt(
+        &self,
+        Parameters(args): Parameters<ImplPromptArgs>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        self.render_impl_prompt(IMPL_TEMPLATE, &args.spec)
+    }
 }
 
 impl SpecmanMcpServer {
@@ -134,8 +172,7 @@ impl SpecmanMcpServer {
             ),
         };
 
-        let artifact_instruction =
-            "Provide a scratch pad name (lowercase, hyphenated, ≤4 words) that satisfies spec/specman-data-model naming rules. Example: action-being-done.".to_string();
+        let artifact_instruction = "Provide a scratch pad name (lowercase, hyphenated, <=4 words) that satisfies SpecMan naming rules. Prefer an action verb for scratch pads. Example: action-being-done.".to_string();
 
         let context = bullet_list(&dependency_lines(&resolved));
         let dependencies = context.clone();
@@ -144,6 +181,48 @@ impl SpecmanMcpServer {
             ("{{branch_name_or_request}}", branch_instruction.clone()),
             ("{{branch_name}}", branch_instruction.clone()),
             ("{{target_path}}", resolved.handle.clone()),
+            ("{{context}}", context),
+            ("{{dependencies}}", dependencies),
+            ("{{artifact_name_or_request}}", artifact_instruction),
+        ];
+
+        let rendered = apply_tokens(template, &replacements)?;
+        Ok(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            rendered,
+        )])
+    }
+
+    /// Render the specification-creation prompt. Since a new specification has no canonical locator yet,
+    /// callers may optionally provide an existing locator (`seed_target`) to prefill dependency context.
+    fn render_spec_prompt(&self, template: &str) -> Result<Vec<PromptMessage>, McpError> {
+        let artifact_instruction = "Provide a specification name (lowercase, hyphenated, <=4 words) that satisfies SpecMan naming rules. Example: workspace-lifecycle.".to_string();
+
+        let replacements = vec![("{{artifact_name_or_request}}", artifact_instruction)];
+
+        let rendered = apply_tokens(template, &replacements)?;
+        Ok(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            rendered,
+        )])
+    }
+
+    /// Render the implementation-creation prompt from a governing specification locator.
+    fn render_impl_prompt(
+        &self,
+        template: &str,
+        spec_locator: &str,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let resolved = self.resolve_target(spec_locator)?;
+
+        let context = bullet_list(&dependency_lines(&resolved));
+        let dependencies = context.clone();
+
+        let artifact_instruction = "Provide an implementation name (lowercase, hyphenated, <=4 words) that satisfies SpecMan naming rules. If language-specific, suffix the language (example: specman-mcp-rust).".to_string();
+
+        let replacements = vec![
+            ("{{target_path}}", resolved.handle.clone()),
+            ("{{target_spec_path}}", resolved.handle.clone()),
             ("{{context}}", context),
             ("{{dependencies}}", dependencies),
             ("{{artifact_name_or_request}}", artifact_instruction),

@@ -20,7 +20,6 @@ Constraint groups (when adding/updating constraints):
 
 Before proceeding, satisfy these reading prerequisites:
 
-- Review the SpecMan Data Model specification and every dependency it lists (notably the Founding Spec) so revision notes stay aligned with the canonical rules.
 - Open {{target_path}} and read each dependency from its front matter to understand all upstream specifications driving the revision.
 
 Read the following dependencies before continuing:

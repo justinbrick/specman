@@ -13,19 +13,14 @@ You are creating a SpecMan specification and must use the MCP tool `create_artif
 
 - Constraint sections MUST start with a standalone identifier line in the form `!group.set:`.
 - A group set MUST contain **at least two** groups separated by `.`.
- 	- Group 1 MUST be the heading slug of the constrained concept/entity heading.
- 	- Group 2 MUST be a short category name (for example `formatting`, `ordering`, `referencing`).
+  - Group 1 MUST be the heading slug of the constrained concept/entity heading.
+  - Group 2 MUST be a short category name (for example `formatting`, `ordering`, `referencing`).
 - Each constraint identifier line MUST be the only content on its line.
 - Within a single document, each group set MUST be unique.
 
 Before interpreting any inputs, complete these reading prerequisites:
 
-- Open the SpecMan Data Model specification and every dependency it lists (including the Founding Spec) so the governing data-model rules are fresh.
-- Review each dependency referenced for the target specification (from the provided context or prior drafts), opening the local files/URLs so you understand the upstream requirements those documents introduce.
-
-Read the following dependencies before continuing:
-
-{{context}}
+- Decide what dependencies (if any) this new specification should declare based on the User Input and any existing specs in the workspace that it must build on.
 
 Steps:
 

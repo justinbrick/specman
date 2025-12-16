@@ -5,7 +5,7 @@ mod server;
 mod tools;
 
 pub use crate::error::McpError;
-pub use crate::prompts::ScratchPromptArgs;
+pub use crate::prompts::{ImplPromptArgs, ScratchPromptArgs, SpecPromptArgs};
 pub use crate::resources::{ArtifactInventory, ArtifactRecord};
 pub use crate::server::{SpecmanMcpServer, run_stdio_server};
 pub use crate::tools::{CreateArtifactResult, WorkspaceInfo};
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scratch_prompts_render_normalized_handles() -> Result<(), Box<dyn std::error::Error>> {
+    async fn prompts_render_normalized_handles() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
 
         let feat_text = prompt_text(
@@ -311,11 +311,29 @@ mod tests {
             "rendered revision prompt must not leak target_path token: {revision_text}"
         );
 
+        let impl_text = prompt_text(
+            workspace
+                .server
+                .impl_prompt(Parameters(ImplPromptArgs {
+                    spec: "spec://testspec".to_string(),
+                }))
+                .await?,
+        );
+
+        assert!(
+            impl_text.contains("spec://testspec"),
+            "rendered impl prompt must include normalized spec locator: {impl_text}"
+        );
+        assert!(
+            !impl_text.contains("{{target_path}}"),
+            "rendered impl prompt must not leak target_path token: {impl_text}"
+        );
+
         Ok(())
     }
 
     #[tokio::test]
-    async fn scratch_prompts_clear_template_tokens() -> Result<(), Box<dyn std::error::Error>> {
+    async fn prompts_clear_template_tokens() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
 
         let renderings = vec![
@@ -359,6 +377,22 @@ mod tests {
                     }))
                     .await?,
             ),
+            (
+                "spec",
+                workspace
+                    .server
+                    .spec_prompt(Parameters(SpecPromptArgs {}))
+                    .await?,
+            ),
+            (
+                "impl",
+                workspace
+                    .server
+                    .impl_prompt(Parameters(ImplPromptArgs {
+                        spec: "spec://testspec".to_string(),
+                    }))
+                    .await?,
+            ),
         ];
 
         for (name, messages) in renderings {
@@ -378,7 +412,7 @@ mod tests {
         let prompts = server.prompt_router.list_all();
         let names: std::collections::HashSet<_> = prompts.iter().map(|p| p.name.as_str()).collect();
 
-        for expected in ["feat", "ref", "revision", "fix"] {
+        for expected in ["feat", "ref", "revision", "fix", "spec", "impl"] {
             assert!(names.contains(expected), "missing prompt {expected}");
         }
     }

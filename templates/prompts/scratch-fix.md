@@ -4,7 +4,6 @@ You are documenting an implementation fix inside a scratch pad focusing on imple
 
 Before making changes, complete these reading prerequisites:
 
-- Study the SpecMan Data Model specification and all of its dependencies (including the Founding Spec) so the remediation stays compliant with the current data model.
 - Read {{target_path}}, its governing specification, and every dependency/reference those files declare so you understand every impacted contract.
 
 Read the following dependencies before continuing:
