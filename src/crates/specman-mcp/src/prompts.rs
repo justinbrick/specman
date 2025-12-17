@@ -73,7 +73,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ScratchImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(SCRATCH_FEAT_TEMPLATE, &args.target, "impl", "feat")
+        self.render_scratch_prompt(SCRATCH_FEAT_TEMPLATE, &args.target, "impl")
     }
 
     #[prompt(
@@ -84,7 +84,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ScratchImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(SCRATCH_REF_TEMPLATE, &args.target, "impl", "ref")
+        self.render_scratch_prompt(SCRATCH_REF_TEMPLATE, &args.target, "impl")
     }
 
     #[prompt(
@@ -95,7 +95,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ScratchSpecPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(SCRATCH_REVISION_TEMPLATE, &args.target, "spec", "revision")
+        self.render_scratch_prompt(SCRATCH_REVISION_TEMPLATE, &args.target, "spec")
     }
 
     #[prompt(
@@ -106,7 +106,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ScratchImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(SCRATCH_FIX_TEMPLATE, &args.target, "impl", "fix")
+        self.render_scratch_prompt(SCRATCH_FIX_TEMPLATE, &args.target, "impl")
     }
 
     #[prompt(
@@ -159,22 +159,14 @@ impl SpecmanMcpServer {
         template: &str,
         target_reference: &str,
         default_scheme: &str,
-        work_type: &str,
     ) -> Result<Vec<PromptMessage>, McpError> {
         let locator = coerce_reference(target_reference, default_scheme);
         let resolved = self.resolve_target(&locator)?;
-
-        let target_name = resolved.tree.root.id.name.clone();
-
-        let branch_instruction = format!(
-            "Create and check out a branch that follows {target_name}/{work_type}/{{scratch_pad_name}}; for this work, an example is {target_name}/{work_type}/action-being-done."
-        );
 
         let context = bullet_list(&dependency_lines(&resolved));
         let dependencies = context.clone();
 
         let replacements = vec![
-            ("{{branch_name}}", branch_instruction.clone()),
             ("{{target_path}}", resolved.handle.clone()),
             ("{{context}}", context),
             ("{{dependencies}}", dependencies),

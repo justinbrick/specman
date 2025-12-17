@@ -115,7 +115,7 @@ mod tests {
             other => panic!("unexpected content: {other:?}"),
         };
 
-        assert!(rendered.contains("Create and check out a branch"));
+        assert!(rendered.contains("git checkout -b"));
         assert!(rendered.contains("impl/testimpl/impl.md"));
 
         Ok(())
@@ -164,7 +164,7 @@ mod tests {
         };
 
         assert!(text.contains("spec/testspec/spec.md"));
-        assert!(text.contains("Create and check out a branch"));
+        assert!(text.contains("git checkout -b"));
 
         Ok(())
     }
@@ -188,7 +188,7 @@ mod tests {
         };
 
         assert!(text.contains("impl/testimpl/impl.md"));
-        assert!(text.contains("Create and check out a branch"));
+        assert!(text.contains("git checkout -b"));
 
         Ok(())
     }
@@ -544,15 +544,27 @@ mod tests {
                 crate::tools::CreateArtifactArgs::ScratchPad {
                     target: "impl://testimpl".to_string(),
                     scratch_kind: crate::tools::ScratchKind::Feat,
-                    intent: None,
-                    name: Some("mcpscratch".to_string()),
+                    intent: "Create a scratch pad to plan a small feature".to_string(),
                 },
             )
             .await
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, format!("{err:?}")))?;
 
-        assert_eq!(result.handle, "scratch://mcpscratch");
-        assert_eq!(result.path, ".specman/scratchpad/mcpscratch/scratch.md");
+        assert!(
+            result.handle.starts_with("scratch://"),
+            "expected scratch handle, got {}",
+            result.handle
+        );
+        assert!(
+            result.path.starts_with(".specman/scratchpad/"),
+            "expected scratchpad path, got {}",
+            result.path
+        );
+        assert!(
+            result.path.ends_with("/scratch.md"),
+            "expected scratch.md, got {}",
+            result.path
+        );
 
         let workspace_paths = workspace.server.workspace.workspace()?;
         let absolute = workspace_paths.root().join(&result.path);
@@ -618,8 +630,7 @@ mod tests {
                 crate::tools::CreateArtifactArgs::ScratchPad {
                     target: "https://example.com".to_string(),
                     scratch_kind: crate::tools::ScratchKind::Feat,
-                    intent: None,
-                    name: Some("bad".to_string()),
+                    intent: "Try to create a scratch pad from an external URL".to_string(),
                 },
             )
             .await;

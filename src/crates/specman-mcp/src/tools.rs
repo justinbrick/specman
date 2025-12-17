@@ -115,13 +115,9 @@ pub enum CreateArtifactArgs {
         #[serde(rename = "scratchKind", alias = "scratch_kind")]
         scratch_kind: ScratchKind,
 
-        /// Optional natural-language intent provided by the caller.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        intent: Option<String>,
-
-        /// Optional name hint.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
+        /// Required natural-language intent provided by the caller.
+        /// Used to guide sampling (especially scratch pad name inference).
+        intent: String,
     },
 }
 
@@ -188,16 +184,9 @@ enum CreateArtifactArgsSchema {
         scratch_kind: ScratchKind,
 
         #[schemars(
-            description = "Optional natural-language intent to guide sampling and prompt generation."
+            description = "Required natural-language intent to guide sampling and prompt generation."
         )]
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        intent: Option<String>,
-
-        #[schemars(
-            description = "Optional slug/name hint for the new scratch pad (may still require confirmation)."
-        )]
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
+        intent: String,
     },
 }
 
@@ -286,14 +275,10 @@ impl JsonSchema for CreateArtifactArgs {
                         },
                         "intent": {
                             "type": "string",
-                            "description": "Optional natural-language intent to guide sampling and prompt generation."
-                        },
-                        "name": {
-                            "type": "string",
-                            "description": "Optional slug/name hint for the new scratch pad (may still require confirmation)."
+                            "description": "Required natural-language intent to guide sampling and prompt generation."
                         }
                     },
-                    "required": ["kind", "target", "scratchKind"]
+                    "required": ["kind", "target", "scratchKind", "intent"]
                 }
             ]
         })
@@ -314,13 +299,6 @@ struct SpecSuggestion {
     name: String,
     #[schemars(description = "Suggested specification title.")]
     title: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-struct HeadingsSuggestion {
-    #[schemars(description = "Suggested top-level headings for the artifact.")]
-    headings: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -491,43 +469,58 @@ Constraints: name must be a slug (lowercase, digits, hyphens).\n",
                 target,
                 scratch_kind,
                 intent,
-                name,
             } => {
                 let target = target.clone();
                 let kind = scratch_kind.clone();
 
-                let suggested = match name.as_ref() {
-                    Some(name) => NameSuggestion { name: name.clone() },
-                    None => {
-                        self.sample_json::<NameSuggestion>(
-                            peer,
-                            "Propose a SpecMan scratch pad name",
-                            &format!(
-                                "Return JSON matching this schema (and ONLY JSON):\n\n{}\n\n\
+                // Reject URL targets early so we don't require sampling just to fail later.
+                let trimmed_target = target.trim();
+                if trimmed_target.starts_with("https://") || trimmed_target.starts_with("http://") {
+                    return Err(invalid_params(
+                        "workspace target locators must not be URLs; use spec://, impl://, scratch://, or a workspace-relative path",
+                    ));
+                }
+
+                let intent = intent.trim().to_string();
+                if intent.is_empty() {
+                    return Err(invalid_params(
+                        "scratch pad intent is required and must not be empty",
+                    ));
+                }
+
+                // Scratch pads should be fast to scaffold.
+                // Always infer name via sampling (derived from the required intent).
+                let proposed_name = if peer.is_some() {
+                    self.sample_json::<NameSuggestion>(
+                        peer,
+                        "Propose a SpecMan scratch pad name",
+                        &format!(
+                            "Return JSON matching this schema (and ONLY JSON):\n\n{}\n\n\
 Target: {}\n\
 Work type: {}\n\
-Intent (optional): {}\n\n\
+Intent (required): {}\n\n\
 Constraints:\n\
 - name must be all lowercase, digits, hyphen-separated, <=4 words.\n\
 - prefer action verbs.\n",
-                                schema_json_for::<NameSuggestion>(),
-                                target,
-                                kind.as_work_type_key(),
-                                intent.clone().unwrap_or_default()
-                            ),
-                        )
-                        .await?
-                    }
+                            schema_json_for::<NameSuggestion>(),
+                            target,
+                            kind.as_work_type_key(),
+                            intent
+                        ),
+                    )
+                    .await?
+                    .name
+                } else {
+                    infer_scratch_pad_name_from_intent(&intent)
                 };
 
-                let name = self
-                    .confirm_name(peer, suggested.name, "scratch pad")
-                    .await?;
+                let name = proposed_name.trim().to_string();
+                if name.is_empty() {
+                    return Err(invalid_params("scratch pad name must not be empty"));
+                }
                 validate_slug_max_words(&name, "scratch pad", 4)?;
 
-                let work_type = self
-                    .build_scratch_work_type(peer, &kind, intent.as_deref())
-                    .await?;
+                let work_type = self.build_scratch_work_type(&kind);
 
                 Ok(CreateRequest::ScratchPad {
                     context: specman::ScratchPadCreateContext {
@@ -576,89 +569,31 @@ Enter an alternate name, or leave blank to accept."
         Ok(proposed)
     }
 
-    async fn build_scratch_work_type(
+    fn build_scratch_work_type(
         &self,
-        peer: Option<&Peer<RoleServer>>,
         kind: &ScratchKind,
-        intent: Option<&str>,
-    ) -> Result<specman::front_matter::ScratchWorkType, McpError> {
+    ) -> specman::front_matter::ScratchWorkType {
         use specman::front_matter::{
             ScratchFixMetadata, ScratchRefactorMetadata, ScratchRevisionMetadata, ScratchWorkType,
             ScratchWorkloadExtras,
         };
 
         match kind {
-            ScratchKind::Draft => Ok(ScratchWorkType::Draft(ScratchWorkloadExtras::default())),
-            ScratchKind::Feat => Ok(ScratchWorkType::Feat(ScratchWorkloadExtras::default())),
-            ScratchKind::Revision => {
-                let headings = self
-                    .sample_headings(peer, "revised_headings", intent)
-                    .await?;
-                Ok(ScratchWorkType::Revision(ScratchRevisionMetadata {
-                    revised_headings: headings,
-                    ..Default::default()
-                }))
-            }
-            ScratchKind::Ref => {
-                let headings = self
-                    .sample_headings(peer, "refactored_headings", intent)
-                    .await?;
-                Ok(ScratchWorkType::Refactor(ScratchRefactorMetadata {
-                    refactored_headings: headings,
-                    ..Default::default()
-                }))
-            }
-            ScratchKind::Fix => {
-                let headings = self.sample_headings(peer, "fixed_headings", intent).await?;
-                Ok(ScratchWorkType::Fix(ScratchFixMetadata {
-                    fixed_headings: headings,
-                    ..Default::default()
-                }))
-            }
+            ScratchKind::Draft => ScratchWorkType::Draft(ScratchWorkloadExtras::default()),
+            ScratchKind::Feat => ScratchWorkType::Feat(ScratchWorkloadExtras::default()),
+            ScratchKind::Revision => ScratchWorkType::Revision(ScratchRevisionMetadata {
+                revised_headings: Vec::new(),
+                ..Default::default()
+            }),
+            ScratchKind::Ref => ScratchWorkType::Refactor(ScratchRefactorMetadata {
+                refactored_headings: Vec::new(),
+                ..Default::default()
+            }),
+            ScratchKind::Fix => ScratchWorkType::Fix(ScratchFixMetadata {
+                fixed_headings: Vec::new(),
+                ..Default::default()
+            }),
         }
-    }
-
-    async fn sample_headings(
-        &self,
-        peer: Option<&Peer<RoleServer>>,
-        field: &str,
-        intent: Option<&str>,
-    ) -> Result<Vec<String>, McpError> {
-        // For now we focus on the core docs that govern MCP lifecycle + templates.
-        // This keeps sampling requests deterministic and bounded.
-        let spec_mcp = self.read_workspace_file("spec/specman-mcp/spec.md")?;
-        let spec_templates = self.read_workspace_file("spec/specman-templates/spec.md")?;
-
-        // Ask for heading fragments as an array of strings.
-        let schema = schema_json_for::<HeadingsSuggestion>();
-        let prompt = format!(
-            "You are selecting Markdown heading fragments (like '#some-heading') that may be affected.\n\n\
-Return JSON matching this schema (and ONLY JSON):\n\n{schema}\n\n\
-Requirements:\n\
-- Every entry MUST be a string starting with '#'.\n\
-- Prefer stable, specific headings (avoid overly broad).\n\
-- Return at least 1 entry if any apply, otherwise return an empty list.\n\n\
-User intent:\n{}\n\n\
-Documents:\n\n--- spec/specman-mcp/spec.md ---\n{spec_mcp}\n\n--- spec/specman-templates/spec.md ---\n{spec_templates}\n",
-            intent.unwrap_or_default()
-        );
-
-        let mut result = self
-            .sample_json::<HeadingsSuggestion>(peer, "Affected heading fragments", &prompt)
-            .await?
-            .headings;
-
-        // Validate basic fragment shape.
-        result.retain(|h| !h.trim().is_empty());
-        for fragment in &result {
-            if !fragment.starts_with('#') {
-                return Err(invalid_params(format!(
-                    "{field} entries must start with '#': got '{fragment}'"
-                )));
-            }
-        }
-
-        Ok(result)
     }
 
     async fn sample_json<T: for<'de> Deserialize<'de> + JsonSchema>(
@@ -788,6 +723,48 @@ fn validate_slug_max_words(value: &str, kind: &str, max_words: usize) -> Result<
     Ok(())
 }
 
+fn infer_scratch_pad_name_from_intent(intent: &str) -> String {
+    // Best-effort, deterministic slug inference for environments without an MCP sampling peer.
+    // Keep at most 4 hyphenated words; prefer action-y first words in the user's intent.
+    let mut out = String::new();
+    let mut word = String::new();
+    let mut words = 0usize;
+
+    for ch in intent.chars() {
+        let ch = ch.to_ascii_lowercase();
+        if ch.is_ascii_alphanumeric() {
+            word.push(ch);
+            continue;
+        }
+
+        if !word.is_empty() {
+            if words > 0 {
+                out.push('-');
+            }
+            out.push_str(&word);
+            word.clear();
+            words += 1;
+            if words >= 4 {
+                break;
+            }
+        }
+    }
+
+    if words < 4 && !word.is_empty() {
+        if words > 0 {
+            out.push('-');
+        }
+        out.push_str(&word);
+    }
+
+    if out.is_empty() {
+        // Safe, deterministic fallback.
+        "scratch-pad".to_string()
+    } else {
+        out
+    }
+}
+
 fn default_branch_from_target(target: &str, work_type: &str, scratch_name: &str) -> String {
     let target_slug = if let Some(rest) = target.strip_prefix("impl/") {
         rest.split('/').next().unwrap_or(rest)
@@ -867,13 +844,6 @@ impl SpecmanMcpServer {
         let persistence = WorkspacePersistence::with_inventory(locator, inventory);
 
         Ok(Specman::new(controller, catalog, persistence))
-    }
-
-    fn read_workspace_file(&self, relative: &str) -> Result<String, McpError> {
-        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
-        let path = workspace.root().join(relative);
-        std::fs::read_to_string(&path)
-            .map_err(|err| invalid_params(format!("failed to read {relative}: {err}")))
     }
 
     fn normalize_locator_to_workspace_path(&self, locator: &str) -> Result<String, McpError> {

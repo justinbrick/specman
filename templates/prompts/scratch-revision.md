@@ -1,5 +1,14 @@
 # Scratch Pad Prompt — Revision
 
+## Scope
+
+Your task is to create the scratch pad artifact and then fill it out with a concrete revision plan.
+
+- Do NOT modify the specification yet.
+- Do NOT edit code.
+- Only edit the newly created scratch pad artifact.
+- After the scratch pad is created and filled out, STOP and return control to the caller.
+
 You are applying user suggestions to revise the specification referenced by {{target_path}} using a scratch pad.
 
 ## Standards Quick Reference (Standalone)
@@ -28,16 +37,22 @@ Read the following dependencies before continuing:
 
 Steps:
 
-1. {{branch_name}}
-2. Call the MCP tool `create_artifact` with a JSON object that sets the exact schema fields:
-
-- `kind`: `"scratch_pad"`
-- `target`: `"{{target_path}}"`
-- `scratchKind`: `"revision"`
-- `intent` (optional string but SHOULD be set): a concise, plain-language summary of the User Input revision requests + constraints. This is used to drive sampling/elicitation—include the actual requirements, not placeholders.
-- `name` (optional string): scratch pad slug hint.
-
-  Use `scratchKind` (camelCase) as written above.
+1. Call the MCP tool `create_artifact` with a JSON object that sets the exact schema fields:
+    - `kind`: `"scratch_pad"`
+    - `target`: `"{{target_path}}"`
+    - `scratchKind`: `"revision"`
+    - `intent` (required string): a concise, plain-language summary of the User Input revision requests + constraints. This is used to drive sampling/elicitation—include the actual requirements, not placeholders.
+2. After `create_artifact` returns, infer `scratch_pad_name` from the returned handle (it will look like `scratch://{scratch_pad_name}`), then create and check out a branch:
+    - Branch naming: `<target_name>/revision/<scratch_pad_name>` (example: `specman-core/revision/clarify-tokens`).
+    - If the branch does not exist yet: `git checkout -b <target_name>/revision/<scratch_pad_name>`.
+    - If it already exists: `git checkout <target_name>/revision/<scratch_pad_name>`.
+3. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following:
+    - Proposed revision outline: the sections/headings affected, and what will change.
+    - Draft wording proposals: write candidate replacement/additional paragraphs and constraint statements.
+    - Compatibility notes: what existing behavior/contracts must remain true after the revision.
+    - Adversarial review: intentionally misread the proposed wording to find ambiguity or loopholes; list every plausible misinterpretation.
+    - Questions for the user: for each ambiguity or missing detail, ask a concrete clarifying question instead of guessing.
+4. STOP and return control to the caller.
 
 ## User Input
 
