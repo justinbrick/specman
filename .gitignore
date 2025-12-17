@@ -5,3 +5,4 @@
 
 # Temporary - ignore MCP until deciding whether workspace local is worth it.
 .vscode/mcp.json
+.vscode/settings.json
