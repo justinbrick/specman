@@ -12,7 +12,12 @@ Read the following dependencies before continuing:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` with `kind = implementation` and `target = {{target_spec_path}}`.
+1. Call the MCP tool `create_artifact` with a JSON object that sets the exact schema fields:
+
+- `kind`: `"implementation"`
+- `target`: `"{{target_spec_path}}"`
+- `intent` (optional string but SHOULD be set): a concise, plain-language summary of the User Input requirements + constraints for the implementation. This is used to drive sampling/elicitation—include the actual requirements, not placeholders.
+- `name` (optional string): implementation slug hint.
 
 ## User Input
 

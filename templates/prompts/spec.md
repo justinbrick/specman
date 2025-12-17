@@ -24,7 +24,12 @@ Before interpreting any inputs, complete these reading prerequisites:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` with `kind = specification`.
+1. Call the MCP tool `create_artifact` with a JSON object that sets the exact schema fields:
+
+- `kind`: `"specification"`
+- `intent` (optional string but SHOULD be set): a concise, plain-language summary of the User Input requirements + constraints for the new specification. This is used to drive sampling/elicitation—include the actual requirements, not placeholders.
+- `name` (optional string): specification slug hint.
+- `title` (optional string): human-readable title hint.
 
 ## User Input
 

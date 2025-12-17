@@ -24,21 +24,29 @@ use crate::server::SpecmanMcpServer;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ArtifactRecord {
+    #[schemars(description = "Stable artifact identifier (kind + name).")]
     pub id: ArtifactId,
+    #[schemars(description = "Canonical artifact handle (e.g. 'spec://name', 'impl://name', 'scratch://name').")]
     pub handle: String,
+    #[schemars(description = "Workspace-relative path to the artifact markdown file.")]
     pub path: String,
+    #[schemars(description = "Optional semantic version if the artifact declares one.")]
     pub version: Option<SemVer>,
     #[serde(default)]
+    #[schemars(description = "Optional artifact metadata map (string keys/values).")]
     pub metadata: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ArtifactInventory {
     #[serde(default)]
+    #[schemars(description = "All discovered specifications in the workspace.")]
     pub specifications: Vec<ArtifactRecord>,
     #[serde(default)]
+    #[schemars(description = "All discovered implementations in the workspace.")]
     pub implementations: Vec<ArtifactRecord>,
     #[serde(default)]
+    #[schemars(description = "All discovered scratch pads in the workspace.")]
     pub scratchpads: Vec<ArtifactRecord>,
 }
 

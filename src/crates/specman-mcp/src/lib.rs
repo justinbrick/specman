@@ -462,6 +462,65 @@ mod tests {
     }
 
     #[test]
+    fn create_artifact_input_schema_has_field_descriptions() {
+        let schema = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
+        let value = serde_json::to_value(&schema).expect("schema serializes");
+
+        fn collect_property_schemas<'a>(value: &'a serde_json::Value, key: &str, out: &mut Vec<&'a serde_json::Value>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    if let Some(props) = map.get("properties").and_then(|v| v.as_object()) {
+                        if let Some(schema) = props.get(key) {
+                            out.push(schema);
+                        }
+                    }
+
+                    for v in map.values() {
+                        collect_property_schemas(v, key, out);
+                    }
+                }
+                serde_json::Value::Array(arr) => {
+                    for v in arr {
+                        collect_property_schemas(v, key, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        fn assert_all_described(value: &serde_json::Value, key: &str) {
+            let mut schemas = Vec::new();
+            collect_property_schemas(value, key, &mut schemas);
+            assert!(!schemas.is_empty(), "expected at least one '{key}' schema");
+
+            for schema in schemas {
+                let described = schema
+                    .as_object()
+                    .and_then(|m| m.get("description"))
+                    .and_then(|d| d.as_str())
+                    .is_some();
+
+                assert!(
+                    described,
+                    "expected '{key}' schema to contain a description: {schema}"
+                );
+            }
+        }
+
+        for key in [
+            "kind",
+            "target",
+            "scratchKind",
+            "intent",
+            "name",
+            "title",
+            "branch",
+        ] {
+            assert_all_described(&value, key);
+        }
+    }
+
+    #[test]
     fn list_tools_returns_object_input_schema() {
         let server = SpecmanMcpServer::new().expect("server should start");
         let tools = server.tool_router.list_all();

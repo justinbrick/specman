@@ -37,10 +37,15 @@ type SpecmanInstance = Specman<
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ScratchKind {
+    #[schemars(description = "Draft scratch pad work type.")]
     Draft,
+    #[schemars(description = "Revision scratch pad work type.")]
     Revision,
+    #[schemars(description = "Feature scratch pad work type.")]
     Feat,
+    #[schemars(description = "Refactor scratch pad work type.")]
     Ref,
+    #[schemars(description = "Fix scratch pad work type.")]
     Fix,
 }
 
@@ -138,38 +143,69 @@ pub enum CreateArtifactArgs {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum CreateArtifactArgsSchema {
     Specification {
+        #[schemars(
+            description = "Optional natural-language intent to guide sampling and prompt generation."
+        )]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         intent: Option<String>,
 
+        #[schemars(
+            description = "Optional slug/name hint for the new specification (may still require confirmation)."
+        )]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
 
+        #[schemars(description = "Optional human-readable title hint for the new specification.")]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         title: Option<String>,
     },
 
     Implementation {
+        #[schemars(
+            description = "Target locator that MUST resolve to a specification (e.g. 'spec://...')."
+        )]
         target: String,
 
+        #[schemars(
+            description = "Optional natural-language intent to guide sampling and prompt generation."
+        )]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         intent: Option<String>,
 
+        #[schemars(
+            description = "Optional slug/name hint for the new implementation (may still require confirmation)."
+        )]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
 
     ScratchPad {
+        #[schemars(
+            description = "Target locator for scratch pad creation. MUST resolve within the workspace and MUST NOT be an HTTP(S) URL."
+        )]
         target: String,
 
+        #[schemars(
+            description = "Scratch pad work type selector ('feat', 'ref', 'revision', 'fix', or 'draft')."
+        )]
         #[serde(rename = "scratchKind", alias = "scratch_kind")]
         scratch_kind: ScratchKind,
 
+        #[schemars(
+            description = "Optional natural-language intent to guide sampling and prompt generation."
+        )]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         intent: Option<String>,
 
+        #[schemars(
+            description = "Optional slug/name hint for the new scratch pad (may still require confirmation)."
+        )]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
 
+        #[schemars(
+            description = "Optional explicit git branch name to record in scratch pad front matter."
+        )]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         branch: Option<String>,
     },
@@ -181,11 +217,99 @@ impl JsonSchema for CreateArtifactArgs {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        let inner = generator.subschema_for::<CreateArtifactArgsSchema>();
+        let scratch_kind_schema = generator.subschema_for::<ScratchKind>();
 
         schemars::json_schema!({
             "type": "object",
-            "allOf": [inner]
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "description": "Discriminator selecting which artifact shape is being requested ('specification', 'implementation', or 'scratch_pad')."
+                }
+            },
+            "required": ["kind"],
+            "oneOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "kind": {
+                            "const": "specification",
+                            "type": "string",
+                            "description": "Selects the specification creation request shape."
+                        },
+                        "intent": {
+                            "type": "string",
+                            "description": "Optional natural-language intent to guide sampling and prompt generation."
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Optional slug/name hint for the new specification (may still require confirmation)."
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Optional human-readable title hint for the new specification."
+                        }
+                    },
+                    "required": ["kind"]
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "kind": {
+                            "const": "implementation",
+                            "type": "string",
+                            "description": "Selects the implementation creation request shape."
+                        },
+                        "target": {
+                            "type": "string",
+                            "description": "Target locator that MUST resolve to a specification (e.g. 'spec://...')."
+                        },
+                        "intent": {
+                            "type": "string",
+                            "description": "Optional natural-language intent to guide sampling and prompt generation."
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Optional slug/name hint for the new implementation (may still require confirmation)."
+                        }
+                    },
+                    "required": ["kind", "target"]
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "kind": {
+                            "const": "scratch_pad",
+                            "type": "string",
+                            "description": "Selects the scratch pad creation request shape."
+                        },
+                        "target": {
+                            "type": "string",
+                            "description": "Target locator for scratch pad creation. MUST resolve within the workspace and MUST NOT be an HTTP(S) URL."
+                        },
+                        "scratchKind": {
+                            "allOf": [scratch_kind_schema],
+                            "description": "Scratch pad work type selector ('feat', 'ref', 'revision', 'fix', or 'draft')."
+                        },
+                        "intent": {
+                            "type": "string",
+                            "description": "Optional natural-language intent to guide sampling and prompt generation."
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Optional slug/name hint for the new scratch pad (may still require confirmation)."
+                        },
+                        "branch": {
+                            "type": "string",
+                            "description": "Optional explicit git branch name to record in scratch pad front matter."
+                        }
+                    },
+                    "required": ["kind", "target", "scratchKind"]
+                }
+            ]
         })
     }
 }
@@ -193,19 +317,23 @@ impl JsonSchema for CreateArtifactArgs {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct NameSuggestion {
+    #[schemars(description = "Suggested slug/name.")]
     name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct SpecSuggestion {
+    #[schemars(description = "Suggested specification slug/name.")]
     name: String,
+    #[schemars(description = "Suggested specification title.")]
     title: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct HeadingsSuggestion {
+    #[schemars(description = "Suggested top-level headings for the artifact.")]
     headings: Vec<String>,
 }
 
@@ -214,6 +342,7 @@ struct HeadingsSuggestion {
 struct NameOverride {
     /// Leave empty to accept the proposed name.
     #[serde(default)]
+    #[schemars(description = "Name override input. Leave empty to accept the proposed name.")]
     name: String,
 }
 
@@ -226,19 +355,29 @@ pub(crate) fn build_tool_router() -> ToolRouter<SpecmanMcpServer> {
 /// Structured workspace data exposed over MCP tools.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct WorkspaceInfo {
+    #[schemars(description = "Workspace root directory (absolute path string).")]
     pub root: String,
+    #[schemars(description = "Path to the workspace '.specman' directory (absolute path string).")]
     pub dot_specman: String,
+    #[schemars(description = "Path to the workspace 'spec/' directory (absolute path string).")]
     pub spec_dir: String,
+    #[schemars(description = "Path to the workspace 'impl/' directory (absolute path string).")]
     pub impl_dir: String,
+    #[schemars(description = "Path to the workspace scratchpad directory (absolute path string).")]
     pub scratchpad_dir: String,
 }
 
 /// Deterministic result payload returned by the `create_artifact` MCP tool.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CreateArtifactResult {
+    #[schemars(description = "Stable artifact identifier (kind + name).")]
     pub id: ArtifactId,
+    #[schemars(
+        description = "Canonical artifact handle (e.g. 'spec://name', 'impl://name', 'scratch://name')."
+    )]
     pub handle: String,
     /// Canonical workspace-relative path to the created artifact.
+    #[schemars(description = "Workspace-relative path to the created artifact markdown file.")]
     pub path: String,
 }
 

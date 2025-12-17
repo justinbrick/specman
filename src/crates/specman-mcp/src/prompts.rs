@@ -26,7 +26,13 @@ const IMPL_TEMPLATE: &str = include_str!("../templates/prompts/impl.md");
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ScratchPromptArgs {
+    #[schemars(
+        description = "Target locator (spec://..., impl://..., scratch://..., or workspace-relative path) used to scope the scratch prompt."
+    )]
     pub target: String,
+    #[schemars(
+        description = "Optional branch name to embed in the prompt's branch step; when omitted, the prompt instructs the reader to generate a compliant branch name."
+    )]
     pub branch_name: Option<String>,
 }
 
@@ -40,6 +46,9 @@ pub struct SpecPromptArgs {}
 /// Arguments for rendering a prompt that creates a new implementation from a governing specification.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ImplPromptArgs {
+    #[schemars(
+        description = "Specification locator that governs the new implementation (e.g. 'spec://spec-name')."
+    )]
     pub spec: String,
 }
 
