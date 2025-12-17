@@ -36,7 +36,6 @@ Steps:
 - `scratchKind`: `"revision"`
 - `intent` (optional string but SHOULD be set): a concise, plain-language summary of the User Input revision requests + constraints. This is used to drive sampling/elicitation—include the actual requirements, not placeholders.
 - `name` (optional string): scratch pad slug hint.
-- `branch` (optional string): explicit branch name to record in scratch front matter.
 
   Use `scratchKind` (camelCase) as written above.
 

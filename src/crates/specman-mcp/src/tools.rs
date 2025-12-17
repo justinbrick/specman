@@ -122,10 +122,6 @@ pub enum CreateArtifactArgs {
         /// Optional name hint.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-
-        /// Optional explicit branch name.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        branch: Option<String>,
     },
 }
 
@@ -202,12 +198,6 @@ enum CreateArtifactArgsSchema {
         )]
         #[serde(default, skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-
-        #[schemars(
-            description = "Optional explicit git branch name to record in scratch pad front matter."
-        )]
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        branch: Option<String>,
     },
 }
 
@@ -301,10 +291,6 @@ impl JsonSchema for CreateArtifactArgs {
                         "name": {
                             "type": "string",
                             "description": "Optional slug/name hint for the new scratch pad (may still require confirmation)."
-                        },
-                        "branch": {
-                            "type": "string",
-                            "description": "Optional explicit git branch name to record in scratch pad front matter."
                         }
                     },
                     "required": ["kind", "target", "scratchKind"]
@@ -409,14 +395,9 @@ impl SpecmanMcpServer {
             .await?;
         let normalized = self.normalize_create_request(request)?;
 
-        let branch = match &args {
-            CreateArtifactArgs::ScratchPad { branch, .. } => branch.as_deref(),
-            _ => None,
-        };
-
         let persisted = match &normalized {
             CreateRequest::ScratchPad { context } => {
-                self.create_scratchpad_with_front_matter(&specman, context, branch)?
+                self.create_scratchpad_with_front_matter(&specman, context)?
             }
             _ => specman.create(normalized).map_err(to_mcp_error)?,
         };
@@ -511,7 +492,6 @@ Constraints: name must be a slug (lowercase, digits, hyphens).\n",
                 scratch_kind,
                 intent,
                 name,
-                branch: _,
             } => {
                 let target = target.clone();
                 let kind = scratch_kind.clone();
@@ -753,7 +733,6 @@ Documents:\n\n--- spec/specman-mcp/spec.md ---\n{spec_mcp}\n\n--- spec/specman-t
         &self,
         specman: &SpecmanInstance,
         context: &specman::ScratchPadCreateContext,
-        branch_override: Option<&str>,
     ) -> Result<PersistedArtifact, McpError> {
         let persisted = specman
             .create(CreateRequest::ScratchPad {
@@ -761,14 +740,11 @@ Documents:\n\n--- spec/specman-mcp/spec.md ---\n{spec_mcp}\n\n--- spec/specman-t
             })
             .map_err(to_mcp_error)?;
 
-        let branch = match branch_override.map(str::trim) {
-            None | Some("") | Some("main") => default_branch_from_target(
-                &context.target,
-                scratch_work_type_key(&context.work_type),
-                &context.name,
-            ),
-            Some(value) => value.to_string(),
-        };
+        let branch = default_branch_from_target(
+            &context.target,
+            scratch_work_type_key(&context.work_type),
+            &context.name,
+        );
 
         let content = std::fs::read_to_string(&persisted.path)
             .map_err(|err| invalid_params(format!("failed to read scratch pad: {err}")))?;

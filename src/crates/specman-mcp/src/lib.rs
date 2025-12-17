@@ -5,7 +5,9 @@ mod server;
 mod tools;
 
 pub use crate::error::McpError;
-pub use crate::prompts::{ImplPromptArgs, ScratchPromptArgs, SpecPromptArgs};
+pub use crate::prompts::{
+    ImplPromptArgs, ScratchImplPromptArgs, ScratchSpecPromptArgs, SpecPromptArgs,
+};
 pub use crate::resources::{ArtifactInventory, ArtifactRecord};
 pub use crate::server::{SpecmanMcpServer, run_stdio_server};
 pub use crate::tools::{CreateArtifactResult, WorkspaceInfo};
@@ -101,9 +103,8 @@ mod tests {
         let workspace = TestWorkspace::create()?;
         let message = workspace
             .server
-            .scratch_feat_prompt(Parameters(ScratchPromptArgs {
-                target: "impl://testimpl".to_string(),
-                branch_name: None,
+            .scratch_feat_prompt(Parameters(ScratchImplPromptArgs {
+                target: "testimpl".to_string(),
             }))
             .await?
             .pop()
@@ -125,9 +126,8 @@ mod tests {
         let workspace = TestWorkspace::create()?;
         let rendered = workspace
             .server
-            .scratch_ref_prompt(Parameters(ScratchPromptArgs {
-                target: "impl://testimpl".to_string(),
-                branch_name: None,
+            .scratch_ref_prompt(Parameters(ScratchImplPromptArgs {
+                target: "testimpl".to_string(),
             }))
             .await?
             .pop()
@@ -150,9 +150,8 @@ mod tests {
         let workspace = TestWorkspace::create()?;
         let rendered = workspace
             .server
-            .scratch_revision_prompt(Parameters(ScratchPromptArgs {
-                target: "spec://testspec".to_string(),
-                branch_name: Some("custom-revision".to_string()),
+            .scratch_revision_prompt(Parameters(ScratchSpecPromptArgs {
+                target: "testspec".to_string(),
             }))
             .await?
             .pop()
@@ -165,7 +164,7 @@ mod tests {
         };
 
         assert!(text.contains("spec/testspec/spec.md"));
-        assert!(text.contains("Check out the provided branch \"custom-revision\""));
+        assert!(text.contains("Create and check out a branch"));
 
         Ok(())
     }
@@ -175,9 +174,8 @@ mod tests {
         let workspace = TestWorkspace::create()?;
         let rendered = workspace
             .server
-            .scratch_fix_prompt(Parameters(ScratchPromptArgs {
-                target: "impl://testimpl".to_string(),
-                branch_name: None,
+            .scratch_fix_prompt(Parameters(ScratchImplPromptArgs {
+                target: "testimpl".to_string(),
             }))
             .await?
             .pop()
@@ -274,9 +272,8 @@ mod tests {
         let feat_text = prompt_text(
             workspace
                 .server
-                .scratch_feat_prompt(Parameters(ScratchPromptArgs {
-                    target: "impl://testimpl".to_string(),
-                    branch_name: None,
+                .scratch_feat_prompt(Parameters(ScratchImplPromptArgs {
+                    target: "testimpl".to_string(),
                 }))
                 .await?,
         );
@@ -293,9 +290,8 @@ mod tests {
         let revision_text = prompt_text(
             workspace
                 .server
-                .scratch_revision_prompt(Parameters(ScratchPromptArgs {
-                    target: "spec://testspec".to_string(),
-                    branch_name: None,
+                .scratch_revision_prompt(Parameters(ScratchSpecPromptArgs {
+                    target: "testspec".to_string(),
                 }))
                 .await?,
         );
@@ -339,9 +335,8 @@ mod tests {
                 "feat",
                 workspace
                     .server
-                    .scratch_feat_prompt(Parameters(ScratchPromptArgs {
-                        target: "impl://testimpl".to_string(),
-                        branch_name: None,
+                    .scratch_feat_prompt(Parameters(ScratchImplPromptArgs {
+                        target: "testimpl".to_string(),
                     }))
                     .await?,
             ),
@@ -349,9 +344,8 @@ mod tests {
                 "ref",
                 workspace
                     .server
-                    .scratch_ref_prompt(Parameters(ScratchPromptArgs {
-                        target: "impl://testimpl".to_string(),
-                        branch_name: None,
+                    .scratch_ref_prompt(Parameters(ScratchImplPromptArgs {
+                        target: "testimpl".to_string(),
                     }))
                     .await?,
             ),
@@ -359,9 +353,8 @@ mod tests {
                 "revision",
                 workspace
                     .server
-                    .scratch_revision_prompt(Parameters(ScratchPromptArgs {
-                        target: "spec://testspec".to_string(),
-                        branch_name: None,
+                    .scratch_revision_prompt(Parameters(ScratchSpecPromptArgs {
+                        target: "testspec".to_string(),
                     }))
                     .await?,
             ),
@@ -369,9 +362,8 @@ mod tests {
                 "fix",
                 workspace
                     .server
-                    .scratch_fix_prompt(Parameters(ScratchPromptArgs {
-                        target: "impl://testimpl".to_string(),
-                        branch_name: None,
+                    .scratch_fix_prompt(Parameters(ScratchImplPromptArgs {
+                        target: "testimpl".to_string(),
                     }))
                     .await?,
             ),
@@ -387,7 +379,7 @@ mod tests {
                 workspace
                     .server
                     .impl_prompt(Parameters(ImplPromptArgs {
-                        spec: "spec://testspec".to_string(),
+                        spec: "testspec".to_string(),
                     }))
                     .await?,
             ),
@@ -466,7 +458,11 @@ mod tests {
         let schema = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
         let value = serde_json::to_value(&schema).expect("schema serializes");
 
-        fn collect_property_schemas<'a>(value: &'a serde_json::Value, key: &str, out: &mut Vec<&'a serde_json::Value>) {
+        fn collect_property_schemas<'a>(
+            value: &'a serde_json::Value,
+            key: &str,
+            out: &mut Vec<&'a serde_json::Value>,
+        ) {
             match value {
                 serde_json::Value::Object(map) => {
                     if let Some(props) = map.get("properties").and_then(|v| v.as_object()) {
@@ -507,15 +503,7 @@ mod tests {
             }
         }
 
-        for key in [
-            "kind",
-            "target",
-            "scratchKind",
-            "intent",
-            "name",
-            "title",
-            "branch",
-        ] {
+        for key in ["kind", "target", "scratchKind", "intent", "name", "title"] {
             assert_all_described(&value, key);
         }
     }
@@ -558,7 +546,6 @@ mod tests {
                     scratch_kind: crate::tools::ScratchKind::Feat,
                     intent: None,
                     name: Some("mcpscratch".to_string()),
-                    branch: None,
                 },
             )
             .await
@@ -633,7 +620,6 @@ mod tests {
                     scratch_kind: crate::tools::ScratchKind::Feat,
                     intent: None,
                     name: Some("bad".to_string()),
-                    branch: None,
                 },
             )
             .await;

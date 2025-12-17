@@ -16,7 +16,6 @@ Steps:
 - `scratchKind`: `"feat"`
 - `intent` (optional string but SHOULD be set): a concise, plain-language summary of the User Input requirements + constraints for this scratch pad. This is used to drive sampling/elicitation—include the actual requirements, not placeholders.
 - `name` (optional string): scratch pad slug hint.
-- `branch` (optional string): explicit branch name to record in scratch front matter.
 
  Use `scratchKind` (camelCase) as written above.
 

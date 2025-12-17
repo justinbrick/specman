@@ -25,15 +25,19 @@ const SPEC_TEMPLATE: &str = include_str!("../templates/prompts/spec.md");
 const IMPL_TEMPLATE: &str = include_str!("../templates/prompts/impl.md");
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
-pub struct ScratchPromptArgs {
+pub struct ScratchImplPromptArgs {
     #[schemars(
-        description = "Target locator (spec://..., impl://..., scratch://..., or workspace-relative path) used to scope the scratch prompt."
+        description = "Implementation target. A bare name (e.g. 'specman-mcp-rust') is interpreted as 'impl://specman-mcp-rust'. You may also pass an explicit locator (impl://..., spec://..., scratch://...) or a workspace-relative path."
     )]
     pub target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct ScratchSpecPromptArgs {
     #[schemars(
-        description = "Optional branch name to embed in the prompt's branch step; when omitted, the prompt instructs the reader to generate a compliant branch name."
+        description = "Specification target. A bare name (e.g. 'founding-spec') is interpreted as 'spec://founding-spec'. You may also pass an explicit locator (spec://..., impl://..., scratch://...) or a workspace-relative path."
     )]
-    pub branch_name: Option<String>,
+    pub target: String,
 }
 
 /// Arguments for rendering a prompt that creates a new specification.
@@ -47,7 +51,7 @@ pub struct SpecPromptArgs {}
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ImplPromptArgs {
     #[schemars(
-        description = "Specification locator that governs the new implementation (e.g. 'spec://spec-name')."
+        description = "Governing specification. A bare name (e.g. 'specman-core') is interpreted as 'spec://specman-core'. You may also pass an explicit locator (spec://...) or a workspace-relative path."
     )]
     pub spec: String,
 }
@@ -67,14 +71,9 @@ impl SpecmanMcpServer {
     )]
     pub async fn scratch_feat_prompt(
         &self,
-        Parameters(args): Parameters<ScratchPromptArgs>,
+        Parameters(args): Parameters<ScratchImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(
-            SCRATCH_FEAT_TEMPLATE,
-            &args.target,
-            args.branch_name,
-            "feat",
-        )
+        self.render_scratch_prompt(SCRATCH_FEAT_TEMPLATE, &args.target, "impl", "feat")
     }
 
     #[prompt(
@@ -83,9 +82,9 @@ impl SpecmanMcpServer {
     )]
     pub async fn scratch_ref_prompt(
         &self,
-        Parameters(args): Parameters<ScratchPromptArgs>,
+        Parameters(args): Parameters<ScratchImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(SCRATCH_REF_TEMPLATE, &args.target, args.branch_name, "ref")
+        self.render_scratch_prompt(SCRATCH_REF_TEMPLATE, &args.target, "impl", "ref")
     }
 
     #[prompt(
@@ -94,14 +93,9 @@ impl SpecmanMcpServer {
     )]
     pub async fn scratch_revision_prompt(
         &self,
-        Parameters(args): Parameters<ScratchPromptArgs>,
+        Parameters(args): Parameters<ScratchSpecPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(
-            SCRATCH_REVISION_TEMPLATE,
-            &args.target,
-            args.branch_name,
-            "revision",
-        )
+        self.render_scratch_prompt(SCRATCH_REVISION_TEMPLATE, &args.target, "spec", "revision")
     }
 
     #[prompt(
@@ -110,9 +104,9 @@ impl SpecmanMcpServer {
     )]
     pub async fn scratch_fix_prompt(
         &self,
-        Parameters(args): Parameters<ScratchPromptArgs>,
+        Parameters(args): Parameters<ScratchImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(SCRATCH_FIX_TEMPLATE, &args.target, args.branch_name, "fix")
+        self.render_scratch_prompt(SCRATCH_FIX_TEMPLATE, &args.target, "impl", "fix")
     }
 
     #[prompt(
@@ -135,7 +129,8 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_impl_prompt(IMPL_TEMPLATE, &args.spec)
+        let spec_locator = coerce_reference(&args.spec, "spec");
+        self.render_impl_prompt(IMPL_TEMPLATE, &spec_locator)
     }
 }
 
@@ -162,24 +157,18 @@ impl SpecmanMcpServer {
     fn render_scratch_prompt(
         &self,
         template: &str,
-        locator: &str,
-        branch_name: Option<String>,
+        target_reference: &str,
+        default_scheme: &str,
         work_type: &str,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        let resolved = self.resolve_target(locator)?;
+        let locator = coerce_reference(target_reference, default_scheme);
+        let resolved = self.resolve_target(&locator)?;
 
         let target_name = resolved.tree.root.id.name.clone();
 
-        let provided_branch = branch_name.and_then(|value| normalize_input(Some(value)));
-
-        let branch_instruction = match provided_branch {
-            Some(branch) => format!(
-                "Check out the provided branch \"{branch}\" and keep it active while working on this {work_type} scratch pad."
-            ),
-            None => format!(
-                "Create and check out a branch that follows {target_name}/{work_type}/{{scratch_pad_name}}; for this work, an example is {target_name}/{work_type}/action-being-done."
-            ),
-        };
+        let branch_instruction = format!(
+            "Create and check out a branch that follows {target_name}/{work_type}/{{scratch_pad_name}}; for this work, an example is {target_name}/{work_type}/action-being-done."
+        );
 
         let context = bullet_list(&dependency_lines(&resolved));
         let dependencies = context.clone();
@@ -284,13 +273,21 @@ fn bullet_list(items: &[String]) -> String {
     }
 }
 
-fn normalize_input(value: Option<String>) -> Option<String> {
-    value.and_then(|v| {
-        let trimmed = v.trim().to_string();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed)
-        }
-    })
+fn coerce_reference(reference: &str, default_scheme: &str) -> String {
+    let trimmed = reference.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    // If the caller supplied an explicit locator scheme, preserve it.
+    if trimmed.contains("://") {
+        return trimmed.to_string();
+    }
+
+    // If the value looks like a workspace-relative path, preserve it.
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        return trimmed.to_string();
+    }
+
+    format!("{default_scheme}://{trimmed}")
 }
