@@ -111,6 +111,55 @@ Lifecycle automation standardizes creation and deletion workflows for specificat
 - Scratch pad creation workflows MUST offer selectable profiles aligned with defined scratch pad types and MUST leverage corresponding templates.
 - Lifecycle controllers MUST expose a persistence interface that can round-trip newly created artifacts back onto disk and SHOULD surface explicit errors if the filesystem write fails so callers can remediate workspace permissions.
 
+### Concept: SpecMan Structure
+
+Creating a structure which maps the SpecMan data model allows consumers to read markdown content when given identifiers for concepts, key entities, or constraints.
+
+#### Structure Indexing
+
+To make sure that entities can be easily searched, implementations MUST index documents that are stored or referenced inside of the workspace.
+
+!concept-specman-structure.indexing.collection:
+
+- Implementations MUST index all markdown documents
+- HTML documents MAY optionally be indexed.
+
+!concept-specman-structure.indexing.headings:
+
+- Each heading and their content MUST be indexed.
+  - The content of the heading shall be defined as any markdown content, subheadings, or constraint groups located underneath this heading.
+
+!concept-specman-structure.indexing.constraints:
+
+- Each constraint group MUST be indexed.
+
+!concept-specman-structure.indexing.relationships:
+
+Relationships provide a way to construct a relationship graph by parsing the content of an entity, and finding inline links to include content inside of it.
+
+- Headings MUST have a mapped relationship to the implementation or specification which it is stored in.
+- Headings MUST have a mapped relationship to other headings that have been referenced via inline links inside of the heading content.
+- Constraint groups MUST have a mapped relationship to the heading who's slug may be discovered by the first part of the constraint group.
+  - If a heading can not be matched via slug to the first group, then a relationship MUST be indexed to the nearest heading which contains the constraint group.
+
+## Structure Discovery
+
+Discovery allows for consumers of implementations to find the markdown content of a related item by using identifiers.
+
+!concept-specman-structure.discovery.identifiers:
+
+- Implementations MUST provide methods for enumerating the available identifiers of heading slugs and constraint groups.
+
+!concept-specman-structure.discovery.rendering:
+
+Rendering the markdown content allows for readers to properly understand all possible related context.
+
+- Implementations MUST return markdown content when provided with a heading slug.
+  - The content inside of the heading slug must return content under any related headings that have been referenced via inline link, in the order of which the inline links were referenced.
+  - Implementations MUST ensure that referenced headings content is not duplicated, so that it may only appear once when rendering the markdown content and it's related content.
+- Implementations MUST return markdown content when provided with a constraint group identifier.
+  - The rendered content MUST contain the content of the heading which the constraint group has an active relationship to.
+
 ### Concept: Metadata Mutation
 
 Metadata mutation ensures YAML front matter for specifications and implementations can be updated without rewriting the surrounding Markdown content.
