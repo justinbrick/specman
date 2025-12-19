@@ -1547,8 +1547,9 @@ name: founding-spec
             .resolved_path
             .as_ref()
             .expect("best-effort should set resolved_path");
+        let resolved_path = std::path::Path::new(resolved);
         assert!(
-            resolved.ends_with("docs/founding-spec.md"),
+            resolved_path.ends_with(std::path::Path::new("docs").join("founding-spec.md")),
             "unexpected resolved path: {resolved}"
         );
     }

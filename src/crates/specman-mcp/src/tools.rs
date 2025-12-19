@@ -129,66 +129,7 @@ pub enum CreateArtifactArgs {
 // object does not include a concrete `type: "object"` (e.g. only `oneOf`).
 // That’s valid JSON Schema, but it fails MCP Inspector validation.
 //
-// We keep the expressive variant schema (via `CreateArtifactArgsSchema`), but
-// wrap it in a top-level schema object with `type: "object"`.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum CreateArtifactArgsSchema {
-    Specification {
-        #[schemars(
-            description = "Optional natural-language intent to guide sampling and prompt generation."
-        )]
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        intent: Option<String>,
-
-        #[schemars(
-            description = "Optional slug/name hint for the new specification (may still require confirmation)."
-        )]
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-
-        #[schemars(description = "Optional human-readable title hint for the new specification.")]
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        title: Option<String>,
-    },
-
-    Implementation {
-        #[schemars(
-            description = "Target locator that MUST resolve to a specification (e.g. 'spec://...')."
-        )]
-        target: String,
-
-        #[schemars(
-            description = "Optional natural-language intent to guide sampling and prompt generation."
-        )]
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        intent: Option<String>,
-
-        #[schemars(
-            description = "Optional slug/name hint for the new implementation (may still require confirmation)."
-        )]
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-
-    ScratchPad {
-        #[schemars(
-            description = "Target locator for scratch pad creation. MUST resolve within the workspace and MUST NOT be an HTTP(S) URL."
-        )]
-        target: String,
-
-        #[schemars(
-            description = "Scratch pad work type selector ('feat', 'ref', 'revision', 'fix', or 'draft')."
-        )]
-        #[serde(rename = "scratchKind", alias = "scratch_kind")]
-        scratch_kind: ScratchKind,
-
-        #[schemars(
-            description = "Required natural-language intent to guide sampling and prompt generation."
-        )]
-        intent: String,
-    },
-}
+// To keep MCP Inspector happy, we handcraft the schema in `CreateArtifactArgs::json_schema`.
 
 impl JsonSchema for CreateArtifactArgs {
     fn schema_name() -> Cow<'static, str> {

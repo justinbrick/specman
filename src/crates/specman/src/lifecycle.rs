@@ -343,6 +343,10 @@ mod tests {
         fs::create_dir_all(&artifact_dir).unwrap();
         fs::write(artifact_dir.join("impl.md"), "body").unwrap();
 
+        // On Windows, path representations can vary (e.g. `\\?\` prefix and 8.3 short names).
+        // Canonicalize while it still exists so we can reliably compare after deletion.
+        let artifact_dir_canonical = fs::canonicalize(&artifact_dir).unwrap();
+
         let controller = controller();
         let adapter = Arc::new(RecordingAdapter::default());
         let adapter_handle: Arc<dyn DataModelAdapter> = adapter.clone();
@@ -360,7 +364,7 @@ mod tests {
             .expect("execute deletion");
 
         assert_eq!(removed.artifact, artifact);
-        assert_eq!(removed.directory, artifact_dir);
+        assert_eq!(removed.directory, artifact_dir_canonical);
         assert!(!removed.directory.exists());
         let invalidated = adapter.invalidated_ids();
         assert_eq!(invalidated, vec![artifact]);

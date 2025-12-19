@@ -239,8 +239,12 @@ pub(crate) fn dependency_lines(resolved: &ResolvedTarget) -> Vec<String> {
     let mut lines = Vec::new();
     let mut seen = HashSet::new();
 
+    fn display_path(path: &str) -> String {
+        path.replace('\\', "/")
+    }
+
     let root_handle = resolved.handle.clone();
-    let root_line = format!("- {} ({})", root_handle, resolved.path);
+    let root_line = format!("- {} ({})", root_handle, display_path(&resolved.path));
     lines.push(root_line);
     seen.insert(root_handle);
 
@@ -251,7 +255,7 @@ pub(crate) fn dependency_lines(resolved: &ResolvedTarget) -> Vec<String> {
         }
 
         let path = resolved_path_or_artifact_path(&edge.to, &resolved.workspace);
-        lines.push(format!("- {handle} ({path})"));
+        lines.push(format!("- {handle} ({})", display_path(&path)));
     }
 
     lines

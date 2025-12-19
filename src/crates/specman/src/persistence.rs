@@ -419,10 +419,13 @@ mod tests {
         fs::create_dir_all(&folder).unwrap();
         fs::write(folder.join("spec.md"), "contents").unwrap();
 
+        // Capture a stable, absolute representation before deletion.
+        let folder_canonical = fs::canonicalize(&folder).unwrap();
+
         let target = artifact(ArtifactKind::Specification, "feature-one");
         let removed = persistence.remove(&target).expect("remove spec");
 
-        assert_eq!(removed.directory, folder);
+        assert_eq!(removed.directory, folder_canonical);
         assert!(!folder.exists());
     }
 
@@ -445,10 +448,13 @@ mod tests {
         fs::create_dir_all(&folder).unwrap();
         fs::write(folder.join("scratch.md"), "notes").unwrap();
 
+        // Capture a stable, absolute representation before deletion.
+        let folder_canonical = fs::canonicalize(&folder).unwrap();
+
         let target = artifact(ArtifactKind::ScratchPad, "demo-scratch");
         let removed = persistence.remove(&target).expect("remove scratchpad");
 
-        assert_eq!(removed.directory, folder);
+        assert_eq!(removed.directory, folder_canonical);
         assert!(!folder.exists());
     }
 
