@@ -10,6 +10,8 @@ use crate::error::SpecmanError;
 use crate::front_matter::{ArtifactFrontMatter, optional_front_matter};
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
 
+use super::cache::{resolve_unresolved_refs, IndexCache, UnresolvedHeadingRef, UnresolvedTarget};
+
 use super::index::{
     ArtifactKey, ArtifactRecord, ConstraintIdentifier, ConstraintRecord, HeadingIdentifier,
     HeadingRecord, RelationshipEdge, RelationshipKind, WORKSPACE_INDEX_SCHEMA_VERSION,
@@ -37,6 +39,62 @@ impl<L: WorkspaceLocator> FilesystemStructureIndexer<L> {
     ) -> Result<WorkspaceIndex, SpecmanError> {
         build_workspace_index(workspace)
     }
+
+    /// Builds a workspace structure index using the persisted cache under `.specman/cache/index`
+    /// when it is valid for the current workspace state.
+    ///
+    /// Cache locking is fail-fast: if another process is writing the cache, this call errors.
+    pub fn build_cached(&self) -> Result<WorkspaceIndex, SpecmanError> {
+        let workspace = self.locator.workspace()?;
+        self.build_cached_with_workspace(&workspace)
+    }
+
+    pub fn build_cached_with_workspace(
+        &self,
+        workspace: &WorkspacePaths,
+    ) -> Result<WorkspaceIndex, SpecmanError> {
+        let all = enumerate_canonical_artifact_files(workspace)?;
+        let (spec_impl, scratch): (Vec<_>, Vec<_>) = all
+            .into_iter()
+            .partition(|(kind, _)| *kind != ArtifactKind::ScratchPad);
+
+        let cache = IndexCache::new(workspace);
+        let cached = cache.load_if_fresh(workspace, &spec_impl);
+        match cached {
+            Ok(Some((mut index, unresolved))) => {
+                // Always parse scratch pads in-memory (they are not persisted in the cache).
+                if !scratch.is_empty() {
+                    let (_scratch_unresolved, _ignored) =
+                        index_add_artifacts(&mut index, workspace, &scratch)?;
+                    // After scratch insertion, attempt to resolve any cached unresolved refs.
+                    resolve_unresolved_refs(&mut index, unresolved);
+                }
+                Ok(index)
+            }
+            Err(err) => {
+                // For lock contention, fail fast as required.
+                if matches!(err, SpecmanError::Workspace(ref msg) if msg.contains("index cache is locked") || msg.contains("cache is locked")) {
+                    return Err(err);
+                }
+                // Corrupt / incompatible / partial cache falls back to rebuild.
+                let (index, unresolved) = build_workspace_index_with_unresolved(workspace)?;
+                // Persist only spec/impl data.
+                cache.save(workspace, &spec_impl, &index, &unresolved)?;
+                Ok(index)
+            }
+            Ok(None) => {
+                let (index, unresolved) = build_workspace_index_with_unresolved(workspace)?;
+                cache.save(workspace, &spec_impl, &index, &unresolved)?;
+                Ok(index)
+            }
+        }
+    }
+
+    /// Deletes `.specman/cache/index` for the active workspace.
+    pub fn purge_index_cache(&self) -> Result<(), SpecmanError> {
+        let workspace = self.locator.workspace()?;
+        IndexCache::new(&workspace).purge()
+    }
 }
 
 impl<L: WorkspaceLocator> StructureIndexing for FilesystemStructureIndexer<L> {
@@ -56,20 +114,45 @@ where
 }
 
 pub fn build_workspace_index(workspace: &WorkspacePaths) -> Result<WorkspaceIndex, SpecmanError> {
+    Ok(build_workspace_index_with_unresolved(workspace)?.0)
+}
+
+fn build_workspace_index_with_unresolved(
+    workspace: &WorkspacePaths,
+) -> Result<(WorkspaceIndex, Vec<UnresolvedHeadingRef>), SpecmanError> {
+    let artifacts = enumerate_canonical_artifact_files(workspace)?;
+    build_workspace_index_from_artifacts_with_unresolved(workspace, &artifacts)
+}
+
+fn build_workspace_index_from_artifacts_with_unresolved(
+    workspace: &WorkspacePaths,
+    artifacts: &[(ArtifactKind, PathBuf)],
+) -> Result<(WorkspaceIndex, Vec<UnresolvedHeadingRef>), SpecmanError> {
     let mut index = WorkspaceIndex {
         schema_version: WORKSPACE_INDEX_SCHEMA_VERSION,
         workspace_root: workspace.root().to_path_buf(),
         ..Default::default()
     };
 
-    let artifacts = enumerate_canonical_artifact_files(workspace)?;
+    let (unresolved, _) = index_add_artifacts(&mut index, workspace, artifacts)?;
+    Ok((index, unresolved))
+}
 
+fn index_add_artifacts(
+    index: &mut WorkspaceIndex,
+    workspace: &WorkspacePaths,
+    artifacts: &[(ArtifactKind, PathBuf)],
+) -> Result<(Vec<UnresolvedHeadingRef>, Vec<RelationshipEdge>), SpecmanError> {
     let mut artifact_by_path: HashMap<String, ArtifactKey> = HashMap::new();
+    for key in index.artifacts.keys() {
+        artifact_by_path.insert(key.workspace_path.clone(), key.clone());
+    }
+
     let mut pending_heading_refs: Vec<PendingHeadingRef> = Vec::new();
-    let mut relationships: Vec<RelationshipEdge> = Vec::new();
+    let mut relationships: Vec<RelationshipEdge> = index.relationships.clone();
 
     for (kind, path) in artifacts {
-        let parsed = parse_artifact(kind, &path, workspace)?;
+        let parsed = parse_artifact(*kind, path, workspace)?;
 
         relationships.extend(parsed.relationships);
         pending_heading_refs.extend(parsed.pending_heading_refs);
@@ -90,41 +173,57 @@ pub fn build_workspace_index(workspace: &WorkspacePaths) -> Result<WorkspaceInde
         }
     }
 
-    // Resolve any references that required the full workspace index.
+    let mut unresolved: Vec<UnresolvedHeadingRef> = Vec::new();
     let mut resolved_relationships: Vec<RelationshipEdge> = Vec::new();
     for pending in pending_heading_refs {
         match pending.target {
             PendingTarget::IntraDoc { slug } => {
                 let to = HeadingIdentifier {
                     artifact: pending.from.artifact.clone(),
-                    slug,
+                    slug: slug.clone(),
                 };
                 if index.headings.contains_key(&to) {
-                    attach_heading_reference(&mut index, &pending.from, &to);
+                    attach_heading_reference(index, &pending.from, &to);
                     resolved_relationships.push(RelationshipEdge {
                         kind: RelationshipKind::HeadingToHeading,
                         from: heading_ref_string(&pending.from),
                         to: heading_ref_string(&to),
                     });
+                } else if pending.from.artifact.kind != ArtifactKind::ScratchPad {
+                    unresolved.push(UnresolvedHeadingRef {
+                        from: pending.from,
+                        target: UnresolvedTarget::IntraDoc { slug },
+                    });
                 }
             }
-            PendingTarget::InterDoc {
-                workspace_path,
-                slug,
-            } => {
+            PendingTarget::InterDoc { workspace_path, slug } => {
                 let Some(artifact_key) = artifact_by_path.get(&workspace_path).cloned() else {
+                    if pending.from.artifact.kind != ArtifactKind::ScratchPad {
+                        unresolved.push(UnresolvedHeadingRef {
+                            from: pending.from,
+                            target: UnresolvedTarget::InterDoc { workspace_path, slug },
+                        });
+                    }
                     continue;
                 };
                 let to = HeadingIdentifier {
                     artifact: artifact_key,
-                    slug,
+                    slug: slug.clone(),
                 };
                 if index.headings.contains_key(&to) {
-                    attach_heading_reference(&mut index, &pending.from, &to);
+                    attach_heading_reference(index, &pending.from, &to);
                     resolved_relationships.push(RelationshipEdge {
                         kind: RelationshipKind::HeadingToHeading,
                         from: heading_ref_string(&pending.from),
                         to: heading_ref_string(&to),
+                    });
+                } else if pending.from.artifact.kind != ArtifactKind::ScratchPad {
+                    unresolved.push(UnresolvedHeadingRef {
+                        from: pending.from,
+                        target: UnresolvedTarget::InterDoc {
+                            workspace_path,
+                            slug,
+                        },
                     });
                 }
             }
@@ -139,9 +238,9 @@ pub fn build_workspace_index(workspace: &WorkspacePaths) -> Result<WorkspaceInde
     }
 
     relationships.extend(resolved_relationships);
-    index.relationships = relationships;
+    index.relationships = relationships.clone();
 
-    Ok(index)
+    Ok((unresolved, relationships))
 }
 
 fn attach_heading_reference(

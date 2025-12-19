@@ -265,9 +265,39 @@ struct ResourceHandle { kind: ArtifactKind, slug: String }
 This module fulfills [Concept: SpecMan Structure](../../spec/specman-core/spec.md#concept-specman-structure) by providing **parsing-only** structure indexing and discovery utilities over the local workspace.
 
 - **One-shot indexing:** the indexer walks canonical artifact documents (`spec/*/spec.md`, `impl/*/impl.md`, `.specman/scratchpad/*/scratch.md`), parses headings + heading content, extracts constraint identifier lines, and records relationships derived from inline links.
-- **Deterministic side effects:** indexing is read-only; it performs filesystem reads and returns a fully in-memory `WorkspaceIndex` (no persistence under `.specman/cache/index` and no watch mode in this iteration).
+- **Deterministic side effects:** indexing is parsing-only and deterministic; `build_once` is read-only and returns a fully in-memory `WorkspaceIndex`. A separate cached path may persist a cache under `.specman/cache/index` (safe to delete) to avoid re-parsing unchanged workspaces.
 - **Workspace boundaries:** all indexed files and all workspace-local link targets are validated to remain inside the discovered workspace root.
 - **Duplicate heading slugs:** indexing fails fast when two headings within the same document resolve to the same slug (this is a deliberate stricter behavior than the disambiguation rule described in the data model’s slug concept).
+
+## Feature: Structure Index Persistence
+
+The library includes an **optional, disk-backed cache** for the workspace structure index to speed up repeated operations without changing indexing semantics.
+
+- **Cache root (hard requirement):** `.specman/cache/index/`
+- **Workspace identity binding:** `.specman/root_fingerprint` stores a stable per-workspace identifier used to prevent accidental cross-workspace cache reuse.
+- **Persisted scope:** only canonical `spec/*/spec.md` and `impl/*/impl.md` artifacts are persisted. Scratch pads are still indexed in-memory for the current invocation but are excluded from the persisted cache.
+
+On-disk layout:
+
+- `.specman/cache/index/manifest.json`
+  - Records `schema_version`, `workspace_root_fingerprint`, `generated_at_unix_ms`, and a deterministic list of cached artifacts with `workspace_path`, `kind`, `mtime_unix_ms`, and `size`.
+- `.specman/cache/index/index.v{schema_version}.json`
+  - Serialized representation of the cached (spec+impl) portion of `WorkspaceIndex`.
+- `.specman/cache/index/.lock`
+  - Fail-fast lock file used to prevent concurrent writers from corrupting the cache.
+
+Freshness + invalidation:
+
+- Any mismatch in schema version, workspace fingerprint, artifact existence, artifact `mtime/size`, or artifact set membership (added/removed spec/impl documents) invalidates the cache.
+- Missing/corrupt/partially written JSON is treated as a cache miss and triggers a full rebuild followed by cache overwrite.
+- If a lock file is present, index cache operations fail fast with a descriptive `SpecmanError::Workspace` rather than attempting a read.
+
+Public entry points:
+
+- `FilesystemStructureIndexer::build_cached()` / `build_cached_with_workspace(...)`
+  - Loads a fresh cache when available; otherwise rebuilds and refreshes the cache.
+- `FilesystemStructureIndexer::purge_index_cache()`
+  - Deletes `.specman/cache/index/` (cache-only; safe to remove).
 
 API surface (parsing + in-memory queries):
 
@@ -304,6 +334,11 @@ pub trait StructureIndexing: Send + Sync {
 }
 
 pub struct FilesystemStructureIndexer<L: WorkspaceLocator> { /* workspace locator */ }
+
+impl<L: WorkspaceLocator> FilesystemStructureIndexer<L> {
+  pub fn build_cached(&self) -> Result<WorkspaceIndex, SpecmanError>;
+  pub fn purge_index_cache(&self) -> Result<(), SpecmanError>;
+}
 
 pub trait StructureQuery {
   fn list_heading_slugs(&self) -> Vec<HeadingIdentifier>;

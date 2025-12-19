@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use crate::dependency_tree::ArtifactKind;
 use crate::front_matter::ArtifactFrontMatter;
 
@@ -64,7 +66,7 @@ pub struct ConstraintRecord {
     pub line: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RelationshipKind {
     HeadingToArtifact,
     HeadingToHeading,
