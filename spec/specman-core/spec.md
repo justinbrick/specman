@@ -61,6 +61,47 @@ Dependency mapping provides visibility into upstream and downstream relationship
 - Cycle detection MUST terminate traversal immediately and return a descriptive error that includes the partial tree gathered so far so callers can remediate invalid dependency graphs.
 - When a referenced dependency or implementation lacks front matter metadata, or when the dependency resolves to HTML or other plaintext without metadata, the tree builder MUST still add the artifact to the dependency set using the best available identifier (path or URL) and annotate the entry to indicate metadata was unavailable.
 
+### Concept: Reference Validation
+
+Reference validation ensures that references embedded in Markdown artifacts—particularly link destinations in inline links—can be validated deterministically against the workspace filesystem and external HTTPS resources. This enables tooling to detect broken links early, prevent invalid relationship graphs, and provide actionable diagnostics to authors.
+
+!concept-reference-validation.requirements:
+
+- The implementation MUST expose a callable reference-validation capability that accepts a locator to a Markdown artifact and returns structured validation results.
+  - Artifact locators MAY use filesystem paths, HTTPS URLs, or SpecMan resource handles (`spec://{artifact}` / `impl://{artifact}` / `scratch://{artifact}`) as input to the validator.
+- The validator MUST parse Markdown using CommonMark-compatible rules to identify links and their destinations, including:
+  - inline links (`[text](destination)`),
+  - full/collapsed/shortcut reference links resolved through link reference definitions, and
+  - autolinks (`<https://example.com>`).
+- The validator MUST NOT validate image destinations (`![alt](destination)`) as references.
+- For every discovered link destination, the validator MUST classify the destination as one of:
+  - workspace-filesystem (a filesystem path that resolves inside the active workspace),
+  - HTTPS URL, or
+  - unsupported/unknown.
+- SpecMan resource handles (`spec://{artifact}`, `impl://{artifact}`, `scratch://{artifact}`) are client-side identifiers and MUST NOT be stored as Markdown link destinations inside SpecMan artifacts.
+  - If such a handle is encountered in a Markdown link destination, the validator MUST report it as invalid and MUST NOT attempt to resolve or “validate” the target.
+- If a destination uses a scheme outside the supported set for Markdown references (workspace-filesystem paths and HTTPS URLs), the validator MUST report it as invalid and MUST NOT attempt implicit rewrites.
+- When validating filesystem destinations, the validator MUST resolve them relative to the source artifact’s directory.
+  - The validator MUST normalize the resolved path and MUST enforce workspace-boundary rules (it MUST NOT allow traversal outside the workspace root after normalization).
+  - The validator SHOULD additionally enforce the workspace boundary using canonicalized paths (for example resolving symlinks/junctions) when the platform and permissions allow.
+- When validating HTTPS destinations, the validator MUST at minimum validate that the destination is a well-formed HTTPS URL.
+  - The validator SHOULD support an optional reachability check mode (for example `HEAD`/`GET`).
+  - When reachability mode is enabled, the validator MUST treat HTTPS redirects (3xx) as success.
+  - When reachability mode is enabled, the validator MUST NOT treat timeouts as validation failures; it SHOULD instead emit a non-fatal diagnostic indicating the check could not be completed.
+- When a destination contains a fragment component (for example `./doc.md#some-heading`) and the destination resolves to Markdown, the validator MUST validate that the fragment refers to an existing heading slug as defined by the SpecMan Data Model’s heading-slug algorithm (see [Concept: Markdown Slugs](../specman-data-model/spec.md#concept-markdown-slugs)).
+- Validation results MUST be deterministic for a fixed set of inputs and a fixed validation mode.
+- Validation results MUST include, for each failure, enough context for callers to surface a helpful message (at minimum: source artifact locator, link destination, and source range information when available).
+
+!concept-reference-validation.results.contract:
+
+- The validator MUST return a structured result that includes:
+  - a list of discovered references (or a count),
+  - a list of validation errors, and
+  - an overall status indicating success/failure.
+- The validator MUST return the complete list of validation errors discovered in the processed artifact and MUST NOT fail fast on the first invalid reference.
+- Errors SHOULD be grouped by type (unsupported scheme, workspace boundary violation, missing file, unreachable HTTPS, unknown fragment).
+- The validator MUST NOT mutate the validated artifacts.
+
 ### Concept: Template Orchestration
 
 Template orchestration governs how reusable content is discovered and rendered.
@@ -156,6 +197,12 @@ Relationships provide a way to construct a relationship graph by parsing the con
 - Headings MUST have a mapped relationship to other headings that have been referenced via inline links inside of the heading content.
 - Constraint groups MUST have a mapped relationship to the heading who's slug may be discovered by the first part of the constraint group.
   - If a heading can not be matched via slug to the first group, then a relationship MUST be indexed to the nearest heading which contains the constraint group.
+
+!concept-specman-structure.referencing.validation:
+
+- Implementations that index relationships from inline links MUST provide a method to validate the referenced destinations and report any invalid references.
+- Relationship indexing MUST NOT silently drop invalid references; it MUST either record them as invalid with diagnostics or fail the indexing operation with a descriptive error.
+- Validation of inline-link destinations used for relationships MUST reuse the locator normalization and workspace-boundary rules described elsewhere in this specification.
 
 ## Structure Discovery
 
