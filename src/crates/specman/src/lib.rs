@@ -8,6 +8,7 @@ pub mod persistence;
 pub mod scratchpad;
 pub mod service;
 pub mod shared_function;
+pub mod structure;
 pub mod template;
 pub mod template_catalog;
 pub mod workspace;
@@ -36,6 +37,11 @@ pub use service::{
     ScratchPadCreateContext, Specman,
 };
 pub use shared_function::{EntityKind, SchemaRef, SemVer};
+pub use structure::{
+    ArtifactKey, ArtifactRecord, ConstraintIdentifier, ConstraintRecord, FilesystemStructureIndexer,
+    HeadingIdentifier, HeadingRecord, RelationshipEdge, RelationshipKind, StructureIndexing,
+    StructureQuery, WorkspaceIndex,
+};
 pub use template::{
     ImplContext, MarkdownTemplateEngine, RenderedTemplate, ScratchPadContext, SpecContext,
     TemplateDescriptor, TemplateEngine, TemplateLocator, TemplateProvenance, TemplateScenario,

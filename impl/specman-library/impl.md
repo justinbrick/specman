@@ -260,6 +260,62 @@ struct ResourceHandle { kind: ArtifactKind, slug: String }
 - Upstream, downstream, and aggregate vectors follow the SpecMan Data Model entity definitions while `has_blocking_dependents()` enforces lifecycle guardrails for creation/deletion flows.
 - Downstream scans rely on `WorkspaceInventory::build` to walk every artifact under `spec/`, `impl/`, and `.specman/scratchpad`, guaranteeing that optional edges remain visible while never blocking deletions unless the `optional` flag is false (or the artifact is a scratch pad referencing another scratch pad).
 
+## Concept: SpecMan Structure
+
+This module fulfills [Concept: SpecMan Structure](../../spec/specman-core/spec.md#concept-specman-structure) by providing **parsing-only** structure indexing and discovery utilities over the local workspace.
+
+- **One-shot indexing:** the indexer walks canonical artifact documents (`spec/*/spec.md`, `impl/*/impl.md`, `.specman/scratchpad/*/scratch.md`), parses headings + heading content, extracts constraint identifier lines, and records relationships derived from inline links.
+- **Deterministic side effects:** indexing is read-only; it performs filesystem reads and returns a fully in-memory `WorkspaceIndex` (no persistence under `.specman/cache/index` and no watch mode in this iteration).
+- **Workspace boundaries:** all indexed files and all workspace-local link targets are validated to remain inside the discovered workspace root.
+- **Duplicate heading slugs:** indexing fails fast when two headings within the same document resolve to the same slug (this is a deliberate stricter behavior than the disambiguation rule described in the data model’s slug concept).
+
+API surface (parsing + in-memory queries):
+
+```rust
+pub struct WorkspaceIndex {
+  pub schema_version: u32,
+  pub workspace_root: PathBuf,
+  pub artifacts: BTreeMap<ArtifactKey, ArtifactRecord>,
+  pub headings: BTreeMap<HeadingIdentifier, HeadingRecord>,
+  pub constraints: BTreeMap<ConstraintIdentifier, ConstraintRecord>,
+  pub relationships: Vec<RelationshipEdge>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ArtifactKey {
+  pub kind: ArtifactKind,
+  pub workspace_path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HeadingIdentifier {
+  pub artifact: ArtifactKey,
+  pub slug: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ConstraintIdentifier {
+  pub artifact: ArtifactKey,
+  pub group: String,
+}
+
+pub trait StructureIndexing: Send + Sync {
+  fn build_once(&self) -> Result<WorkspaceIndex, SpecmanError>;
+}
+
+pub struct FilesystemStructureIndexer<L: WorkspaceLocator> { /* workspace locator */ }
+
+pub trait StructureQuery {
+  fn list_heading_slugs(&self) -> Vec<HeadingIdentifier>;
+  fn list_constraint_groups(&self) -> Vec<ConstraintIdentifier>;
+  fn render_heading(&self, heading: &HeadingIdentifier) -> Result<String, SpecmanError>;
+  fn render_heading_by_slug(&self, slug: &str) -> Result<String, SpecmanError>;
+  fn render_constraint_group(&self, group: &ConstraintIdentifier) -> Result<String, SpecmanError>;
+}
+```
+
+Rendering follows the Structure Discovery requirements: `render_heading` returns the requested section and then appends content for headings referenced via inline links in the order they are referenced, deduplicating repeated references so each heading section appears at most once.
+
 ## Concept: Template Orchestration
 
 Template orchestration honors [Concept: Template Orchestration](../../spec/specman-core/spec.md#concept-template-orchestration), which now owns the token contract, HTML-instruction rules, and pointer-governance requirements. All template APIs strictly resolve filesystem paths; sample token maps remain centralized in the template specification to avoid drift.
