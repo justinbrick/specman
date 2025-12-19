@@ -315,7 +315,7 @@ impl SpecmanMcpServer {
         let normalized = self.normalize_create_request(request)?;
 
         let persisted = match &normalized {
-            CreateRequest::ScratchPad { context } => {
+            CreateRequest::ScratchPad { context, .. } => {
                 self.create_scratchpad_with_front_matter(&specman, context)?
             }
             _ => specman.create(normalized).map_err(to_mcp_error)?,
@@ -368,6 +368,7 @@ Constraints:\n\
                         name,
                         title: suggestion.title,
                     },
+                    front_matter: None,
                 })
             }
             CreateArtifactArgs::Implementation {
@@ -404,6 +405,7 @@ Constraints: name must be a slug (lowercase, digits, hyphens).\n",
 
                 Ok(CreateRequest::Implementation {
                     context: specman::ImplContext { name, target },
+                    front_matter: None,
                 })
             }
             CreateArtifactArgs::ScratchPad {
@@ -469,6 +471,7 @@ Constraints:\n\
                         target,
                         work_type,
                     },
+                    front_matter: None,
                 })
             }
         }
@@ -613,6 +616,7 @@ Enter an alternate name, or leave blank to accept."
         let persisted = specman
             .create(CreateRequest::ScratchPad {
                 context: context.clone(),
+                front_matter: None,
             })
             .map_err(to_mcp_error)?;
 
@@ -838,7 +842,7 @@ impl SpecmanMcpServer {
             CreateRequest::Custom { .. } => Err(invalid_params(
                 "CreateRequest::Custom is not supported via MCP; use Specification, Implementation, or ScratchPad",
             )),
-            CreateRequest::Implementation { context } => {
+            CreateRequest::Implementation { context, .. } => {
                 let target_summary = self.normalize_locator_to_handle(&context.target)?;
                 if target_summary.id.kind != ArtifactKind::Specification {
                     return Err(invalid_params(
@@ -851,9 +855,10 @@ impl SpecmanMcpServer {
                         name: context.name.trim().to_string(),
                         target,
                     },
+                    front_matter: None,
                 })
             }
-            CreateRequest::ScratchPad { context } => {
+            CreateRequest::ScratchPad { context, .. } => {
                 let target = self.normalize_locator_to_workspace_path(&context.target)?;
                 Ok(CreateRequest::ScratchPad {
                     context: specman::ScratchPadCreateContext {
@@ -861,13 +866,15 @@ impl SpecmanMcpServer {
                         target,
                         work_type: context.work_type,
                     },
+                    front_matter: None,
                 })
             }
-            CreateRequest::Specification { context } => Ok(CreateRequest::Specification {
+            CreateRequest::Specification { context, .. } => Ok(CreateRequest::Specification {
                 context: specman::SpecContext {
                     name: context.name.trim().to_string(),
                     title: context.title.trim().to_string(),
                 },
+                front_matter: None,
             }),
         }
     }

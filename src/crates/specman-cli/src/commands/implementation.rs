@@ -113,6 +113,7 @@ fn create_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
                 name: name.clone(),
                 target: resolved_spec.clone(),
             },
+            front_matter: None,
         })
         .map_err(CliError::from)?;
 

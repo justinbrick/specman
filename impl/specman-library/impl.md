@@ -345,6 +345,61 @@ pub enum LifecycleError { DeletionBlocked { target: ArtifactId }, PlanTargetMism
 - The façade returns structured lifecycle failures (`SpecmanError::Lifecycle(...)`) so callers can branch on “blocked deletion” vs “plan mismatch” without string matching.
 - The façade keeps lower-level traits (`DependencyMapping`, `TemplateEngine`, `WorkspaceLocator`) reusable for tests and alternate hosts.
 
+### Create: Front Matter Inputs
+
+Create requests can optionally provide fully-typed front matter at creation time so the first persisted write already includes caller-supplied metadata (rather than requiring a follow-up mutation step).
+
+```rust
+pub enum CreateRequest {
+  Specification {
+    context: SpecificationContext,
+    front_matter: Option<SpecificationFrontMatter>,
+  },
+  Implementation {
+    context: ImplementationContext,
+    front_matter: Option<ImplementationFrontMatter>,
+  },
+  ScratchPad {
+    context: ScratchPadContext,
+    front_matter: Option<ScratchFrontMatter>,
+  },
+  Custom { /* ... */ },
+}
+```
+
+- The façade renders templates first, then merges/synthesizes YAML front matter before persisting.
+- When the template output contains front matter, the create request’s supplied front matter overrides the corresponding keys.
+- Locator fields in front matter (dependencies, references, `spec`, scratch targets) accept `spec://` / `impl://` / `scratch://` inputs but are normalized before writing so persisted documents store only workspace-relative paths (forward slashes) or `https://` URLs. Plain `http://` is rejected.
+- Scratch pad targets are normalized relative to the workspace root (not the scratch file directory) to match dependency resolution semantics.
+
+### Update: Front Matter Mutation
+
+In addition to the existing path-based `MetadataMutator`, the library provides an artifact-oriented API that updates only YAML front matter via a tagged enum, preserving the Markdown body exactly.
+
+```rust
+pub struct FrontMatterUpdateRequest {
+  pub persist: bool,
+  pub ops: Vec<FrontMatterUpdateOp>,
+}
+
+pub enum FrontMatterUpdateOp {
+  // Tagged enum (serde) with artifact-specific operations.
+  // Examples: set_name, set_title, add_dependency, remove_reference, set_spec, clear_target, ...
+}
+
+impl<M, T, L> Specman<M, T, L> {
+  pub fn update(
+    &self,
+    target: ArtifactId,
+    update: FrontMatterUpdateRequest,
+  ) -> Result<FrontMatterUpdateResult, SpecmanError>;
+}
+```
+
+- Update reads the artifact’s existing Markdown, splits front matter vs body, applies ops to typed front matter, then re-serializes YAML + reattaches the original body unchanged.
+- Updates enforce kind compatibility (spec ops cannot be applied to an impl file, etc.) and apply the same locator normalization rules as create.
+- If an artifact has no front matter, update synthesizes a front matter mapping before applying ops.
+
 ## Concept: Lifecycle Automation
 
 Lifecycle orchestration (per [Concept: Lifecycle Automation](../../spec/specman-core/spec.md#concept-lifecycle-automation)) coordinates dependency inspection, template rendering, persistence, and deletion guardrails. All deletion guard details live here, covering scratch pad exemptions and force overrides as requested.

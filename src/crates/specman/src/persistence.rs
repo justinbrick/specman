@@ -69,6 +69,43 @@ impl<L: WorkspaceLocator> WorkspacePersistence<L> {
         }
     }
 
+    /// Returns the discovered workspace paths for this persistence instance.
+    pub fn workspace(&self) -> Result<WorkspacePaths, SpecmanError> {
+        self.locator.workspace()
+    }
+
+    /// Resolves the canonical filesystem path for the given artifact.
+    pub fn artifact_path(&self, artifact: &ArtifactId) -> Result<PathBuf, SpecmanError> {
+        let workspace = self.workspace()?;
+        resolve_target_path(artifact, &workspace)
+    }
+
+    /// Persists a fully composed Markdown document (including YAML front matter when present).
+    ///
+    /// Unlike `persist`, this does not perform template-token validation.
+    pub fn persist_document(
+        &self,
+        artifact: &ArtifactId,
+        document: &str,
+    ) -> Result<PersistedArtifact, SpecmanError> {
+        ensure_safe_name(&artifact.name)?;
+
+        let workspace = self.workspace()?;
+        let target_path = resolve_target_path(artifact, &workspace)?;
+        write_body(&target_path, document)?;
+
+        if let Some(inventory) = &self.dependency_inventory {
+            inventory.invalidate();
+        }
+        self.invalidate_tree_in_adapter(artifact)?;
+
+        Ok(PersistedArtifact {
+            artifact: artifact.clone(),
+            path: target_path,
+            workspace,
+        })
+    }
+
     /// Persists the rendered template and registers the accompanying dependency tree
     /// through the configured data model adapter when present.
     pub fn persist_with_dependency_tree(
@@ -228,9 +265,15 @@ fn ensure_dependency_root_matches(
 }
 
 fn inject_provenance(body: &str, provenance: &TemplateProvenance) -> Result<String, SpecmanError> {
-    let front = split_front_matter(body)?;
-    let mut mapping: serde_yaml::Mapping = serde_yaml::from_str(front.yaml)
-        .map_err(|err| SpecmanError::Template(format!("invalid front matter YAML: {err}")))?;
+    let (body_segment, mut mapping) = match split_front_matter(body) {
+        Ok(front) => {
+            let mapping: serde_yaml::Mapping = serde_yaml::from_str(front.yaml).map_err(|err| {
+                SpecmanError::Template(format!("invalid front matter YAML: {err}"))
+            })?;
+            (front.body.to_string(), mapping)
+        }
+        Err(_) => (body.to_string(), serde_yaml::Mapping::new()),
+    };
     let prov_value = serde_yaml::to_value(provenance).map_err(|err| {
         SpecmanError::Serialization(format!("unable to encode template provenance: {err}"))
     })?;
@@ -247,7 +290,9 @@ fn inject_provenance(body: &str, provenance: &TemplateProvenance) -> Result<Stri
     if serialized.ends_with("...\n") {
         serialized.truncate(serialized.len() - 4);
     }
-    let updated = format!("---\n{}---\n{}", serialized, front.body);
+
+    // Preserve the original body segment exactly; only the front matter block changes.
+    let updated = format!("---\n{}---\n{}", serialized, body_segment);
     Ok(updated)
 }
 

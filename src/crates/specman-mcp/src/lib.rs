@@ -608,12 +608,12 @@ mod tests {
         let content = fs::read_to_string(&absolute)?;
 
         assert!(
-            content.contains("spec: spec://testspec"),
-            "impl front matter must use a canonical spec handle"
+            content.contains("spec: ../../spec/testspec/spec.md"),
+            "impl front matter must use a normalized path (relative to the impl artifact)"
         );
         assert!(
-            !content.contains("spec: spec/testspec/spec.md"),
-            "impl front matter must not embed a workspace path"
+            !content.contains("spec: spec://testspec"),
+            "impl front matter must not retain the handle"
         );
 
         Ok(())

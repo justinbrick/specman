@@ -24,6 +24,7 @@ pub use lifecycle::{
     ScratchPadPlan,
 };
 pub use metadata::{
+    apply_front_matter_update, FrontMatterUpdateOp, FrontMatterUpdateRequest, FrontMatterUpdateResult,
     MetadataMutationRequest, MetadataMutationResult, MetadataMutator, ReferenceAddition,
 };
 pub use persistence::{

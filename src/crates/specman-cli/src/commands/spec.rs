@@ -95,6 +95,7 @@ fn create_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
                 name: name.clone(),
                 title: name.clone(),
             },
+            front_matter: None,
         })
         .map_err(CliError::from)?;
 

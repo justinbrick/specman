@@ -139,6 +139,7 @@ fn create_scratchpad(
                 target: target.clone(),
                 work_type,
             },
+            front_matter: None,
         })
         .map_err(CliError::from)?;
 

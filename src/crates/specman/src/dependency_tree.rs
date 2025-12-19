@@ -1189,6 +1189,151 @@ pub fn validate_workspace_reference(
     Ok(())
 }
 
+/// Normalizes a dependency/reference locator for persistence inside YAML front matter.
+///
+/// Persisted locators must be either:
+/// - workspace-relative paths (relative to the containing artifact's directory), or
+/// - fully-qualified HTTPS URLs.
+///
+/// Resource handles (spec://, impl://, scratch://) are accepted as *inputs* but are
+/// normalized into workspace-relative paths. Unsupported schemes and workspace escapes
+/// result in errors.
+pub fn normalize_persisted_reference(
+    reference: &str,
+    parent: &Path,
+    workspace: &WorkspacePaths,
+) -> Result<String, SpecmanError> {
+    if reference.starts_with("http://") {
+        return Err(SpecmanError::Dependency(format!(
+            "unsupported url scheme in {reference}; use https"
+        )));
+    }
+
+    if reference.starts_with("https://") {
+        return Ok(reference.to_string());
+    }
+
+    let canonical = if let Some(handle) = ResourceHandle::parse(reference)? {
+        match handle.into_locator(workspace)? {
+            ArtifactLocator::File(path) => path,
+            ArtifactLocator::Url(url) => {
+                return Ok(url.to_string());
+            }
+        }
+    } else {
+        let candidate = Path::new(reference);
+        resolve_workspace_path(candidate, Some(parent), workspace)?
+    };
+
+    let rel = diff_paths(&canonical, parent).ok_or_else(|| {
+        SpecmanError::Workspace(format!(
+            "unable to compute workspace-relative path from {} to {}",
+            parent.display(),
+            canonical.display()
+        ))
+    })?;
+    Ok(pathbuf_to_forward_slashes(&rel))
+}
+
+/// Create-time variant of `normalize_persisted_reference`.
+///
+/// For resource handles (`spec://`, `impl://`, `scratch://`), this lowers the handle into the
+/// canonical workspace path *without requiring the target to already exist*.
+///
+/// This is useful for scaffolding artifacts that refer to not-yet-created targets.
+pub fn normalize_persisted_reference_for_create(
+    reference: &str,
+    parent: &Path,
+    workspace: &WorkspacePaths,
+) -> Result<String, SpecmanError> {
+    if reference.starts_with("http://") {
+        return Err(SpecmanError::Dependency(format!(
+            "unsupported url scheme in {reference}; use https"
+        )));
+    }
+
+    if reference.starts_with("https://") {
+        return Ok(reference.to_string());
+    }
+
+    if let Some(handle) = ResourceHandle::parse(reference)? {
+        let path = handle.to_path(workspace);
+        let rel = diff_paths(&path, parent).ok_or_else(|| {
+            SpecmanError::Workspace(format!(
+                "unable to compute workspace-relative path from {} to {}",
+                parent.display(),
+                path.display()
+            ))
+        })?;
+        return Ok(pathbuf_to_forward_slashes(&rel));
+    }
+
+    normalize_persisted_reference(reference, parent, workspace)
+}
+
+fn pathbuf_to_forward_slashes(path: &Path) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for comp in path.components() {
+        match comp {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => parts.push("..".into()),
+            std::path::Component::Normal(seg) => parts.push(seg.to_string_lossy().into_owned()),
+            _ => {}
+        }
+    }
+    if parts.is_empty() {
+        ".".into()
+    } else {
+        parts.join("/")
+    }
+}
+
+// Minimal, dependency-free equivalent of `pathdiff::diff_paths`.
+fn diff_paths(path: &Path, base: &Path) -> Option<PathBuf> {
+    use std::path::Component;
+
+    let path_components: Vec<Component<'_>> = path.components().collect();
+    let base_components: Vec<Component<'_>> = base.components().collect();
+
+    // If either path has a Windows prefix, require them to match.
+    let path_prefix = path_components.first();
+    let base_prefix = base_components.first();
+    match (path_prefix, base_prefix) {
+        (Some(Component::Prefix(_)), Some(Component::Prefix(_))) => {
+            if path_prefix != base_prefix {
+                return None;
+            }
+        }
+        (Some(Component::Prefix(_)), _) => return None,
+        (_, Some(Component::Prefix(_))) => return None,
+        _ => {}
+    }
+
+    let mut common_len = 0usize;
+    let max = std::cmp::min(path_components.len(), base_components.len());
+    while common_len < max && path_components[common_len] == base_components[common_len] {
+        common_len += 1;
+    }
+
+    let mut result = PathBuf::new();
+    for comp in base_components.iter().skip(common_len) {
+        if matches!(comp, Component::Normal(_)) {
+            result.push("..");
+        }
+    }
+
+    for comp in path_components.iter().skip(common_len) {
+        match comp {
+            Component::Normal(seg) => result.push(seg),
+            Component::ParentDir => result.push(".."),
+            Component::CurDir => {}
+            _ => {}
+        }
+    }
+
+    Some(result)
+}
+
 /// Provides a tolerant locator resolution that prioritizes workspace-local Markdown files
 /// or fully-qualified HTTPS URLs when strict resolution fails. Used for context emission so
 /// callers still receive actionable paths even when handles are imperfect.
