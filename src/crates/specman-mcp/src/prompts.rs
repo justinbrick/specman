@@ -17,12 +17,12 @@ pub(crate) fn build_prompt_router() -> PromptRouter<SpecmanMcpServer> {
     SpecmanMcpServer::prompt_router()
 }
 
-const SCRATCH_FEAT_TEMPLATE: &str = include_str!("../templates/prompts/scratch-feat.md");
-const SCRATCH_FIX_TEMPLATE: &str = include_str!("../templates/prompts/scratch-fix.md");
-const SCRATCH_REF_TEMPLATE: &str = include_str!("../templates/prompts/scratch-ref.md");
-const SCRATCH_REVISION_TEMPLATE: &str = include_str!("../templates/prompts/scratch-revision.md");
-const SPEC_TEMPLATE: &str = include_str!("../templates/prompts/spec.md");
-const IMPL_TEMPLATE: &str = include_str!("../templates/prompts/impl.md");
+const SCRATCH_FEAT_TEMPLATE: &str = include_str!("templates/scratch-feat.md");
+const SCRATCH_FIX_TEMPLATE: &str = include_str!("templates/scratch-fix.md");
+const SCRATCH_REF_TEMPLATE: &str = include_str!("templates/scratch-ref.md");
+const SCRATCH_REVISION_TEMPLATE: &str = include_str!("templates/scratch-revision.md");
+const SPEC_TEMPLATE: &str = include_str!("templates/spec.md");
+const IMPL_TEMPLATE: &str = include_str!("templates/impl.md");
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ScratchImplPromptArgs {

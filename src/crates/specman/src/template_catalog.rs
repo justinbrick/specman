@@ -15,9 +15,9 @@ use crate::template::{
 };
 use crate::workspace::WorkspacePaths;
 
-const EMBEDDED_SPEC: &str = include_str!("../templates/spec/spec.md");
-const EMBEDDED_IMPL: &str = include_str!("../templates/impl/impl.md");
-const EMBEDDED_SCRATCH: &str = include_str!("../templates/scratch/scratch.md");
+const EMBEDDED_SPEC: &str = include_str!("templates/spec/spec.md");
+const EMBEDDED_IMPL: &str = include_str!("templates/impl/impl.md");
+const EMBEDDED_SCRATCH: &str = include_str!("templates/scratch/scratch.md");
 
 /// Canonical template catalog implementation backed by workspace overrides,
 /// pointer files, remote caches, and embedded defaults.
