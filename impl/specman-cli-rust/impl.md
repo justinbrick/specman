@@ -21,9 +21,6 @@ references:
   - ref: ../../spec/specman-data-model/spec.md
     type: specification
     optional: false
-  - ref: ../../spec/specman-templates/spec.md
-    type: specification
-    optional: false
   - ref: ../specman-library/impl.md
     type: implementation
     optional: false
@@ -48,7 +45,6 @@ The `specman-cli-rust` implementation delivers the command-line interface define
 
 - [`spec/specman-core/spec.md`](../../spec/specman-core/spec.md) defines the dependency mapping, lifecycle automation, and template orchestration APIs that the CLI invokes through the `specman` crate.
 - [`spec/specman-data-model/spec.md`](../../spec/specman-data-model/spec.md) governs workspace metadata, implementing-language objects, reference schemas, and data-model validation enforced before any command mutates files.
-- [`spec/specman-templates/spec.md`](../../spec/specman-templates/spec.md) drives template pointer resolution plus HTML directive handling for creation commands.
 - [`impl/specman-library/impl.md`](../specman-library/impl.md) documents the Rust library crate bundled by this CLI. The binary links directly against that crate to reuse workspace discovery, dependency tree building, template rendering, and persistence helpers.
 
 ## Implementation Details

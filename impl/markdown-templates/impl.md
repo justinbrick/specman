@@ -1,5 +1,5 @@
 ---
-spec: "../../spec/specman-templates/spec.md"
+spec: "../../spec/specman-core/spec.md"
 name: markdown-templates
 version: "0.2.0"
 location: "templates"

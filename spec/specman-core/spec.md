@@ -4,8 +4,6 @@ version: "0.1.0"
 dependencies:
   - ref: ../specman-data-model/spec.md
     optional: false
-  - ref: ../specman-templates/spec.md
-    optional: false
 ---
 
 <!-- Template directives from templates/spec/spec.md were preserved and fulfilled prior to removal. -->
@@ -83,6 +81,17 @@ Template orchestration governs how reusable content is discovered and rendered.
 - Special-purpose template functions SHOULD exist for common scenarios such as creating specifications, implementations, and scratch pads together with their work-type variants.
 - Template metadata (required tokens, locator provenance, cache path) MAY be cached for the duration of a command invocation but MUST include the workspace root and template version in the cache key. Tooling MUST NOT reuse metadata caches across different workspaces unless both the template version and workspace identifier match.
 
+!concept-template-orchestration.ai-instruction-directives:
+
+- Template guidance for automated agents MUST be conveyed inside HTML comments (`<!-- ... -->`) that sit adjacent to the mutable region they govern and MUST NOT leak into rendered Markdown.
+- Rendering engines MUST preserve HTML instruction comments until each directive is satisfied; if a directive cannot be satisfied, tooling MUST fail the operation rather than silently dropping the comment.
+
+!concept-template-orchestration.token-contract:
+
+- The effective template descriptor defines a closed token set; lifecycle or MCP clients MUST reject substitutions for tokens that are not declared by the descriptor.
+- Token substitution covers Markdown body content only. YAML front matter MUST be produced or mutated by lifecycle workflows after template rendering, not by injecting `{{token}}` placeholders inside front matter.
+- When callers supply token data, the implementation MUST surface validation errors verbatim whenever a required token is missing or an unknown token is supplied.
+
 ### Concept: Deterministic Execution
 
 Deterministic execution codifies behavioral guarantees so downstream consumers can rely on predictable, side-effect-aware APIs.
@@ -110,6 +119,12 @@ Lifecycle automation standardizes creation and deletion workflows for specificat
 - Deletion workflows MUST ensure the targeted artifact and any associated metadata or scratch pad directories are removed from their canonical workspace locations once safety checks pass.
 - Scratch pad creation workflows MUST offer selectable profiles aligned with defined scratch pad types and MUST leverage corresponding templates.
 - Lifecycle controllers MUST expose a persistence interface that can round-trip newly created artifacts back onto disk and SHOULD surface explicit errors if the filesystem write fails so callers can remediate workspace permissions.
+
+!concept-lifecycle-automation.frontmatter-generation:
+
+- Creation workflows MUST generate or merge YAML front matter after template rendering so that every artifact persists the metadata mandated by the SpecMan Data Model and governing specifications.
+- Templates MUST NOT embed YAML front matter; lifecycle automation and metadata mutation workflows are the authoritative mechanisms for writing and updating metadata.
+- Metadata mutation helpers MUST update the YAML front matter in-place without rewriting the Markdown body and MUST continue to enforce the workspace-boundary and locator-validation rules defined elsewhere in this specification.
 
 ### Concept: SpecMan Structure
 

@@ -44,7 +44,6 @@ This adapter implements the [SpecMan MCP Server](../../spec/specman-mcp/spec.md)
 
 - [spec/specman-core/spec.md](../../spec/specman-core/spec.md) — governs dependency mapping, lifecycle automation, and metadata mutation behaviors that this adapter exposes via MCP tools.
 - [spec/specman-data-model/spec.md](../../spec/specman-data-model/spec.md) — defines artifact identifiers, workspace rules, and schema invariants mirrored in MCP tool input/output payloads.
-- [spec/specman-templates/spec.md](../../spec/specman-templates/spec.md) — informs prompt catalog exposure and template pointer handling referenced by lifecycle tools.
 - [impl/specman-library/impl.md](../specman-library/impl.md) — reused Rust crate providing workspace discovery, dependency traversal, lifecycle, and schema derivation.
 - [MCP architecture overview](https://modelcontextprotocol.io/docs/learn/architecture) — external MCP guidance for initialization, tool/resource primitives, streaming, and notifications.
 

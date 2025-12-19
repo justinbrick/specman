@@ -11,3 +11,4 @@
 - **Target window:** Q2–Q3
 - **Goal:** Extend the current document parser to read inline Markdown links and headers, build a relationship graph, and feed it into GraphRAG-powered analysis.
 - **Outcome:** Smarter dependency insights and contextual responses driven by the inferred relationship graph.
+

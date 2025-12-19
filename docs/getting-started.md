@@ -126,5 +126,5 @@ The CLI validates slugs against workspace contents, reuses SpecMan Core's depend
 ## Next Steps
 
 - Dive into the [About SpecMan](./about.md) document for the philosophical backdrop.
-- Review the specifications: [Data Model](../spec/specman-data-model/spec.md), [Core](../spec/specman-core/spec.md), [Templates](../spec/specman-templates/spec.md), and [CLI](../spec/specman-cli/spec.md).
+- Review the specifications: [Data Model](../spec/specman-data-model/spec.md), [Core](../spec/specman-core/spec.md), and [CLI](../spec/specman-cli/spec.md).
 - Explore the concrete implementations under `impl/` to see how the Rust crates map to each specification.

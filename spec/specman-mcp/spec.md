@@ -41,7 +41,7 @@ This concept ensures that every capability delivered by a SpecMan Core-compliant
 - If an underlying SpecMan Core capability is temporarily unavailable, the MCP adapter MUST return an MCP error that cites the impacted concept and RECOMMENDED remediation (e.g., re-run once workspace lock clears) instead of silently degrading behavior.
 - The adapter MUST provide MCP tools that enumerate specifications, implementations, and scratch pads as resource handles using the `spec://{artifact}`, `impl://{artifact}`, and `scratch://{artifact}` schemes defined in [SpecMan Core Dependency Mapping Services](../specman-core/spec.md#concept-dependency-mapping-services). At a minimum, adapters MUST expose list and describe tools for each artifact class, and each response MUST serialize entities using the [SpecMan Data Model](../specman-data-model/spec.md).
 - Dependency graph tooling MUST accept `<scheme>://{artifact}/dependencies` inputs and return upstream/downstream trees powered by the SpecMan Core dependency mapping services. `/dependencies` handles are read-only aliases whose responses MUST include the same structure and error semantics as invoking the dependency tree builder directly.
-- The adapter MUST surface prompt-catalog tools that return authoring prompts for creating and modifying specifications, implementations, and scratch pads. Each prompt response MUST cite the corresponding template from the [SpecMan Templates](../specman-templates/spec.md) catalog, declare the intended work type (for scratch pads), and remind clients to honor HTML comment directives.
+- The adapter MUST surface prompt-catalog tools that return authoring prompts for creating and modifying specifications, implementations, and scratch pads. Each prompt response MUST conform to [Concept: Prompt Catalog](#concept-prompt-catalog), cite the effective template resolved by SpecMan Core, declare the intended work type (for scratch pads), and remind clients to honor HTML comment directives.
 - The adapter MUST provide lifecycle tools that execute the prompted create or modify flows for specs, implementations, and scratch pads. These tools MUST call into SpecMan Core lifecycle automation, enforce naming and metadata constraints from the SpecMan Data Model, and emit MCP errors when persistence or validation fails.
 
 #### Required Tool: `create_artifact`
@@ -57,7 +57,7 @@ To make artifact creation consistently automatable across MCP clients, compliant
   - For scratch pads, this includes allowing callers to supply the work type object (including `revised_headings` / `refactored_headings` / `fixed_headings` as applicable) and the persisted `target` value.
 - The tool MUST enforce naming, metadata, and workspace-boundary constraints from the [SpecMan Data Model](../specman-data-model/spec.md) before persisting any files.
 - The tool MUST normalize any locator handles provided as inputs (for example `spec://{artifact}` / `impl://{artifact}` / `scratch://{artifact}`) into canonical workspace-relative paths before writing artifact content, including scratch pad front matter `target`.
-- The tool MUST honor template governance requirements from [SpecMan Templates](../specman-templates/spec.md): templates MUST be applied as the source of truth, HTML comment directives MUST be preserved until their guidance is satisfied, and required template substitutions MUST be validated.
+- The tool MUST honor template governance requirements from [SpecMan Core Template Orchestration](../specman-core/spec.md#concept-template-orchestration): templates MUST be applied as the source of truth, HTML comment directives MUST be preserved until their guidance is satisfied, and required template substitutions MUST be validated.
 - The tool MUST return a deterministic result payload describing what was created. At minimum it MUST include the created artifact identifier(s) and canonical workspace-relative path(s). Implementations SHOULD also include the effective template locator/provenance used.
 
 ##### Input Schema Requirements
@@ -71,7 +71,22 @@ Because MCP requires explicit tool schemas, `create_artifact` MUST publish a det
   - supply every required value needed to fully render the selected template (including any required template substitutions)
   - for scratch pads, select the scratch pad work type variant and provide any required work-type-specific metadata (for example revised/refactored/fixed heading fragments)
   - control persistence behavior when such options are supported
-- When the schema accepts template-substitution inputs, the adapter MUST NOT permit substitutions for tokens outside the set governed by the [SpecMan Templates Template Token Contract](../specman-templates/spec.md#concept-template-token-contract).
+- When the schema accepts template-substitution inputs, the adapter MUST NOT permit substitutions for tokens outside the set governed by [SpecMan Core Template Orchestration](../specman-core/spec.md#concept-template-orchestration), including the token-contract constraints defined there.
+
+### Concept: Prompt Catalog
+
+Prompt catalog tooling defines how MCP clients obtain deterministic prompts for artifact creation and modification.
+
+!concept-prompt-catalog.responses:
+
+- Prompt-catalog tools MUST emit prompts that clearly identify the artifact class and, for scratch pads, the selected work type.
+- Prompts MUST instruct operators or downstream AI systems to review the target specification and all of its dependencies before authoring changes and MUST remind them to preserve HTML comment directives until satisfied.
+- Each prompt response MUST cite the effective template source resolved via SpecMan Core template orchestration (workspace overrides first, then packaged defaults) so clients know which scaffold is authoritative.
+
+!concept-prompt-catalog.scope:
+
+- Prompt catalog governance applies exclusively to MCP prompt- and resource-oriented surfaces. CLI documentation MUST NOT expose prompt templates directly; CLI usage relies on the same SpecMan Core lifecycle automation without surfacing prompt text.
+- Prompt catalog responses MAY tailor wording for specific MCP scenarios, but they MUST remain deterministic for a given template/version combination.
 
 ### Concept: Workspace & Data Governance
 
@@ -83,7 +98,7 @@ MCP calls interact with on-disk workspaces governed by the SpecMan Data Model.
 - Data returned to MCP clients (e.g., rendered specs, dependency graphs) MUST retain source references so downstream tools can trace each datum back to its origin document within the workspace.
 - Resource handles resolved via `spec://`, `impl://`, or `scratch://` MUST be normalized through workspace discovery, bound to canonical artifact paths, and rejected when they refer to artifacts outside the active workspace. Normalized handles MUST retain stable identifiers so MCP clients can reuse them across sessions.
 - `/dependencies` handles MUST be treated as derived read-only locators whose responses are generated exclusively by dependency mapping services; mutation attempts against these handles MUST fail with an MCP error explaining that only query operations are supported.
-- Prompt catalog and lifecycle tools MUST reference template locators managed by SpecMan Templates pointer files, validate that supplied names comply with the [founding specification](../../docs/founding-spec.md), and document any workspace mutations in the lifecycle tool results.
+- Prompt catalog and lifecycle tools MUST reference template locators resolved via SpecMan Core template orchestration (workspace pointer files first, then packaged defaults), validate that supplied names comply with the [founding specification](../../docs/founding-spec.md), and document any workspace mutations in the lifecycle tool results.
 
 ### Concept: Session Safety & Deterministic Execution
 

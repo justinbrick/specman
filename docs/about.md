@@ -10,7 +10,7 @@ SpecMan exists because existing "AI spec assistants" such as GitHub's Speckit le
 ## How SpecMan Responds
 1. **Data-first contracts:** The [SpecMan Data Model](../spec/specman-data-model/spec.md) defines exact YAML schemas for workspaces, specs, implementations, and scratch pads. Every downstream tool validates against these contracts, ending format guesswork.
 2. **Deterministic platform services:** [SpecMan Core](../spec/specman-core/spec.md) delivers workspace discovery, dependency mapping, lifecycle automation, and metadata mutation as reusable behaviors instead of ad-hoc scripts.
-3. **Template & prompt governance:** The [SpecMan Templates](../spec/specman-templates/spec.md) catalog ships Markdown scaffolds and AI prompts that preserve HTML comment guardrails. Automation must satisfy each directive before removing it.
+3. **Template & prompt governance:** [SpecMan Core](../spec/specman-core/spec.md#concept-template-orchestration) defines the HTML-guarded scaffolds and token contracts that every template and prompt must follow. Automation must satisfy each directive before removing it.
 4. **Operator-focused CLI:** The [SpecMan CLI](../spec/specman-cli/spec.md) and its Rust implementation expose declarative commands (`spec`, `impl`, `scratch`, `status`) so engineers can create or delete artifacts without silent side effects.
 
 ## Philosophy
@@ -28,7 +28,6 @@ SpecMan exists because existing "AI spec assistants" such as GitHub's Speckit le
 ## Learn More
 - [SpecMan Data Model](../spec/specman-data-model/spec.md)
 - [SpecMan Core](../spec/specman-core/spec.md)
-- [SpecMan Templates](../spec/specman-templates/spec.md)
 - [SpecMan CLI](../spec/specman-cli/spec.md)
 - [Markdown Templates Implementation](../impl/markdown-templates/impl.md)
 - [SpecMan Library (Rust)](../impl/specman-library/impl.md)

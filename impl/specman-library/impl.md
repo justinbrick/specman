@@ -262,7 +262,7 @@ struct ResourceHandle { kind: ArtifactKind, slug: String }
 
 ## Concept: Template Orchestration
 
-Template orchestration honors [Concept: Template Orchestration](../../spec/specman-core/spec.md#concept-template-orchestration) and references [SpecMan Templates](../../spec/specman-templates/spec.md) for token governance. All template APIs strictly resolve filesystem paths; sample token maps remain centralized in the template specification to avoid drift.
+Template orchestration honors [Concept: Template Orchestration](../../spec/specman-core/spec.md#concept-template-orchestration), which now owns the token contract, HTML-instruction rules, and pointer-governance requirements. All template APIs strictly resolve filesystem paths; sample token maps remain centralized in the template specification to avoid drift.
 
 ```rust
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -297,7 +297,7 @@ impl TemplateEngine for MarkdownTemplateEngine {
 ```
 
 - The engine validates that every `required_tokens` entry is present and fails fast with `SpecmanError::Template` if unresolved `{{token}}` placeholders remain.
-- File-based locators use repository-relative paths for portability; remote templates intentionally error until SpecMan Templates adds a governance workflow for network fetching.
+- File-based locators use repository-relative paths for portability; remote templates intentionally error until SpecMan Core authorizes a governance workflow for network fetching.
 - Rendering results feed directly into `WorkspacePersistence::persist`, ensuring lifecycle tooling always writes deterministic Markdown that already satisfies all template instructions.
 
 ## Concept: Deterministic Execution
@@ -429,7 +429,7 @@ pub struct MetadataMutationResult {
 - The mutator accepts HTTPS URLs, workspace-relative paths, and SpecMan resource handles, aligning with dependency traversal rules while still preventing workspace escapes.
 - Resource-handle validation routes through the same parser as dependency traversal, so `metadata add-dependency` / `add-reference` commands can accept `spec://`, `impl://`, and `scratch://` identifiers without bespoke normalization while still preventing workspace escapes.
 - Persisted mutations invalidate cached dependency trees through the optional adapter hook; schemars output is reused instead of embedding raw JSON schemas in this document, per user instruction.
-- No sample token maps are duplicated here—template-specific data remains governed by [spec/specman-templates/spec.md](../../spec/specman-templates/spec.md).
+- No sample token maps are duplicated here—template-specific data remains governed by [SpecMan Core Template Orchestration](../../spec/specman-core/spec.md#concept-template-orchestration).
 
 ### Artifact-Specific Front Matter Schemas
 

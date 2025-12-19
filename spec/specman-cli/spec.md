@@ -4,7 +4,6 @@ version: "1.0.0"
 dependencies:
   - ../specman-core/spec.md
   - ../specman-data-model/spec.md
-  - ../specman-templates/spec.md
 ---
 
 # Specification — SpecMan CLI
@@ -13,7 +12,7 @@ The SpecMan CLI defines a command-line binary that orchestrates SpecMan Core cap
 
 ## Terminology & References
 
-This document uses the normative keywords defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). Consumers SHOULD review `specman-core`, `specman-data-model`, and `specman-templates` to understand the lifecycle rules, data entities, and template contracts enforced by this CLI.
+This document uses the normative keywords defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). Consumers SHOULD review `specman-core` and `specman-data-model` to understand the lifecycle rules, data entities, and template contracts enforced by this CLI.
 
 ## Concepts
 
