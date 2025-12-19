@@ -148,7 +148,7 @@ Discovery allows for consumers of implementations to find the markdown content o
 
 !concept-specman-structure.discovery.identifiers:
 
-- Implementations MUST provide methods for enumerating the available identifiers of heading slugs and constraint groups.
+- Implementations MUST provide methods for enumerating the available identifiers of [heading slugs][heading slugs] and [constraint groups][constraint groups].
 
 !concept-specman-structure.discovery.rendering:
 
@@ -156,7 +156,7 @@ Rendering the markdown content allows for readers to properly understand all pos
 
 - Implementations MUST return markdown content when provided with a heading slug.
   - The content inside of the heading slug must return content under any related headings that have been referenced via inline link, in the order of which the inline links were referenced.
-  - Implementations MUST ensure that referenced headings content is not duplicated, so that it may only appear once when rendering the markdown content and it's related content.
+  - Implementations MUST ensure that referenced headings content is not duplicated, so that it may only appear once when rendering the markdown content and its related content.
 - Implementations MUST return markdown content when provided with a constraint group identifier.
   - The rendered content MUST contain the content of the heading which the constraint group has an active relationship to.
 
@@ -248,3 +248,6 @@ Implementers MAY provide caching or indexing strategies for dependency trees whe
 Template repositories SHOULD be discoverable through configuration so administrators CAN extend or swap template sources without code changes.
 
 Scratch pad workflows MAY integrate with collaboration tooling (e.g., team workspaces) to streamline drafting phases.
+
+[heading slugs]: ../specman-data-model/spec.md#concept-markdown-slugs
+[constraint groups]: ../specman-data-model/spec.md#constraint-groups
