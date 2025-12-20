@@ -224,17 +224,30 @@ Rendering the markdown content allows for readers to properly understand all pos
 
 ### Concept: Metadata Mutation
 
-Metadata mutation ensures YAML front matter for specifications and implementations can be updated without rewriting the surrounding Markdown content.
+Metadata mutation ensures YAML front matter for specifications, implementations, and scratch pads can be updated without rewriting the surrounding Markdown content.
 
 !concept-metadata-mutation.requirements:
 
-- Implementations MUST expose metadata mutation helpers that accept a filesystem path or HTTPS URL to a specification or implementation, merge updated values into the YAML front matter, and leave the Markdown body unchanged.
-- Metadata mutation helpers MUST support adding dependencies or references by artifact locator and MUST be idempotent when the supplied locator already exists in the corresponding list.
+- Implementations MUST expose metadata mutation helpers that accept a filesystem path or HTTPS URL to a specification or implementation (and a filesystem path to a scratch pad), merge updated values into the YAML front matter, and leave the Markdown body unchanged.
 - Callers MUST be able to choose whether metadata mutation helpers immediately persist the updated artifact to disk or return the full document content; when returning content, the helpers MUST emit the complete file with differences limited to the front matter block.
 - Metadata mutation helpers MUST reuse the locator normalization, workspace-boundary enforcement, and supported-scheme validation rules defined for dependency traversal before applying edits.
 - Metadata mutation operations MUST reuse the dependency traversal validation flow (workspace boundary enforcement, supported locator schemes, YAML parsing guarantees) before applying edits to any artifact.
 - Metadata mutation operations MUST rewrite only the YAML front matter block and MUST either persist the updated artifact to its canonical path or return the full document with body content unchanged.
-- When metadata mutation operations add dependencies or references, they MUST treat the addition as idempotent, leaving the artifact untouched if the locator already exists.
+- Metadata mutation helpers MUST support adding dependencies or references by artifact locator and MUST be idempotent when the supplied locator already exists in the corresponding list.
+- Metadata mutation helpers MUST support removals for list-valued fields by allowing callers to replace the persisted list with a caller-supplied list (see list semantics below).
+
+!concept-metadata-mutation.scope.supported-fields:
+
+- Metadata mutation MUST be supported for specification, implementation, and scratch pad artifacts.
+- For specifications, metadata mutation MUST support updating the `version` field and replacing the `dependencies` list.
+- For implementations, metadata mutation MUST support updating the `version` field and replacing the `references`, `primary_language`, and `secondary_languages` fields.
+- For scratch pads, metadata mutation MUST support updating any YAML front matter fields except `target`.
+  - Scratch pad `target` MUST be treated as immutable; attempts to change it MUST fail with a descriptive error.
+
+!concept-metadata-mutation.list-semantics.replace:
+
+- When a list-valued front matter field is provided as part of a metadata mutation request, the persisted list MUST be replaced with the provided list exactly.
+- When a list-valued front matter field is omitted from a metadata mutation request, the persisted list MUST remain unchanged.
 
 ## Key Entities
 

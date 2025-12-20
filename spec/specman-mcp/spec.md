@@ -62,7 +62,7 @@ To make artifact creation consistently automatable across MCP clients, compliant
 
 ##### Input Schema Requirements
 
-Because MCP requires explicit tool schemas, `create_artifact` MUST publish a deterministic parameter schema; however, the specific input *shape* is implementation-defined.
+Because MCP requires explicit tool schemas, `create_artifact` MUST publish a deterministic parameter schema; however, the specific input _shape_ is implementation-defined.
 
 - The adapter MUST document the `create_artifact` input schema it exposes, and it MUST be deterministic across releases except where versioned as a breaking change.
 - The schema MUST allow callers to provide enough information to:
@@ -72,6 +72,27 @@ Because MCP requires explicit tool schemas, `create_artifact` MUST publish a det
   - for scratch pads, select the scratch pad work type variant and provide any required work-type-specific metadata (for example revised/refactored/fixed heading fragments)
   - control persistence behavior when such options are supported
 - When the schema accepts template-substitution inputs, the adapter MUST NOT permit substitutions for tokens outside the set governed by [SpecMan Core Template Orchestration](../specman-core/spec.md#concept-template-orchestration), including the token-contract constraints defined there.
+
+#### Required Tool: `update_artifact`
+
+To allow MCP clients to update artifact metadata deterministically without rewriting Markdown bodies, compliant adapters MUST expose a lifecycle tool named `update_artifact`.
+
+!concept-specman-capability-parity.tooling.update-artifact:
+
+- The adapter MUST expose an MCP tool named `update_artifact`.
+- The tool MUST update YAML front matter metadata for specifications, implementations, and scratch pads, and it MUST leave the Markdown body unchanged.
+- The tool MUST delegate to the underlying SpecMan Core implementation’s metadata mutation capabilities (see [Concept: Metadata Mutation](../specman-core/spec.md#concept-metadata-mutation)) rather than implementing bespoke rewriting logic in the MCP layer.
+- The tool MUST accept an artifact locator identifying the target artifact.
+  - Callers MAY supply a filesystem path, HTTPS URL, or a SpecMan locator handle (`spec://{artifact}`, `impl://{artifact}`, `scratch://{artifact}`) as the locator input.
+  - If a SpecMan handle is supplied, the adapter MUST normalize it to a canonical workspace-relative path before applying any update, and it MUST NOT persist the handle into artifact content.
+- The tool MUST support removals for list-valued metadata via set/replace list semantics.
+  - When a list-valued front matter field is provided in the update request, the persisted list MUST be replaced with the provided list exactly.
+  - When a list-valued front matter field is omitted in the update request, the persisted list MUST remain unchanged.
+- The tool MUST enforce scratch pad `target` immutability; attempts to change `target` MUST fail with an MCP error.
+- The tool MUST support a persistence mode switch:
+  - persist: write the updated artifact to disk
+  - preview: return the updated full document content with differences limited to the YAML front matter block
+- Supported mutations MUST match (and not exceed) the mutation surface defined by SpecMan Core metadata mutation.
 
 ### Concept: Prompt Catalog
 
@@ -88,6 +109,44 @@ Prompt catalog tooling defines how MCP clients obtain deterministic prompts for 
 - Prompt catalog governance applies exclusively to MCP prompt- and resource-oriented surfaces. CLI documentation MUST NOT expose prompt templates directly; CLI usage relies on the same SpecMan Core lifecycle automation without surfacing prompt text.
 - Prompt catalog responses MAY tailor wording for specific MCP scenarios, but they MUST remain deterministic for a given template/version combination.
 
+### Concept: Constraint Resources
+
+Constraint resources allow MCP clients to discover and read constraint groups defined inside specifications through MCP resources, without requiring clients to parse Markdown.
+
+!concept-constraint-resources.resources.templates:
+
+- The adapter MUST expose MCP resource templates that allow clients to read constraints for a specification artifact using the `spec://` locator scheme.
+- The adapter MUST support a resource at `spec://{artifact}/constraints` that returns a list of constraints defined in the referenced specification.
+- The adapter MUST support a resource at `spec://{artifact}/constraints/{constraint_id}` that returns the constraint content for the identified constraint.
+- These resources MUST be read-only derived locators.
+
+!concept-constraint-resources.identifiers.constraint-id:
+
+- `constraint_id` MUST be the constraint group set (the substring between the leading `!` and the trailing `:` in a constraint identifier line).
+  - Example: for the line `!concept-prompt-catalog.responses:`, the `constraint_id` is `concept-prompt-catalog.responses`.
+- `constraint_id` values MUST be treated as case-sensitive identifiers.
+- If a `constraint_id` is not found, the adapter MUST return an MCP error that includes the containing artifact and the missing `constraint_id`.
+
+!concept-constraint-resources.scope.schemes:
+
+- Constraint resources MUST be exposed only for specification artifacts.
+  - `spec://{artifact}/constraints` and `spec://{artifact}/constraints/{constraint_id}` are the only supported constraint resource locators.
+  - `impl://.../constraints` and `scratch://.../constraints` MUST NOT be exposed.
+
+!concept-constraint-resources.responses.index:
+
+- Reading `spec://{artifact}/constraints` MUST return a deterministic list of constraints.
+- Each list entry MUST include at minimum:
+  - `constraint_id`
+  - `identifier_line` (the literal identifier line as it appears in the document, including the leading `!` and trailing `:`)
+  - `uri` (the canonical resource URI for reading that constraint via `.../constraints/{constraint_id}`)
+
+!concept-constraint-resources.responses.read:
+
+- Reading `spec://{artifact}/constraints/{constraint_id}` MUST return the Markdown content of that constraint group.
+- The returned content MUST include the identifier line and all constraint statements belonging to that group.
+- The adapter MUST NOT return unrelated constraints that merely share a prefix; matching MUST be exact on `constraint_id`.
+
 ### Concept: Workspace & Data Governance
 
 MCP calls interact with on-disk workspaces governed by the SpecMan Data Model.
@@ -98,6 +157,7 @@ MCP calls interact with on-disk workspaces governed by the SpecMan Data Model.
 - Data returned to MCP clients (e.g., rendered specs, dependency graphs) MUST retain source references so downstream tools can trace each datum back to its origin document within the workspace.
 - Resource handles resolved via `spec://`, `impl://`, or `scratch://` MUST be normalized through workspace discovery, bound to canonical artifact paths, and rejected when they refer to artifacts outside the active workspace. Normalized handles MUST retain stable identifiers so MCP clients can reuse them across sessions.
 - `/dependencies` handles MUST be treated as derived read-only locators whose responses are generated exclusively by dependency mapping services; mutation attempts against these handles MUST fail with an MCP error explaining that only query operations are supported.
+- `/constraints` handles MUST be treated as derived read-only locators whose responses are generated exclusively by structure discovery services; mutation attempts against these handles MUST fail with an MCP error explaining that only query operations are supported.
 - Prompt catalog and lifecycle tools MUST reference template locators resolved via SpecMan Core template orchestration (workspace pointer files first, then packaged defaults), validate that supplied names comply with the [founding specification](../../docs/founding-spec.md), and document any workspace mutations in the lifecycle tool results.
 
 ### Concept: Session Safety & Deterministic Execution
@@ -134,4 +194,4 @@ Defines the MCP tool metadata for each SpecMan Core capability.
 - Adapters MAY reuse off-the-shelf MCP libraries or frameworks; compliance is measured by the behavior defined in this document, not by re-implementing the protocol stack.
 - Because deployments are STDIN-based on local machines, additional network security controls are OPTIONAL; nonetheless, implementers SHOULD ensure logging and locking remain in place to preserve SpecMan Core guarantees.
 - MCP adapters SHOULD document the mapping between resource handles and human-readable artifact names so that clients can prompt users before invoking lifecycle operations.
-- The `/dependencies` suffix is RESERVED for MCP adapters and MUST NOT be repurposed for mutation flows or non-dependency data; adapters MAY introduce additional read-only suffixes in future revisions provided they extend the resource-handle schema consistently.
+- The `/dependencies` and `/constraints` suffixes are RESERVED for MCP adapters and MUST NOT be repurposed for mutation flows or unrelated data; adapters MAY introduce additional read-only suffixes in future revisions provided they extend the resource-handle schema consistently.
