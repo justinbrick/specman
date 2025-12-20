@@ -5,6 +5,7 @@ pub mod front_matter;
 pub mod lifecycle;
 pub mod metadata;
 pub mod persistence;
+pub mod reference_validation;
 pub mod scratchpad;
 pub mod service;
 pub mod shared_function;
@@ -25,11 +26,18 @@ pub use lifecycle::{
     ScratchPadPlan,
 };
 pub use metadata::{
-    apply_front_matter_update, FrontMatterUpdateOp, FrontMatterUpdateRequest, FrontMatterUpdateResult,
+    FrontMatterUpdateOp, FrontMatterUpdateRequest, FrontMatterUpdateResult,
     MetadataMutationRequest, MetadataMutationResult, MetadataMutator, ReferenceAddition,
+    apply_front_matter_update,
 };
 pub use persistence::{
     ArtifactRemovalStore, PersistedArtifact, RemovedArtifact, WorkspacePersistence,
+};
+pub use reference_validation::{
+    DestinationKind, DiscoveredReference, HttpsMethod, HttpsValidationMode, HttpsValidationOptions,
+    IssueSeverity, ReferenceSource, ReferenceValidationIssue, ReferenceValidationOptions,
+    ReferenceValidationReport, ReferenceValidationStatus, SourcePoint, SourceRange,
+    TransitiveOptions, validate_references,
 };
 pub use scratchpad::ScratchPadProfile;
 pub use service::{
@@ -38,9 +46,9 @@ pub use service::{
 };
 pub use shared_function::{EntityKind, SchemaRef, SemVer};
 pub use structure::{
-    ArtifactKey, ArtifactRecord, ConstraintIdentifier, ConstraintRecord, FilesystemStructureIndexer,
-    HeadingIdentifier, HeadingRecord, RelationshipEdge, RelationshipKind, StructureIndexing,
-    StructureQuery, WorkspaceIndex,
+    ArtifactKey, ArtifactRecord, ConstraintIdentifier, ConstraintRecord,
+    FilesystemStructureIndexer, HeadingIdentifier, HeadingRecord, RelationshipEdge,
+    RelationshipKind, StructureIndexing, StructureQuery, WorkspaceIndex,
 };
 pub use template::{
     ImplContext, MarkdownTemplateEngine, RenderedTemplate, ScratchPadContext, SpecContext,

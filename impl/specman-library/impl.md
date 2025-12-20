@@ -26,6 +26,31 @@ The `specman-library` implementation delivers the reusable library surface defin
   - `markdown` for parsing templates and emitting deterministic Markdown outputs for generated specifications, implementations, and scratch pads.
 - **Secondary languages:** None. All orchestration, validation, and I/O run in Rust; shell glue or scripting layers consume the library through binary wrappers built from the same crate.
 
+## Concept: Reference Validation
+
+The `reference_validation` module provides deterministic validation of Markdown link destinations within a workspace. This is used to catch broken intra-document fragments, missing filesystem targets, and invalid/unsupported destination forms.
+
+Key behaviors:
+
+- **CommonMark link discovery:** Extracts inline links (`[text](dest)`) and defined reference links (`[text][id]` + `[id]: dest`). Image destinations are ignored.
+- **Destination classification:** Distinguishes workspace filesystem targets, `https://` URLs, fragment-only links (`#slug`), and unsupported destinations.
+- **Workspace boundary enforcement:** Resolves filesystem destinations relative to the current document directory and rejects any path that escapes the workspace root.
+- **Fragment validation:** Validates fragments against heading slugs computed using the SpecMan slug algorithm defined in [Concept: Markdown Slugs](../../spec/specman-data-model/spec.md#concept-markdown-slugs).
+- **Transitive validation:** When enabled, recursively validates linked Markdown documents up to `max_documents`, and validates cross-document fragments (`other.md#slug`) against the target document's headings.
+- **Optional HTTPS reachability:** When configured, can perform network checks for `https://` destinations.
+
+Note: The slug implementation follows the SpecMan steps (NFKD normalization, filtering, hyphenation, cleanup, deduplication). Unicode case folding is approximated via Unicode lowercasing to avoid introducing additional dependencies.
+
+Public entry point:
+
+```rust
+pub fn validate_references(
+  locator: &str,
+  workspace: &WorkspacePaths,
+  options: ReferenceValidationOptions,
+) -> Result<ReferenceValidationReport, SpecmanError>;
+```
+
 ## Concept: Workspace Discovery
 
 This module fulfills [Concept: Workspace Discovery](../../spec/specman-core/spec.md#concept-workspace-discovery) by providing reusable locators that normalize the current directory, enforce `.specman` ancestry rules, and cache the result for callers across the crate and downstream tooling.
