@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -176,6 +177,8 @@ pub fn apply_front_matter_update(
         ))
     })?;
 
+    validate_front_matter_ops(&artifact.kind, &request.ops, parent_dir, workspace)?;
+
     let (yaml_segment, body_segment) = match front_matter::split_front_matter(raw_document) {
         Ok(split) => (Some(split.yaml.to_string()), split.body.to_string()),
         Err(_) => (None, raw_document.to_string()),
@@ -251,6 +254,190 @@ pub fn apply_front_matter_update(
             Ok((updated, mutated || yaml_segment.is_none()))
         }
     }
+}
+
+fn validate_front_matter_ops(
+    kind: &ArtifactKind,
+    ops: &[FrontMatterUpdateOp],
+    parent_dir: &Path,
+    workspace: &WorkspacePaths,
+) -> Result<(), SpecmanError> {
+    if ops.is_empty() {
+        return Err(SpecmanError::Template(
+            "front matter update requires at least one op".into(),
+        ));
+    }
+
+    let mut touched: HashSet<String> = HashSet::new();
+
+    let mut touch = |key: String| -> Result<(), SpecmanError> {
+        if touched.insert(key.clone()) {
+            Ok(())
+        } else {
+            Err(SpecmanError::Template(format!(
+                "conflicting front matter ops: duplicate declaration for {key}"
+            )))
+        }
+    };
+
+    for op in ops {
+        // Kind gating first so conflict errors don't mask a kind mismatch.
+        let kind_allows = match kind {
+            ArtifactKind::Specification => matches!(
+                op,
+                FrontMatterUpdateOp::SetName { .. }
+                    | FrontMatterUpdateOp::ClearName
+                    | FrontMatterUpdateOp::SetTitle { .. }
+                    | FrontMatterUpdateOp::ClearTitle
+                    | FrontMatterUpdateOp::SetDescription { .. }
+                    | FrontMatterUpdateOp::ClearDescription
+                    | FrontMatterUpdateOp::SetVersion { .. }
+                    | FrontMatterUpdateOp::ClearVersion
+                    | FrontMatterUpdateOp::AddTag { .. }
+                    | FrontMatterUpdateOp::RemoveTag { .. }
+                    | FrontMatterUpdateOp::AddDependency { .. }
+                    | FrontMatterUpdateOp::RemoveDependency { .. }
+                    | FrontMatterUpdateOp::SetRequiresImplementation { .. }
+                    | FrontMatterUpdateOp::ClearRequiresImplementation
+            ),
+            ArtifactKind::Implementation => matches!(
+                op,
+                FrontMatterUpdateOp::SetName { .. }
+                    | FrontMatterUpdateOp::ClearName
+                    | FrontMatterUpdateOp::SetTitle { .. }
+                    | FrontMatterUpdateOp::ClearTitle
+                    | FrontMatterUpdateOp::SetDescription { .. }
+                    | FrontMatterUpdateOp::ClearDescription
+                    | FrontMatterUpdateOp::SetVersion { .. }
+                    | FrontMatterUpdateOp::ClearVersion
+                    | FrontMatterUpdateOp::AddTag { .. }
+                    | FrontMatterUpdateOp::RemoveTag { .. }
+                    | FrontMatterUpdateOp::SetSpec { .. }
+                    | FrontMatterUpdateOp::ClearSpec
+                    | FrontMatterUpdateOp::SetLocation { .. }
+                    | FrontMatterUpdateOp::ClearLocation
+                    | FrontMatterUpdateOp::SetLibrary { .. }
+                    | FrontMatterUpdateOp::ClearLibrary
+                    | FrontMatterUpdateOp::AddReference { .. }
+                    | FrontMatterUpdateOp::RemoveReference { .. }
+                    | FrontMatterUpdateOp::AddDependency { .. }
+                    | FrontMatterUpdateOp::RemoveDependency { .. }
+                    | FrontMatterUpdateOp::SetPrimaryLanguage { .. }
+                    | FrontMatterUpdateOp::ClearPrimaryLanguage
+                    | FrontMatterUpdateOp::SetSecondaryLanguages { .. }
+                    | FrontMatterUpdateOp::ClearSecondaryLanguages
+            ),
+            ArtifactKind::ScratchPad => matches!(
+                op,
+                FrontMatterUpdateOp::SetName { .. }
+                    | FrontMatterUpdateOp::ClearName
+                    | FrontMatterUpdateOp::SetTitle { .. }
+                    | FrontMatterUpdateOp::ClearTitle
+                    | FrontMatterUpdateOp::SetDescription { .. }
+                    | FrontMatterUpdateOp::ClearDescription
+                    | FrontMatterUpdateOp::SetVersion { .. }
+                    | FrontMatterUpdateOp::ClearVersion
+                    | FrontMatterUpdateOp::AddTag { .. }
+                    | FrontMatterUpdateOp::RemoveTag { .. }
+                    | FrontMatterUpdateOp::SetBranch { .. }
+                    | FrontMatterUpdateOp::ClearBranch
+                    | FrontMatterUpdateOp::SetWorkType { .. }
+                    | FrontMatterUpdateOp::ClearWorkType
+                    | FrontMatterUpdateOp::AddDependency { .. }
+                    | FrontMatterUpdateOp::RemoveDependency { .. }
+                    | FrontMatterUpdateOp::SetTarget { .. }
+                    | FrontMatterUpdateOp::ClearTarget
+            ),
+        };
+
+        if !kind_allows {
+            // Preserve existing error class/message patterns as much as possible.
+            return Err(SpecmanError::Template(match kind {
+                ArtifactKind::Specification => {
+                    "unsupported update op for specification front matter".into()
+                }
+                ArtifactKind::Implementation => {
+                    "unsupported update op for implementation front matter".into()
+                }
+                ArtifactKind::ScratchPad => "unsupported update op for scratch front matter".into(),
+            }));
+        }
+
+        // Conflict detection is order-independent: treat ops as declarative declarations.
+        match op {
+            FrontMatterUpdateOp::SetName { .. } | FrontMatterUpdateOp::ClearName => {
+                touch("identity.name".into())?;
+            }
+            FrontMatterUpdateOp::SetTitle { .. } | FrontMatterUpdateOp::ClearTitle => {
+                touch("identity.title".into())?;
+            }
+            FrontMatterUpdateOp::SetDescription { .. } | FrontMatterUpdateOp::ClearDescription => {
+                touch("identity.description".into())?;
+            }
+            FrontMatterUpdateOp::SetVersion { .. } | FrontMatterUpdateOp::ClearVersion => {
+                touch("identity.version".into())?;
+            }
+            FrontMatterUpdateOp::AddTag { tag } | FrontMatterUpdateOp::RemoveTag { tag } => {
+                touch(format!("identity.tags:{tag}"))?;
+            }
+            FrontMatterUpdateOp::SetRequiresImplementation { .. }
+            | FrontMatterUpdateOp::ClearRequiresImplementation => {
+                touch("spec.requires_implementation".into())?;
+            }
+            FrontMatterUpdateOp::SetSpec { ref_ } => {
+                let _ = normalize_persisted_reference(ref_, parent_dir, workspace)?;
+                touch("impl.spec".into())?;
+            }
+            FrontMatterUpdateOp::ClearSpec => {
+                touch("impl.spec".into())?;
+            }
+            FrontMatterUpdateOp::SetLocation { .. } | FrontMatterUpdateOp::ClearLocation => {
+                touch("impl.location".into())?;
+            }
+            FrontMatterUpdateOp::SetLibrary { .. } | FrontMatterUpdateOp::ClearLibrary => {
+                touch("impl.library".into())?;
+            }
+            FrontMatterUpdateOp::SetPrimaryLanguage { .. }
+            | FrontMatterUpdateOp::ClearPrimaryLanguage => {
+                touch("impl.primary_language".into())?;
+            }
+            FrontMatterUpdateOp::SetSecondaryLanguages { .. }
+            | FrontMatterUpdateOp::ClearSecondaryLanguages => {
+                touch("impl.secondary_languages".into())?;
+            }
+            FrontMatterUpdateOp::SetBranch { .. } | FrontMatterUpdateOp::ClearBranch => {
+                touch("scratch.branch".into())?;
+            }
+            FrontMatterUpdateOp::SetWorkType { .. } | FrontMatterUpdateOp::ClearWorkType => {
+                touch("scratch.work_type".into())?;
+            }
+            FrontMatterUpdateOp::SetTarget { .. } | FrontMatterUpdateOp::ClearTarget => {
+                // Even though the enum supports it, scratch targets are immutable per spec.
+                if matches!(kind, ArtifactKind::ScratchPad) {
+                    return Err(SpecmanError::Template(
+                        "scratch pad `target` is immutable; mutation attempts must fail".into(),
+                    ));
+                }
+                touch("scratch.target".into())?;
+            }
+            FrontMatterUpdateOp::AddDependency { ref_, .. }
+            | FrontMatterUpdateOp::RemoveDependency { ref_ } => {
+                let base = match kind {
+                    ArtifactKind::ScratchPad => workspace.root(),
+                    _ => parent_dir,
+                };
+                let normalized = normalize_persisted_reference(ref_, base, workspace)?;
+                touch(format!("dependencies:{normalized}"))?;
+            }
+            FrontMatterUpdateOp::AddReference { ref_, .. }
+            | FrontMatterUpdateOp::RemoveReference { ref_ } => {
+                let normalized = normalize_persisted_reference(ref_, parent_dir, workspace)?;
+                touch(format!("references:{normalized}"))?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn ensure_kind_matches(
@@ -483,16 +670,10 @@ fn apply_op_scratch(
 ) -> Result<bool, SpecmanError> {
     let mut changed = apply_identity_ops(op, &mut front.identity);
     match op {
-        FrontMatterUpdateOp::SetTarget { target } => {
-            let normalized = normalize_persisted_reference(target, workspace.root(), workspace)?;
-            let changed_local = front.target.as_deref() != Some(&normalized);
-            front.target = Some(normalized);
-            changed |= changed_local;
-        }
-        FrontMatterUpdateOp::ClearTarget => {
-            let changed_local = front.target.is_some();
-            front.target = None;
-            changed |= changed_local;
+        FrontMatterUpdateOp::SetTarget { .. } | FrontMatterUpdateOp::ClearTarget => {
+            return Err(SpecmanError::Template(
+                "scratch pad `target` is immutable; mutation attempts must fail".into(),
+            ));
         }
         FrontMatterUpdateOp::SetBranch { branch } => {
             let changed_local = front.branch.as_deref() != Some(branch);
@@ -1041,6 +1222,302 @@ mod tests {
     use crate::workspace::FilesystemWorkspaceLocator;
     use std::sync::Mutex;
     use tempfile::tempdir;
+
+    #[test]
+    fn front_matter_update_preserves_body_byte_for_byte() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/core")).unwrap();
+
+        let spec_path = root.join("spec/core/spec.md");
+        // Include tricky body bytes + multiple newlines to ensure we preserve the body verbatim.
+        let raw = "---\nname: core\nversion: \"1.0.0\"\n---\n# Core\n\nBody line 1\n\n\tIndented\n\nTrailing spaces ->    \n";
+        fs::write(&spec_path, raw).unwrap();
+
+        let workspace = FilesystemWorkspaceLocator::new(&root)
+            .workspace()
+            .expect("workspace discovery");
+        let artifact = ArtifactId {
+            kind: ArtifactKind::Specification,
+            name: "core".into(),
+        };
+
+        let request = FrontMatterUpdateRequest::new().with_op(FrontMatterUpdateOp::SetVersion {
+            version: "2.0.0".into(),
+        });
+
+        let (updated, _mutated) =
+            apply_front_matter_update(&artifact, &spec_path, &workspace, raw, &request)
+                .expect("update succeeds");
+
+        let original_split = front_matter::split_front_matter(raw).expect("split original");
+        let updated_split = front_matter::split_front_matter(&updated).expect("split updated");
+        assert_eq!(
+            original_split.body, updated_split.body,
+            "front matter update must not rewrite the Markdown body"
+        );
+    }
+
+    #[test]
+    fn scratch_target_set_is_rejected() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join(".specman/scratchpad/demo")).unwrap();
+        fs::create_dir_all(root.join("impl/some-impl")).unwrap();
+
+        // Target points at an implementation (valid persisted form), but it must be immutable.
+        let scratch_path = root.join(".specman/scratchpad/demo/scratch.md");
+        let raw = "---\ntarget: impl/some-impl/impl.md\nwork_type:\n  ref:\n    refactored_headings: []\n---\n# Scratch\n";
+        fs::write(&scratch_path, raw).unwrap();
+
+        let workspace = FilesystemWorkspaceLocator::new(&root)
+            .workspace()
+            .expect("workspace discovery");
+        let artifact = ArtifactId {
+            kind: ArtifactKind::ScratchPad,
+            name: "demo".into(),
+        };
+
+        let request = FrontMatterUpdateRequest::new().with_op(FrontMatterUpdateOp::SetTarget {
+            target: "impl/other/impl.md".into(),
+        });
+
+        let err = apply_front_matter_update(&artifact, &scratch_path, &workspace, raw, &request)
+            .expect_err("scratch target updates must fail");
+        assert!(matches!(err, SpecmanError::Template(_)));
+        assert!(err.to_string().contains("immutable"));
+    }
+
+    #[test]
+    fn scratch_target_clear_is_rejected() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join(".specman/scratchpad/demo")).unwrap();
+
+        let scratch_path = root.join(".specman/scratchpad/demo/scratch.md");
+        let raw = "---\ntarget: impl/some-impl/impl.md\nwork_type:\n  ref:\n    refactored_headings: []\n---\n# Scratch\n";
+        fs::write(&scratch_path, raw).unwrap();
+
+        let workspace = FilesystemWorkspaceLocator::new(&root)
+            .workspace()
+            .expect("workspace discovery");
+        let artifact = ArtifactId {
+            kind: ArtifactKind::ScratchPad,
+            name: "demo".into(),
+        };
+
+        let request = FrontMatterUpdateRequest::new().with_op(FrontMatterUpdateOp::ClearTarget);
+
+        let err = apply_front_matter_update(&artifact, &scratch_path, &workspace, raw, &request)
+            .expect_err("scratch target updates must fail");
+        assert!(matches!(err, SpecmanError::Template(_)));
+        assert!(err.to_string().contains("immutable"));
+    }
+
+    #[test]
+    fn front_matter_update_rejects_conflicting_version_ops() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/core")).unwrap();
+
+        let spec_path = root.join("spec/core/spec.md");
+        let raw = "---\nname: core\nversion: \"1.0.0\"\n---\n# Core\n";
+        fs::write(&spec_path, raw).unwrap();
+
+        let workspace = FilesystemWorkspaceLocator::new(&root)
+            .workspace()
+            .expect("workspace discovery");
+        let artifact = ArtifactId {
+            kind: ArtifactKind::Specification,
+            name: "core".into(),
+        };
+
+        let request = FrontMatterUpdateRequest::new()
+            .with_op(FrontMatterUpdateOp::SetVersion {
+                version: "2.0.0".into(),
+            })
+            .with_op(FrontMatterUpdateOp::ClearVersion);
+
+        let err = apply_front_matter_update(&artifact, &spec_path, &workspace, raw, &request)
+            .expect_err("conflicting ops must fail");
+        assert!(matches!(err, SpecmanError::Template(_)));
+        assert!(err.to_string().contains("conflicting front matter ops"));
+    }
+
+    #[test]
+    fn front_matter_update_rejects_conflicting_tag_ops() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/core")).unwrap();
+
+        let spec_path = root.join("spec/core/spec.md");
+        let raw = "---\nname: core\n---\n# Core\n";
+        fs::write(&spec_path, raw).unwrap();
+
+        let workspace = FilesystemWorkspaceLocator::new(&root)
+            .workspace()
+            .expect("workspace discovery");
+        let artifact = ArtifactId {
+            kind: ArtifactKind::Specification,
+            name: "core".into(),
+        };
+
+        let request = FrontMatterUpdateRequest::new()
+            .with_op(FrontMatterUpdateOp::AddTag { tag: "demo".into() })
+            .with_op(FrontMatterUpdateOp::RemoveTag { tag: "demo".into() });
+
+        let err = apply_front_matter_update(&artifact, &spec_path, &workspace, raw, &request)
+            .expect_err("conflicting ops must fail");
+        assert!(matches!(err, SpecmanError::Template(_)));
+        assert!(err.to_string().contains("identity.tags:demo"));
+    }
+
+    #[test]
+    fn front_matter_update_rejects_dependency_add_remove_conflict_after_normalization() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/data-model")).unwrap();
+        fs::create_dir_all(root.join("spec/core")).unwrap();
+
+        fs::write(
+            root.join("spec/data-model/spec.md"),
+            "---\nname: data-model\n---\n# Data Model\n",
+        )
+        .unwrap();
+
+        let spec_path = root.join("spec/core/spec.md");
+        let raw = "---\nname: core\n---\n# Core\n";
+        fs::write(&spec_path, raw).unwrap();
+
+        let workspace = FilesystemWorkspaceLocator::new(&root)
+            .workspace()
+            .expect("workspace discovery");
+        let artifact = ArtifactId {
+            kind: ArtifactKind::Specification,
+            name: "core".into(),
+        };
+
+        // These two locators normalize to the same persisted value from spec/core.
+        let request = FrontMatterUpdateRequest::new()
+            .with_op(FrontMatterUpdateOp::AddDependency {
+                ref_: "spec://data-model".into(),
+                optional: None,
+            })
+            .with_op(FrontMatterUpdateOp::RemoveDependency {
+                ref_: "../data-model/spec.md".into(),
+            });
+
+        let err = apply_front_matter_update(&artifact, &spec_path, &workspace, raw, &request)
+            .expect_err("conflicting ops must fail");
+        assert!(
+            err.to_string().contains("conflicting front matter ops"),
+            "expected conflict error, got: {err:?}"
+        );
+        assert!(
+            err.to_string()
+                .contains("dependencies:../data-model/spec.md")
+        );
+    }
+
+    #[test]
+    fn front_matter_update_rejects_duplicate_dependency_adds_even_if_optional_differs() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/alpha")).unwrap();
+        fs::create_dir_all(root.join("spec/core")).unwrap();
+
+        fs::write(
+            root.join("spec/alpha/spec.md"),
+            "---\nname: alpha\n---\n# Alpha\n",
+        )
+        .unwrap();
+
+        let spec_path = root.join("spec/core/spec.md");
+        let raw = "---\nname: core\n---\n# Core\n";
+        fs::write(&spec_path, raw).unwrap();
+
+        let workspace = FilesystemWorkspaceLocator::new(&root)
+            .workspace()
+            .expect("workspace discovery");
+        let artifact = ArtifactId {
+            kind: ArtifactKind::Specification,
+            name: "core".into(),
+        };
+
+        let request = FrontMatterUpdateRequest::new()
+            .with_op(FrontMatterUpdateOp::AddDependency {
+                ref_: "../alpha/spec.md".into(),
+                optional: Some(false),
+            })
+            .with_op(FrontMatterUpdateOp::AddDependency {
+                ref_: "../alpha/spec.md".into(),
+                optional: Some(true),
+            });
+
+        let err = apply_front_matter_update(&artifact, &spec_path, &workspace, raw, &request)
+            .expect_err("duplicate declaration must fail");
+        assert!(
+            err.to_string().contains("conflicting front matter ops"),
+            "expected conflict error, got: {err:?}"
+        );
+        assert!(err.to_string().contains("dependencies:../alpha/spec.md"));
+    }
+
+    #[test]
+    fn front_matter_update_rejects_reference_add_remove_conflict_after_normalization() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/beta")).unwrap();
+        fs::create_dir_all(root.join("impl/core")).unwrap();
+
+        fs::write(
+            root.join("spec/beta/spec.md"),
+            "---\nname: beta\n---\n# Beta\n",
+        )
+        .unwrap();
+
+        let impl_path = root.join("impl/core/impl.md");
+        let raw = "---\nname: core\nspec: ../../spec/beta/spec.md\n---\n# Impl\n";
+        fs::write(&impl_path, raw).unwrap();
+
+        let workspace = FilesystemWorkspaceLocator::new(&root)
+            .workspace()
+            .expect("workspace discovery");
+        let artifact = ArtifactId {
+            kind: ArtifactKind::Implementation,
+            name: "core".into(),
+        };
+
+        // From impl/core, spec://beta normalizes to ../../spec/beta/spec.md.
+        let request = FrontMatterUpdateRequest::new()
+            .with_op(FrontMatterUpdateOp::AddReference {
+                ref_: "spec://beta".into(),
+                type_: None,
+                optional: None,
+            })
+            .with_op(FrontMatterUpdateOp::RemoveReference {
+                ref_: "../../spec/beta/spec.md".into(),
+            });
+
+        let err = apply_front_matter_update(&artifact, &impl_path, &workspace, raw, &request)
+            .expect_err("conflicting ops must fail");
+        assert!(
+            err.to_string().contains("conflicting front matter ops"),
+            "expected conflict error, got: {err:?}"
+        );
+        assert!(
+            err.to_string()
+                .contains("references:../../spec/beta/spec.md")
+        );
+    }
 
     #[test]
     fn mutate_spec_adds_dependency_and_persists() {

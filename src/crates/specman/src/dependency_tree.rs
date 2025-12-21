@@ -1225,10 +1225,11 @@ pub fn normalize_persisted_reference(
         resolve_workspace_path(candidate, Some(parent), workspace)?
     };
 
-    let rel = diff_paths(&canonical, parent).ok_or_else(|| {
+    let canonical_parent = fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+    let rel = diff_paths(&canonical, &canonical_parent).ok_or_else(|| {
         SpecmanError::Workspace(format!(
             "unable to compute workspace-relative path from {} to {}",
-            parent.display(),
+            canonical_parent.display(),
             canonical.display()
         ))
     })?;
@@ -1258,10 +1259,11 @@ pub fn normalize_persisted_reference_for_create(
 
     if let Some(handle) = ResourceHandle::parse(reference)? {
         let path = handle.to_path(workspace);
-        let rel = diff_paths(&path, parent).ok_or_else(|| {
+        let canonical_parent = fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+        let rel = diff_paths(&path, &canonical_parent).ok_or_else(|| {
             SpecmanError::Workspace(format!(
                 "unable to compute workspace-relative path from {} to {}",
-                parent.display(),
+                canonical_parent.display(),
                 path.display()
             ))
         })?;

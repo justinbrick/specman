@@ -602,6 +602,60 @@ pub struct MetadataMutationResult {
 - Persisted mutations invalidate cached dependency trees through the optional adapter hook; schemars output is reused instead of embedding raw JSON schemas in this document, per user instruction.
 - No sample token maps are duplicated here—template-specific data remains governed by [SpecMan Core Template Orchestration](../../spec/specman-core/spec.md#concept-template-orchestration).
 
+### Planning: Declarative Metadata Mutation APIs (Tagged Enums)
+
+This repository currently exposes two overlapping mutation surfaces:
+
+- A path-oriented helper (`MetadataMutator` + `MetadataMutationRequest`).
+- A façade-oriented tagged-enum request (`Specman::update` + `FrontMatterUpdateRequest/Op`).
+
+This plan refactors the tagged-enum request semantics to be _declarative_ (express desired end-state) while preserving externally observable behavior. This is a planning-only refactor note: no behavior changes are asserted by this document alone.
+
+#### Non-Negotiable Spec Invariants
+
+Per [Concept: Metadata Mutation](../../spec/specman-core/spec.md#concept-metadata-mutation) and the handle rules in the data model, any implementation must preserve:
+
+- Only YAML front matter changes; the Markdown body remains byte-for-byte unchanged.
+- Callers can choose persist-to-disk vs return updated full document.
+- Locator normalization + supported scheme validation + workspace boundary enforcement.
+- Persisted artifacts MUST NOT contain `spec://` / `impl://` / `scratch://` handles.
+- List semantics:
+  - list provided → replace exactly
+  - list omitted → unchanged
+- Scratch pad `target` is immutable; attempts to change it MUST fail with a descriptive error.
+
+#### Declarative Semantics (Proposed)
+
+To prevent the op-list from becoming order-dependent, treat `FrontMatterUpdateRequest.ops` as an _unordered set of declarations_:
+
+- **Order MUST NOT matter**: applying the same declarations in any order yields the same result.
+- **Conflicts are rejected**: if two declarations attempt to set incompatible end-states (or duplicate the same field in different ways), return a deterministic validation error.
+- **Replace semantics for lists**: “replace dependencies/references/secondary_languages” MUST replace the persisted list exactly when present.
+- **Idempotent ensures only where required by spec**: provide “ensure dependency/reference by locator” only for the idempotent add-by-locator behaviors mandated by SpecMan Core.
+- **Artifact-kind gating**: ops must be validated against the artifact kind (spec vs impl vs scratch) before any parse/serialize.
+- **Scratch `target` guard**: no `SetTarget`/`ClearTarget`-like ops for scratch pads; any attempt to mutate `target` fails.
+
+Recommended conflict policy (default): **strict reject** (no implicit “last op wins”). This aligns best with deterministic execution requirements.
+
+If a deterministic precedence policy is ever adopted, it MUST be explicitly documented and covered by tests.
+
+#### Canonical Entry Point (Recommended)
+
+- **Canonical for new callers:** `Specman::update(target, FrontMatterUpdateRequest)`.
+  - Rationale: artifact-oriented, already kind-aware, consistent with other lifecycle façade operations.
+- **Backward-compatibility layer:** keep `MetadataMutator::mutate(request)` as a thin adapter translating to the declarative tagged-enum (or delegating to the same internal engine).
+
+#### Staged Refactor Checklist
+
+The staged checklist + current status is tracked in the scratch pad at [../../.specman/scratchpad/metadata-api-declarative-refactor/scratch.md](../../.specman/scratchpad/metadata-api-declarative-refactor/scratch.md).
+
+#### Open Questions
+
+- If both “replace list” and “ensure item” appear in one request, do we hard-error, or define precedence?
+- Are YAML formatting details (key ordering, quoting, trailing newlines) considered externally observable and therefore stability-critical?
+- Should list ordering be preserved exactly as provided or normalized deterministically?
+- Do we preserve unknown YAML keys during typed front matter mutation, or enforce a strict schema?
+
 ### Artifact-Specific Front Matter Schemas
 
 - `src/crates/specman/src/front_matter.rs` now models specification, implementation, and scratch metadata via dedicated structs (`SpecificationFrontMatter`, `ImplementationFrontMatter`, `ScratchFrontMatter`) plus the `ArtifactFrontMatter` enum. Each struct derives `Serialize`, `Deserialize`, and `JsonSchema`, and their doc comments cite the relevant paragraphs in [SpecMan Data Model](../../spec/specman-data-model/spec.md) to satisfy the Stage 4 comment-alignment requirement.
