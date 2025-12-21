@@ -179,15 +179,127 @@ pub fn apply_front_matter_update(
 
     validate_front_matter_ops(&artifact.kind, &request.ops, parent_dir, workspace)?;
 
-    let (yaml_segment, body_segment) = match front_matter::split_front_matter(raw_document) {
-        Ok(split) => (Some(split.yaml.to_string()), split.body.to_string()),
-        Err(_) => (None, raw_document.to_string()),
-    };
+    let canonical_ops =
+        canonicalize_front_matter_ops(&artifact.kind, &request.ops, parent_dir, workspace)?;
+
+    #[derive(Default)]
+    struct TouchedKeys {
+        name: bool,
+        title: bool,
+        description: bool,
+        version: bool,
+        tags: bool,
+
+        requires_implementation: bool,
+
+        spec: bool,
+        location: bool,
+        library: bool,
+        primary_language: bool,
+        secondary_languages: bool,
+
+        references: bool,
+        dependencies: bool,
+
+        branch: bool,
+        work_type: bool,
+    }
+
+    fn touched_keys(ops: &[FrontMatterUpdateOp]) -> TouchedKeys {
+        let mut touched = TouchedKeys::default();
+        for op in ops {
+            match op {
+                FrontMatterUpdateOp::SetName { .. } | FrontMatterUpdateOp::ClearName => {
+                    touched.name = true;
+                }
+                FrontMatterUpdateOp::SetTitle { .. } | FrontMatterUpdateOp::ClearTitle => {
+                    touched.title = true;
+                }
+                FrontMatterUpdateOp::SetDescription { .. }
+                | FrontMatterUpdateOp::ClearDescription => {
+                    touched.description = true;
+                }
+                FrontMatterUpdateOp::SetVersion { .. } | FrontMatterUpdateOp::ClearVersion => {
+                    touched.version = true;
+                }
+                FrontMatterUpdateOp::AddTag { .. } | FrontMatterUpdateOp::RemoveTag { .. } => {
+                    touched.tags = true;
+                }
+                FrontMatterUpdateOp::SetRequiresImplementation { .. }
+                | FrontMatterUpdateOp::ClearRequiresImplementation => {
+                    touched.requires_implementation = true;
+                }
+                FrontMatterUpdateOp::SetSpec { .. } | FrontMatterUpdateOp::ClearSpec => {
+                    touched.spec = true;
+                }
+                FrontMatterUpdateOp::SetLocation { .. } | FrontMatterUpdateOp::ClearLocation => {
+                    touched.location = true;
+                }
+                FrontMatterUpdateOp::SetLibrary { .. } | FrontMatterUpdateOp::ClearLibrary => {
+                    touched.library = true;
+                }
+                FrontMatterUpdateOp::AddReference { .. }
+                | FrontMatterUpdateOp::RemoveReference { .. } => {
+                    touched.references = true;
+                }
+                FrontMatterUpdateOp::SetPrimaryLanguage { .. }
+                | FrontMatterUpdateOp::ClearPrimaryLanguage => {
+                    touched.primary_language = true;
+                }
+                FrontMatterUpdateOp::SetSecondaryLanguages { .. }
+                | FrontMatterUpdateOp::ClearSecondaryLanguages => {
+                    touched.secondary_languages = true;
+                }
+                FrontMatterUpdateOp::AddDependency { .. }
+                | FrontMatterUpdateOp::RemoveDependency { .. } => {
+                    touched.dependencies = true;
+                }
+                FrontMatterUpdateOp::SetBranch { .. } | FrontMatterUpdateOp::ClearBranch => {
+                    touched.branch = true;
+                }
+                FrontMatterUpdateOp::SetWorkType { .. } | FrontMatterUpdateOp::ClearWorkType => {
+                    touched.work_type = true;
+                }
+                FrontMatterUpdateOp::SetTarget { .. } | FrontMatterUpdateOp::ClearTarget => {
+                    // immutable (validated elsewhere)
+                }
+            }
+        }
+        touched
+    }
+
+    fn apply_key_from_typed(target: &mut Mapping, typed: &Mapping, key: &str, touched: bool) {
+        if !touched {
+            return;
+        }
+        let k = Value::String(key.to_string());
+        match typed.get(&k) {
+            Some(Value::Null) | None => {
+                target.remove(&k);
+            }
+            Some(v) => {
+                target.insert(k, v.clone());
+            }
+        }
+    }
+
+    let (yaml_segment, body_segment, original_yaml_value) =
+        match front_matter::split_front_matter(raw_document) {
+            Ok(split) => {
+                let yaml_str = split.yaml.to_string();
+                let parsed: Value = serde_yaml::from_str(&yaml_str)
+                    .map_err(|err| SpecmanError::Serialization(err.to_string()))?;
+                (Some(yaml_str), split.body.to_string(), Some(parsed))
+            }
+            Err(_) => (None, raw_document.to_string(), None),
+        };
 
     let mut mutated = false;
 
     match artifact.kind {
         ArtifactKind::Specification => {
+            let touched = touched_keys(&canonical_ops);
+
             let mut front = if let Some(yaml) = &yaml_segment {
                 let typed = ArtifactFrontMatter::from_yaml_str(yaml)?;
                 ensure_kind_matches(artifact, &typed)?;
@@ -198,18 +310,54 @@ pub fn apply_front_matter_update(
                 fm
             };
 
-            for op in &request.ops {
+            for op in &canonical_ops {
                 mutated |= apply_op_spec(op, &mut front, parent_dir, workspace)?;
             }
 
-            let yaml =
+            let yaml = if let Some(original) = &original_yaml_value {
+                let mut merged = original.as_mapping().cloned().unwrap_or_else(Mapping::new);
+                let typed_value = serde_yaml::to_value(&front).map_err(|err| {
+                    SpecmanError::Serialization(format!("unable to encode front matter: {err}"))
+                })?;
+                let typed_mapping = typed_value.as_mapping().ok_or_else(|| {
+                    SpecmanError::Template("front matter must be a YAML mapping".into())
+                })?;
+
+                apply_key_from_typed(&mut merged, typed_mapping, "name", touched.name);
+                apply_key_from_typed(&mut merged, typed_mapping, "title", touched.title);
+                apply_key_from_typed(
+                    &mut merged,
+                    typed_mapping,
+                    "description",
+                    touched.description,
+                );
+                apply_key_from_typed(&mut merged, typed_mapping, "version", touched.version);
+                apply_key_from_typed(&mut merged, typed_mapping, "tags", touched.tags);
+                apply_key_from_typed(
+                    &mut merged,
+                    typed_mapping,
+                    "requires_implementation",
+                    touched.requires_implementation,
+                );
+                apply_key_from_typed(
+                    &mut merged,
+                    typed_mapping,
+                    "dependencies",
+                    touched.dependencies,
+                );
+
+                serialize_front_matter_yaml(&Value::Mapping(merged))?
+            } else {
                 serialize_front_matter_yaml(&serde_yaml::to_value(&front).map_err(|err| {
                     SpecmanError::Serialization(format!("unable to encode front matter: {err}"))
-                })?)?;
+                })?)?
+            };
             let updated = compose_document(&yaml, &body_segment);
             Ok((updated, mutated || yaml_segment.is_none()))
         }
         ArtifactKind::Implementation => {
+            let touched = touched_keys(&canonical_ops);
+
             let mut front = if let Some(yaml) = &yaml_segment {
                 let typed = ArtifactFrontMatter::from_yaml_str(yaml)?;
                 ensure_kind_matches(artifact, &typed)?;
@@ -220,18 +368,65 @@ pub fn apply_front_matter_update(
                 fm
             };
 
-            for op in &request.ops {
+            for op in &canonical_ops {
                 mutated |= apply_op_impl(op, &mut front, parent_dir, workspace)?;
             }
 
-            let yaml =
+            let yaml = if let Some(original) = &original_yaml_value {
+                let mut merged = original.as_mapping().cloned().unwrap_or_else(Mapping::new);
+                let typed_value = serde_yaml::to_value(&front).map_err(|err| {
+                    SpecmanError::Serialization(format!("unable to encode front matter: {err}"))
+                })?;
+                let typed_mapping = typed_value.as_mapping().ok_or_else(|| {
+                    SpecmanError::Template("front matter must be a YAML mapping".into())
+                })?;
+
+                apply_key_from_typed(&mut merged, typed_mapping, "name", touched.name);
+                apply_key_from_typed(&mut merged, typed_mapping, "title", touched.title);
+                apply_key_from_typed(
+                    &mut merged,
+                    typed_mapping,
+                    "description",
+                    touched.description,
+                );
+                apply_key_from_typed(&mut merged, typed_mapping, "version", touched.version);
+                apply_key_from_typed(&mut merged, typed_mapping, "tags", touched.tags);
+
+                apply_key_from_typed(&mut merged, typed_mapping, "spec", touched.spec);
+                apply_key_from_typed(&mut merged, typed_mapping, "location", touched.location);
+                apply_key_from_typed(&mut merged, typed_mapping, "library", touched.library);
+                apply_key_from_typed(
+                    &mut merged,
+                    typed_mapping,
+                    "primary_language",
+                    touched.primary_language,
+                );
+                apply_key_from_typed(
+                    &mut merged,
+                    typed_mapping,
+                    "secondary_languages",
+                    touched.secondary_languages,
+                );
+                apply_key_from_typed(&mut merged, typed_mapping, "references", touched.references);
+                apply_key_from_typed(
+                    &mut merged,
+                    typed_mapping,
+                    "dependencies",
+                    touched.dependencies,
+                );
+
+                serialize_front_matter_yaml(&Value::Mapping(merged))?
+            } else {
                 serialize_front_matter_yaml(&serde_yaml::to_value(&front).map_err(|err| {
                     SpecmanError::Serialization(format!("unable to encode front matter: {err}"))
-                })?)?;
+                })?)?
+            };
             let updated = compose_document(&yaml, &body_segment);
             Ok((updated, mutated || yaml_segment.is_none()))
         }
         ArtifactKind::ScratchPad => {
+            let touched = touched_keys(&canonical_ops);
+
             let mut front = if let Some(yaml) = &yaml_segment {
                 let typed = ArtifactFrontMatter::from_yaml_str(yaml)?;
                 ensure_kind_matches(artifact, &typed)?;
@@ -242,18 +437,133 @@ pub fn apply_front_matter_update(
                 fm
             };
 
-            for op in &request.ops {
+            for op in &canonical_ops {
                 mutated |= apply_op_scratch(op, &mut front, parent_dir, workspace)?;
             }
 
-            let yaml =
+            let yaml = if let Some(original) = &original_yaml_value {
+                let mut merged = original.as_mapping().cloned().unwrap_or_else(Mapping::new);
+                let typed_value = serde_yaml::to_value(&front).map_err(|err| {
+                    SpecmanError::Serialization(format!("unable to encode front matter: {err}"))
+                })?;
+                let typed_mapping = typed_value.as_mapping().ok_or_else(|| {
+                    SpecmanError::Template("front matter must be a YAML mapping".into())
+                })?;
+
+                apply_key_from_typed(&mut merged, typed_mapping, "name", touched.name);
+                apply_key_from_typed(&mut merged, typed_mapping, "title", touched.title);
+                apply_key_from_typed(
+                    &mut merged,
+                    typed_mapping,
+                    "description",
+                    touched.description,
+                );
+                apply_key_from_typed(&mut merged, typed_mapping, "version", touched.version);
+                apply_key_from_typed(&mut merged, typed_mapping, "tags", touched.tags);
+
+                // target is immutable; never merge it unless the request touches it (which errors).
+                apply_key_from_typed(&mut merged, typed_mapping, "branch", touched.branch);
+                apply_key_from_typed(&mut merged, typed_mapping, "work_type", touched.work_type);
+                apply_key_from_typed(
+                    &mut merged,
+                    typed_mapping,
+                    "dependencies",
+                    touched.dependencies,
+                );
+
+                serialize_front_matter_yaml(&Value::Mapping(merged))?
+            } else {
                 serialize_front_matter_yaml(&serde_yaml::to_value(&front).map_err(|err| {
                     SpecmanError::Serialization(format!("unable to encode front matter: {err}"))
-                })?)?;
+                })?)?
+            };
             let updated = compose_document(&yaml, &body_segment);
             Ok((updated, mutated || yaml_segment.is_none()))
         }
     }
+}
+
+fn canonicalize_front_matter_ops(
+    kind: &ArtifactKind,
+    ops: &[FrontMatterUpdateOp],
+    parent_dir: &Path,
+    workspace: &WorkspacePaths,
+) -> Result<Vec<FrontMatterUpdateOp>, SpecmanError> {
+    // To make the API semantics declarative, apply in a canonical order so callers
+    // can't accidentally depend on op ordering. Validation already rejects conflicts.
+    let mut keyed: Vec<((u8, String), FrontMatterUpdateOp)> = Vec::with_capacity(ops.len());
+    for op in ops {
+        let (rank, key) = match op {
+            // Identity scalars
+            FrontMatterUpdateOp::SetName { .. } | FrontMatterUpdateOp::ClearName => {
+                (0, String::new())
+            }
+            FrontMatterUpdateOp::SetTitle { .. } | FrontMatterUpdateOp::ClearTitle => {
+                (1, String::new())
+            }
+            FrontMatterUpdateOp::SetDescription { .. } | FrontMatterUpdateOp::ClearDescription => {
+                (2, String::new())
+            }
+            FrontMatterUpdateOp::SetVersion { .. } | FrontMatterUpdateOp::ClearVersion => {
+                (3, String::new())
+            }
+            // Tags are set-like; sort by tag to ensure stable output ordering.
+            FrontMatterUpdateOp::AddTag { tag } | FrontMatterUpdateOp::RemoveTag { tag } => {
+                (4, tag.clone())
+            }
+            // Spec fields
+            FrontMatterUpdateOp::SetRequiresImplementation { .. }
+            | FrontMatterUpdateOp::ClearRequiresImplementation => (10, String::new()),
+
+            // Impl fields
+            FrontMatterUpdateOp::SetSpec { ref_ } => {
+                let normalized = normalize_persisted_reference(ref_, parent_dir, workspace)?;
+                (20, normalized)
+            }
+            FrontMatterUpdateOp::ClearSpec => (20, String::new()),
+            FrontMatterUpdateOp::SetLocation { location } => (21, location.clone()),
+            FrontMatterUpdateOp::ClearLocation => (21, String::new()),
+            FrontMatterUpdateOp::SetLibrary { .. } | FrontMatterUpdateOp::ClearLibrary => {
+                (22, String::new())
+            }
+            FrontMatterUpdateOp::SetPrimaryLanguage { .. }
+            | FrontMatterUpdateOp::ClearPrimaryLanguage => (23, String::new()),
+            FrontMatterUpdateOp::SetSecondaryLanguages { .. }
+            | FrontMatterUpdateOp::ClearSecondaryLanguages => (24, String::new()),
+
+            // Dependencies/references are set-like by normalized locator.
+            FrontMatterUpdateOp::AddDependency { ref_, .. }
+            | FrontMatterUpdateOp::RemoveDependency { ref_ } => {
+                let base = match kind {
+                    ArtifactKind::ScratchPad => workspace.root(),
+                    _ => parent_dir,
+                };
+                let normalized = normalize_persisted_reference(ref_, base, workspace)?;
+                (30, normalized)
+            }
+            FrontMatterUpdateOp::AddReference { ref_, .. }
+            | FrontMatterUpdateOp::RemoveReference { ref_ } => {
+                let normalized = normalize_persisted_reference(ref_, parent_dir, workspace)?;
+                (31, normalized)
+            }
+
+            // Scratch fields
+            FrontMatterUpdateOp::SetBranch { branch } => (40, branch.clone()),
+            FrontMatterUpdateOp::ClearBranch => (40, String::new()),
+            FrontMatterUpdateOp::SetWorkType { .. } | FrontMatterUpdateOp::ClearWorkType => {
+                (41, String::new())
+            }
+            FrontMatterUpdateOp::SetTarget { .. } | FrontMatterUpdateOp::ClearTarget => {
+                // Will be rejected for scratch in validation; keep a consistent ordering otherwise.
+                (42, String::new())
+            }
+        };
+
+        keyed.push(((rank, key), op.clone()));
+    }
+
+    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(keyed.into_iter().map(|(_, op)| op).collect())
 }
 
 fn validate_front_matter_ops(
@@ -885,24 +1195,14 @@ impl<L: WorkspaceLocator> MetadataMutator<L> {
             )));
         }
 
-        let dir = canonical_path.parent().ok_or_else(|| {
-            SpecmanError::Workspace(format!(
-                "artifact {} has no parent directory",
-                canonical_path.display()
-            ))
-        })?;
-
         let raw = fs::read_to_string(&canonical_path)?;
         let split = front_matter::split_front_matter(&raw)?;
         let yaml_segment = split.yaml.to_string();
-        let body_segment = split.body.to_string();
 
-        let mut yaml_value: Value = serde_yaml::from_str(&yaml_segment)
+        let yaml_value: Value = serde_yaml::from_str(&yaml_segment)
             .map_err(|err| SpecmanError::Serialization(err.to_string()))?;
         let typed_front = ArtifactFrontMatter::from_yaml_value(&yaml_value)?;
-        let mapping = yaml_value
-            .as_mapping_mut()
-            .ok_or_else(|| SpecmanError::Template("front matter must be a YAML mapping".into()))?;
+
         let artifact_kind = artifact_kind_from_front(&typed_front);
         let artifact_name = infer_name(typed_front.name(), &canonical_path);
         let artifact = ArtifactId {
@@ -910,28 +1210,31 @@ impl<L: WorkspaceLocator> MetadataMutator<L> {
             name: artifact_name,
         };
 
-        let context = MetadataContext {
-            parent_dir: dir,
-            workspace: &workspace_paths,
-        };
+        let mut update_request = FrontMatterUpdateRequest::new();
+        update_request.persist = request.persist;
 
-        let mut mutated = false;
-        if !request.add_dependencies.is_empty() {
-            let handler = SpecificationMetadataHandler::new(&request.add_dependencies);
-            mutated |= handler.apply(&artifact, mapping, &context)?;
+        for dep in request.add_dependencies {
+            update_request.ops.push(FrontMatterUpdateOp::AddDependency {
+                ref_: dep,
+                optional: None,
+            });
         }
 
-        if !request.add_references.is_empty() {
-            let handler = ImplementationMetadataHandler::new(&request.add_references);
-            mutated |= handler.apply(&artifact, mapping, &context)?;
+        for r in request.add_references {
+            update_request.ops.push(FrontMatterUpdateOp::AddReference {
+                ref_: r.locator,
+                type_: r.reference_type,
+                optional: r.optional,
+            });
         }
 
-        let mut updated_document = raw;
-        if mutated {
-            let rendered_yaml = serde_yaml::to_string(&Value::Mapping(mapping.clone()))
-                .map_err(|err| SpecmanError::Serialization(err.to_string()))?;
-            updated_document = compose_document(rendered_yaml.trim_end(), &body_segment);
-        }
+        let (updated_document, mutated) = apply_front_matter_update(
+            &artifact,
+            &canonical_path,
+            &workspace_paths,
+            &raw,
+            &update_request,
+        )?;
 
         let mut persisted = None;
         if mutated && request.persist {
@@ -988,6 +1291,7 @@ fn infer_name(name: Option<&str>, path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
+#[allow(dead_code)]
 fn ensure_spec_kind(kind: &ArtifactKind) -> Result<(), SpecmanError> {
     if matches!(kind, ArtifactKind::Specification) {
         Ok(())
@@ -998,6 +1302,7 @@ fn ensure_spec_kind(kind: &ArtifactKind) -> Result<(), SpecmanError> {
     }
 }
 
+#[allow(dead_code)]
 fn ensure_impl_kind(kind: &ArtifactKind) -> Result<(), SpecmanError> {
     if matches!(kind, ArtifactKind::Implementation) {
         Ok(())
@@ -1008,6 +1313,7 @@ fn ensure_impl_kind(kind: &ArtifactKind) -> Result<(), SpecmanError> {
     }
 }
 
+#[allow(dead_code)]
 fn insert_dependency(mapping: &mut Mapping, locator: &str) -> Result<bool, SpecmanError> {
     let key = Value::String("dependencies".into());
     let entry = mapping
@@ -1025,6 +1331,7 @@ fn insert_dependency(mapping: &mut Mapping, locator: &str) -> Result<bool, Specm
     Ok(true)
 }
 
+#[allow(dead_code)]
 fn insert_reference(
     mapping: &mut Mapping,
     addition: &ReferenceAddition,
@@ -1063,6 +1370,7 @@ fn insert_reference(
     Ok(true)
 }
 
+#[allow(dead_code)]
 fn dependency_matches(value: &Value, locator: &str) -> bool {
     match value {
         Value::String(existing) => existing == locator,
@@ -1075,6 +1383,7 @@ fn dependency_matches(value: &Value, locator: &str) -> bool {
     }
 }
 
+#[allow(dead_code)]
 fn reference_matches(value: &Value, locator: &str) -> bool {
     match value {
         Value::String(existing) => existing == locator,
@@ -1146,11 +1455,13 @@ pub struct MetadataMutationResult {
     pub persisted: Option<PersistedArtifact>,
 }
 
+#[allow(dead_code)]
 struct MetadataContext<'a> {
     parent_dir: &'a Path,
     workspace: &'a WorkspacePaths,
 }
 
+#[allow(dead_code)]
 trait MetadataHandler {
     fn apply(
         &self,
@@ -1160,16 +1471,19 @@ trait MetadataHandler {
     ) -> Result<bool, SpecmanError>;
 }
 
+#[allow(dead_code)]
 struct SpecificationMetadataHandler<'a> {
     dependencies: &'a [String],
 }
 
+#[allow(dead_code)]
 impl<'a> SpecificationMetadataHandler<'a> {
     fn new(dependencies: &'a [String]) -> Self {
         Self { dependencies }
     }
 }
 
+#[allow(dead_code)]
 impl<'a> MetadataHandler for SpecificationMetadataHandler<'a> {
     fn apply(
         &self,
@@ -1187,16 +1501,19 @@ impl<'a> MetadataHandler for SpecificationMetadataHandler<'a> {
     }
 }
 
+#[allow(dead_code)]
 struct ImplementationMetadataHandler<'a> {
     references: &'a [ReferenceAddition],
 }
 
+#[allow(dead_code)]
 impl<'a> ImplementationMetadataHandler<'a> {
     fn new(references: &'a [ReferenceAddition]) -> Self {
         Self { references }
     }
 }
 
+#[allow(dead_code)]
 impl<'a> MetadataHandler for ImplementationMetadataHandler<'a> {
     fn apply(
         &self,
@@ -1590,7 +1907,8 @@ mod tests {
         };
 
         let result = mutator.mutate(request).expect("handle dependency accepted");
-        assert!(result.updated_document.contains("spec://data-model"));
+        assert!(!result.updated_document.contains("spec://data-model"));
+        assert!(result.updated_document.contains("../data-model/spec.md"));
     }
 
     #[test]

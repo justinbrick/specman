@@ -131,6 +131,8 @@ fn create_scratchpad(
         ScratchType::Revision => ScratchWorkType::Revision(ScratchRevisionMetadata::default()),
     };
 
+    let work_type_for_update = work_type.clone();
+
     let plan = session
         .specman
         .plan_create(CreateRequest::ScratchPad {
@@ -144,7 +146,19 @@ fn create_scratchpad(
         .map_err(CliError::from)?;
 
     let mut rendered = plan.rendered;
-    rendered.body = update_scratch_document(&rendered.body, &target, &branch, work_key)?;
+    let artifact_path = session
+        .workspace_paths
+        .scratchpad_dir()
+        .join(&name)
+        .join("scratch.md");
+    rendered.body = update_scratch_document(
+        &rendered.body,
+        &artifact,
+        &artifact_path,
+        &session.workspace_paths,
+        &branch,
+        &work_type_for_update,
+    )?;
 
     let persisted = session
         .specman

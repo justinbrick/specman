@@ -6,7 +6,7 @@ use rmcp::model::{
     Content, ContextInclusion, CreateMessageRequestParam, Role as SamplingRole, SamplingMessage,
 };
 use rmcp::service::Peer;
-use serde_yaml::{Mapping, Value as YamlValue};
+use specman::{FrontMatterUpdateOp, FrontMatterUpdateRequest};
 
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
@@ -626,12 +626,17 @@ Enter an alternate name, or leave blank to accept."
             &context.name,
         );
 
-        let content = std::fs::read_to_string(&persisted.path)
-            .map_err(|err| invalid_params(format!("failed to read scratch pad: {err}")))?;
-        let rewritten =
-            rewrite_scratch_front_matter(&content, &context.target, &branch, &context.work_type)?;
-        std::fs::write(&persisted.path, rewritten)
-            .map_err(|err| invalid_params(format!("failed to write scratch pad: {err}")))?;
+        // Use the declarative metadata mutation API to set branch/work_type,
+        // while preserving the immutable scratchpad target.
+        let update = FrontMatterUpdateRequest::new()
+            .persist(true)
+            .with_op(FrontMatterUpdateOp::SetBranch { branch })
+            .with_op(FrontMatterUpdateOp::SetWorkType {
+                work_type: context.work_type.clone(),
+            });
+        specman
+            .update(persisted.artifact.clone(), update)
+            .map_err(to_mcp_error)?;
 
         Ok(persisted)
     }
@@ -736,29 +741,6 @@ fn scratch_work_type_key(work_type: &specman::front_matter::ScratchWorkType) -> 
         ScratchWorkType::Refactor(_) => "ref",
         ScratchWorkType::Fix(_) => "fix",
     }
-}
-
-fn rewrite_scratch_front_matter(
-    content: &str,
-    target: &str,
-    branch: &str,
-    work_type: &specman::front_matter::ScratchWorkType,
-) -> Result<String, McpError> {
-    let split = specman::front_matter::split_front_matter(content).map_err(to_mcp_error)?;
-    let mut doc: Mapping = serde_yaml::from_str(split.yaml)
-        .map_err(|err| invalid_params(format!("invalid scratch front matter: {err}")))?;
-
-    doc.insert(YamlValue::from("target"), YamlValue::from(target));
-    doc.insert(YamlValue::from("branch"), YamlValue::from(branch));
-
-    // Build `work_type` YAML from the strongly typed model.
-    let work_type_yaml: YamlValue = serde_yaml::to_value(work_type)
-        .map_err(|err| invalid_params(format!("failed to encode work_type yaml: {err}")))?;
-    doc.insert(YamlValue::from("work_type"), work_type_yaml);
-
-    let yaml = serde_yaml::to_string(&doc)
-        .map_err(|err| invalid_params(format!("failed to write front matter: {err}")))?;
-    Ok(format!("---\n{}---\n{}", yaml, split.body))
 }
 
 fn create_artifact_result(persisted: &PersistedArtifact) -> CreateArtifactResult {

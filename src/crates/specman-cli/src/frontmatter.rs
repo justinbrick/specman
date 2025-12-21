@@ -1,98 +1,101 @@
-use serde_yaml::{Mapping, Value};
-use specman::front_matter;
+use std::path::Path;
+
+use specman::dependency_tree::ArtifactId;
+use specman::front_matter::{ImplementingLanguage, ScratchWorkType};
+use specman::metadata::{FrontMatterUpdateOp, FrontMatterUpdateRequest, apply_front_matter_update};
+use specman::workspace::WorkspacePaths;
 
 use crate::error::{CliError, ExitStatus};
 
 pub fn update_spec_document(
     content: &str,
+    artifact: &ArtifactId,
+    artifact_path: &Path,
+    workspace: &WorkspacePaths,
     name: &str,
     version: &str,
     dependencies: &[String],
 ) -> Result<String, CliError> {
-    rewrite_front_matter(content, |doc| {
-        doc.insert(Value::from("name"), Value::from(name));
-        doc.insert(Value::from("version"), Value::from(version));
-        if !dependencies.is_empty() {
-            let mut sequence = current_sequence(doc, "dependencies");
-            for dep in dependencies {
-                sequence.push(Value::from(dep.clone()));
-            }
-            doc.insert(Value::from("dependencies"), Value::Sequence(sequence));
-        }
-        Ok(())
-    })
+    let mut request = FrontMatterUpdateRequest::new()
+        .persist(false)
+        .with_op(FrontMatterUpdateOp::SetName {
+            name: name.to_string(),
+        })
+        .with_op(FrontMatterUpdateOp::SetVersion {
+            version: version.to_string(),
+        });
+
+    for dep in dependencies {
+        request = request.with_op(FrontMatterUpdateOp::AddDependency {
+            ref_: dep.clone(),
+            optional: Some(false),
+        });
+    }
+
+    let (updated, _) =
+        apply_front_matter_update(artifact, artifact_path, workspace, content, &request)
+            .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
+    Ok(updated)
 }
 
 pub fn update_impl_document(
     content: &str,
+    artifact: &ArtifactId,
+    artifact_path: &Path,
+    workspace: &WorkspacePaths,
     name: &str,
     spec_locator: &str,
     language: &str,
     location: &str,
 ) -> Result<String, CliError> {
-    rewrite_front_matter(content, |doc| {
-        doc.insert(Value::from("name"), Value::from(name));
-        doc.insert(Value::from("spec"), Value::from(spec_locator));
-        doc.insert(Value::from("location"), Value::from(location));
+    let language = ImplementingLanguage {
+        language: language.to_string(),
+        ..Default::default()
+    };
 
-        let mut language_map = Mapping::new();
-        language_map.insert(Value::from("language"), Value::from(language));
-        if !language_map.contains_key(Value::from("properties")) {
-            language_map.insert(Value::from("properties"), Value::Mapping(Mapping::new()));
-        }
-        if !language_map.contains_key(Value::from("libraries")) {
-            language_map.insert(Value::from("libraries"), Value::Sequence(Vec::new()));
-        }
-        doc.insert(
-            Value::from("primary_language"),
-            Value::Mapping(language_map),
-        );
+    let request = FrontMatterUpdateRequest::new()
+        .persist(false)
+        .with_op(FrontMatterUpdateOp::SetName {
+            name: name.to_string(),
+        })
+        .with_op(FrontMatterUpdateOp::SetSpec {
+            ref_: spec_locator.to_string(),
+        })
+        .with_op(FrontMatterUpdateOp::SetLocation {
+            location: location.to_string(),
+        })
+        .with_op(FrontMatterUpdateOp::SetPrimaryLanguage { language })
+        .with_op(FrontMatterUpdateOp::AddReference {
+            ref_: spec_locator.to_string(),
+            type_: Some("specification".to_string()),
+            optional: Some(false),
+        });
 
-        let mut references = Mapping::new();
-        references.insert(Value::from("ref"), Value::from(spec_locator));
-        references.insert(Value::from("type"), Value::from("specification"));
-        references.insert(Value::from("optional"), Value::from(false));
-        doc.insert(
-            Value::from("references"),
-            Value::Sequence(vec![Value::Mapping(references)]),
-        );
-        Ok(())
-    })
+    let (updated, _) =
+        apply_front_matter_update(artifact, artifact_path, workspace, content, &request)
+            .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
+    Ok(updated)
 }
 
 pub fn update_scratch_document(
     content: &str,
-    target: &str,
+    artifact: &ArtifactId,
+    artifact_path: &Path,
+    workspace: &WorkspacePaths,
     branch: &str,
-    work_type: &str,
+    work_type: &ScratchWorkType,
 ) -> Result<String, CliError> {
-    rewrite_front_matter(content, |doc| {
-        doc.insert(Value::from("target"), Value::from(target));
-        doc.insert(Value::from("branch"), Value::from(branch));
-        let mut work_map = Mapping::new();
-        work_map.insert(Value::from(work_type), Value::Mapping(Mapping::new()));
-        doc.insert(Value::from("work_type"), Value::Mapping(work_map));
-        Ok(())
-    })
-}
+    let request = FrontMatterUpdateRequest::new()
+        .persist(false)
+        .with_op(FrontMatterUpdateOp::SetBranch {
+            branch: branch.to_string(),
+        })
+        .with_op(FrontMatterUpdateOp::SetWorkType {
+            work_type: work_type.clone(),
+        });
 
-fn rewrite_front_matter<F>(content: &str, mut f: F) -> Result<String, CliError>
-where
-    F: FnMut(&mut Mapping) -> Result<(), CliError>,
-{
-    let split = front_matter::split_front_matter(content)
-        .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    let mut doc: Mapping = serde_yaml::from_str(split.yaml)
-        .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    f(&mut doc)?;
-    let yaml = serde_yaml::to_string(&doc)
-        .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    Ok(format!("---\n{}---\n{}", yaml, split.body))
-}
-
-fn current_sequence(doc: &Mapping, key: &str) -> Vec<Value> {
-    doc.get(Value::from(key))
-        .and_then(|value| value.as_sequence())
-        .cloned()
-        .unwrap_or_default()
+    let (updated, _) =
+        apply_front_matter_update(artifact, artifact_path, workspace, content, &request)
+            .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
+    Ok(updated)
 }

@@ -100,7 +100,16 @@ fn create_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         .map_err(CliError::from)?;
 
     let mut rendered = plan.rendered;
-    rendered.body = update_spec_document(&rendered.body, &name, &version, &dependencies)?;
+    let artifact_path = folder.join("spec.md");
+    rendered.body = update_spec_document(
+        &rendered.body,
+        &plan.artifact,
+        &artifact_path,
+        &session.workspace_paths,
+        &name,
+        &version,
+        &dependencies,
+    )?;
 
     let persisted = session
         .specman

@@ -118,8 +118,17 @@ fn create_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         .map_err(CliError::from)?;
 
     let mut rendered = plan.rendered;
-    rendered.body =
-        update_impl_document(&rendered.body, &name, &resolved_spec, &language, &location)?;
+    let artifact_path = folder.join("impl.md");
+    rendered.body = update_impl_document(
+        &rendered.body,
+        &plan.artifact,
+        &artifact_path,
+        &session.workspace_paths,
+        &name,
+        &resolved_spec,
+        &language,
+        &location,
+    )?;
 
     let persisted = session
         .specman
