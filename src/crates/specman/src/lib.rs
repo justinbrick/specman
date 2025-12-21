@@ -27,7 +27,6 @@ pub use lifecycle::{
 };
 pub use metadata::{
     FrontMatterUpdateOp, FrontMatterUpdateRequest, FrontMatterUpdateResult,
-    MetadataMutationRequest, MetadataMutationResult, MetadataMutator, ReferenceAddition,
     apply_front_matter_update,
 };
 pub use persistence::{
