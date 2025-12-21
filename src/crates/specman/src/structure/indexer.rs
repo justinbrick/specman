@@ -10,7 +10,7 @@ use crate::error::SpecmanError;
 use crate::front_matter::{ArtifactFrontMatter, optional_front_matter};
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
 
-use super::cache::{resolve_unresolved_refs, IndexCache, UnresolvedHeadingRef, UnresolvedTarget};
+use super::cache::{IndexCache, UnresolvedHeadingRef, UnresolvedTarget, resolve_unresolved_refs};
 
 use super::index::{
     ArtifactKey, ArtifactRecord, ConstraintIdentifier, ConstraintRecord, HeadingIdentifier,
@@ -73,7 +73,8 @@ impl<L: WorkspaceLocator> FilesystemStructureIndexer<L> {
             }
             Err(err) => {
                 // For lock contention, fail fast as required.
-                if matches!(err, SpecmanError::Workspace(ref msg) if msg.contains("index cache is locked") || msg.contains("cache is locked")) {
+                if matches!(err, SpecmanError::Workspace(ref msg) if msg.contains("index cache is locked") || msg.contains("cache is locked"))
+                {
                     return Err(err);
                 }
                 // Corrupt / incompatible / partial cache falls back to rebuild.
@@ -196,12 +197,18 @@ fn index_add_artifacts(
                     });
                 }
             }
-            PendingTarget::InterDoc { workspace_path, slug } => {
+            PendingTarget::InterDoc {
+                workspace_path,
+                slug,
+            } => {
                 let Some(artifact_key) = artifact_by_path.get(&workspace_path).cloned() else {
                     if pending.from.artifact.kind != ArtifactKind::ScratchPad {
                         unresolved.push(UnresolvedHeadingRef {
                             from: pending.from,
-                            target: UnresolvedTarget::InterDoc { workspace_path, slug },
+                            target: UnresolvedTarget::InterDoc {
+                                workspace_path,
+                                slug,
+                            },
                         });
                     }
                     continue;

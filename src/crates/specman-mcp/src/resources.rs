@@ -15,8 +15,8 @@ use rmcp::service::{RequestContext, RoleServer};
 use serde::{Deserialize, Serialize};
 
 use specman::{
-    ArtifactId, ArtifactKind, ArtifactSummary, SemVer, SpecmanError,
-    WorkspaceLocator, WorkspacePaths,
+    ArtifactId, ArtifactKind, ArtifactSummary, SemVer, SpecmanError, WorkspaceLocator,
+    WorkspacePaths,
 };
 
 use crate::error::{McpError, to_mcp_error};
@@ -26,7 +26,9 @@ use crate::server::SpecmanMcpServer;
 pub struct ArtifactRecord {
     #[schemars(description = "Stable artifact identifier (kind + name).")]
     pub id: ArtifactId,
-    #[schemars(description = "Canonical artifact handle (e.g. 'spec://name', 'impl://name', 'scratch://name').")]
+    #[schemars(
+        description = "Canonical artifact handle (e.g. 'spec://name', 'impl://name', 'scratch://name')."
+    )]
     pub handle: String,
     #[schemars(description = "Workspace-relative path to the artifact markdown file.")]
     pub path: String,

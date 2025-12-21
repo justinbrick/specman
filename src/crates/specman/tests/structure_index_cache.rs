@@ -24,9 +24,7 @@ fn write_minimal_spec(workspace: &WorkspacePaths, name: &str) {
     fs::create_dir_all(&dir).unwrap();
     fs::write(
         dir.join("spec.md"),
-        format!(
-            "---\nname: {name}\nversion: '1.0.0'\n---\n# {name}\n\n## A\nHello\n"
-        ),
+        format!("---\nname: {name}\nversion: '1.0.0'\n---\n# {name}\n\n## A\nHello\n"),
     )
     .unwrap();
 }

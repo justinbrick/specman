@@ -1,8 +1,8 @@
 use std::fs;
 
 use specman::{
-    discover_workspace, FilesystemStructureIndexer, FilesystemWorkspaceLocator, StructureQuery,
-    WorkspacePaths,
+    FilesystemStructureIndexer, FilesystemWorkspaceLocator, StructureQuery, WorkspacePaths,
+    discover_workspace,
 };
 use tempfile::tempdir;
 
