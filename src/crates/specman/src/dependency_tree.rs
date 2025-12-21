@@ -1366,10 +1366,14 @@ fn best_effort_locator(
     }
 
     // Bare domains without a scheme (e.g., spec.commonmark.org) can be promoted to HTTPS.
+    // IMPORTANT: Do not promote workspace paths (e.g., "docs/foo.md" or "../foo.md");
+    // those should either resolve locally or be treated as unresolved.
     if !reference.contains("://")
         && reference.contains('.')
         && !reference.contains(' ')
+        && !reference.contains('/')
         && !reference.contains('\\')
+        && !reference.starts_with('.')
     {
         let candidate = format!("https://{reference}");
         if let Ok(locator) = ArtifactLocator::from_url(&candidate) {
@@ -1702,6 +1706,46 @@ name: founding-spec
     }
 
     #[test]
+    fn dependency_tree_best_effort_skips_missing_local_dependency_paths() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        fs::create_dir_all(root.join("spec/specman-core")).unwrap();
+
+        fs::write(
+            root.join("spec/specman-core/spec.md"),
+            r#"---
+name: specman-core
+dependencies:
+  - ../docs/missing.md
+---
+# SpecMan Core
+"#,
+        )
+        .unwrap();
+
+        let mapper =
+            FilesystemDependencyMapper::new(FilesystemWorkspaceLocator::new(root.to_path_buf()));
+        let tree = mapper
+            .dependency_tree_from_locator_best_effort("spec://specman-core")
+            .expect("best-effort should tolerate missing local deps");
+
+        // Root should load; missing upstream dep should be omitted.
+        assert_eq!(tree.root.id.name, "specman-core");
+        assert!(tree.upstream.is_empty(), "missing deps should be skipped");
+
+        // Defense-in-depth: ensure no promoted https locator leaked into the tree.
+        // (If it did, traversal might attempt network I/O.)
+        assert!(
+            tree.aggregate
+                .iter()
+                .all(|edge| edge.to.resolved_path.as_deref().unwrap_or("")
+                    != "https://../docs/missing.md"),
+            "missing local path must not be promoted to malformed https URL"
+        );
+    }
+
+    #[test]
     fn best_effort_locator_promotes_bare_domain_to_https() {
         let temp = tempdir().unwrap();
         let root = temp.path().join("workspace");
@@ -1718,6 +1762,27 @@ name: founding-spec
             }
             other => panic!("expected url locator, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn best_effort_locator_does_not_promote_workspace_like_paths_to_https() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("workspace");
+        fs::create_dir_all(root.join(".specman")).unwrap();
+        let workspace = WorkspacePaths::new(root.clone(), root.join(".specman"));
+
+        assert!(
+            best_effort_locator("docs/missing.md", &workspace).is_none(),
+            "workspace-ish path with '/' must not be promoted to https"
+        );
+        assert!(
+            best_effort_locator("../missing.md", &workspace).is_none(),
+            "relative workspace-ish path must not be promoted to https"
+        );
+        assert!(
+            best_effort_locator("./missing.md", &workspace).is_none(),
+            "relative workspace-ish path must not be promoted to https"
+        );
     }
 
     #[test]

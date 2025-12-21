@@ -22,9 +22,6 @@ references:
   - ref: ../../spec/specman-data-model/spec.md
     type: specification
     optional: false
-  - ref: ../markdown-templates/impl.md
-    type: implementation
-    optional: false
   - ref: ../specman-library/impl.md
     type: implementation
     optional: false
