@@ -93,6 +93,206 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn read_resource_constraints_index_returns_json()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let constraints = workspace
+            .server
+            .read_resource_contents("spec://testspec/constraints")
+            .await?;
+
+        match constraints {
+            ResourceContents::TextResourceContents {
+                mime_type, text, ..
+            } => {
+                assert_eq!(mime_type.as_deref(), Some("application/json"));
+                let value: serde_json::Value = serde_json::from_str(&text)?;
+                assert_eq!(value["artifact"], "spec://testspec");
+                let items = value["constraints"]
+                    .as_array()
+                    .expect("constraints index should be a JSON array");
+
+                assert_eq!(items.len(), 2, "expected two constraints");
+
+                let first = &items[0];
+                assert_eq!(first["constraint_id"], "concept-test.group");
+                assert_eq!(first["identifier_line"], "!concept-test.group:");
+                assert_eq!(first["uri"], "spec://testspec/constraints/concept-test.group");
+
+                let second = &items[1];
+                assert_eq!(second["constraint_id"], "concept-test.other");
+                assert_eq!(second["identifier_line"], "!concept-test.other:");
+                assert_eq!(second["uri"], "spec://testspec/constraints/concept-test.other");
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_resource_constraints_index_empty_spec_returns_empty_list()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let constraints = workspace
+            .server
+            .read_resource_contents("spec://empty/constraints")
+            .await?;
+
+        match constraints {
+            ResourceContents::TextResourceContents {
+                mime_type, text, ..
+            } => {
+                assert_eq!(mime_type.as_deref(), Some("application/json"));
+                let value: serde_json::Value = serde_json::from_str(&text)?;
+                assert_eq!(value["artifact"], "spec://empty");
+                let items = value["constraints"]
+                    .as_array()
+                    .expect("constraints index should be a JSON array");
+                assert!(items.is_empty(), "expected empty constraint list");
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_resource_constraints_index_missing_spec_errors()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let err = match workspace
+            .server
+            .read_resource_contents("spec://does-not-exist/constraints")
+            .await
+        {
+            Ok(_) => panic!("missing spec should fail"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.message.contains("not found") || err.message.contains("missing target"),
+            "{err:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_resource_constraints_content_routes_and_validates()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let contents = workspace
+            .server
+            .read_resource_contents("spec://testspec/constraints/concept-test.group")
+            .await?;
+
+        match contents {
+            ResourceContents::TextResourceContents {
+                mime_type, text, ..
+            } => {
+                assert_eq!(mime_type.as_deref(), Some("text/markdown"));
+                assert!(text.contains("!concept-test.group:"), "missing identifier line");
+                assert!(text.contains("MUST be indexable"));
+                assert!(
+                    !text.contains("!concept-test.other:"),
+                    "must not include other constraint groups"
+                );
+                assert!(
+                    !text.contains("MUST be discoverable"),
+                    "must not include other constraint content"
+                );
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_resource_constraints_content_missing_constraint_errors()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let err = match workspace
+            .server
+            .read_resource_contents("spec://testspec/constraints/concept-test.missing")
+            .await
+        {
+            Ok(_) => panic!("missing constraint should fail"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.message.contains("concept-test.missing"),
+            "{err:?}"
+        );
+        assert!(err.message.contains("spec://testspec"), "{err:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_resource_constraints_trailing_slash_routes_to_index()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let constraints = workspace
+            .server
+            .read_resource_contents("spec://testspec/constraints/")
+            .await?;
+
+        match constraints {
+            ResourceContents::TextResourceContents { mime_type, .. } => {
+                assert_eq!(mime_type.as_deref(), Some("application/json"));
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_resource_constraints_double_slash_errors()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let err = match workspace
+            .server
+            .read_resource_contents("spec://testspec/constraints//")
+            .await
+        {
+            Ok(_) => panic!("double slash should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.message.contains("double slash"), "{err:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_resource_constraints_rejects_non_spec_scheme()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let err = match workspace
+            .server
+            .read_resource_contents("impl://testimpl/constraints")
+            .await
+        {
+            Ok(_) => panic!("non-spec constraints should fail"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.message.contains("only available") || err.message.contains("spec://"),
+            "{err:?}"
+        );
+
+        Ok(())
+    }
+
     #[test]
     fn get_info_enables_prompts() {
         let server = SpecmanMcpServer::new().expect("server should start");
@@ -420,6 +620,8 @@ mod tests {
             "impl://{artifact}",
             "scratch://{artifact}",
             "spec://{artifact}/dependencies",
+            "spec://{artifact}/constraints",
+            "spec://{artifact}/constraints/{constraint_id}",
             "impl://{artifact}/dependencies",
             "scratch://{artifact}/dependencies",
         ] {
@@ -835,12 +1037,14 @@ mod tests {
 
     fn create_workspace_files(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let spec_dir = root.join("spec/testspec");
+        let empty_spec_dir = root.join("spec/empty");
         let impl_dir = root.join("impl/testimpl");
         let scratch_dir = root.join(".specman/scratchpad/testscratch");
         let template_dir = root.join("templates");
         let dot_specman_templates = root.join(".specman/templates");
 
         fs::create_dir_all(&spec_dir)?;
+        fs::create_dir_all(&empty_spec_dir)?;
         fs::create_dir_all(&impl_dir)?;
         fs::create_dir_all(&scratch_dir)?;
         fs::create_dir_all(&template_dir)?;
@@ -855,8 +1059,28 @@ dependencies: []
 ---
 
 # Spec Body
+
+## Constraints
+
+!concept-test.group:
+- MUST be indexable
+
+!concept-test.other:
+- MUST be discoverable
 ",
         )?;
+
+    fs::write(
+        empty_spec_dir.join("spec.md"),
+        r"---
+name: empty
+version: '0.1.0'
+dependencies: []
+---
+
+# Empty Spec
+",
+    )?;
 
         fs::write(
             impl_dir.join("impl.md"),

@@ -15,12 +15,172 @@ use rmcp::service::{RequestContext, RoleServer};
 use serde::{Deserialize, Serialize};
 
 use specman::{
-    ArtifactId, ArtifactKind, ArtifactSummary, SemVer, SpecmanError, WorkspaceLocator,
-    WorkspacePaths,
+    ArtifactId, ArtifactKey, ArtifactKind, ArtifactSummary, ConstraintIdentifier, SemVer,
+    SpecmanError, WorkspaceLocator, WorkspacePaths, FilesystemStructureIndexer,
 };
 
-use crate::error::{McpError, to_mcp_error};
+use crate::error::{McpError, invalid_params, to_mcp_error};
 use crate::server::SpecmanMcpServer;
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ConstraintIndexEntry {
+    #[schemars(description = "Constraint group set without leading '!' or trailing ':'.")]
+    pub constraint_id: String,
+    #[schemars(description = "Literal identifier line as it appears in the spec artifact.")]
+    pub identifier_line: String,
+    #[schemars(description = "Canonical resource URI for reading this constraint group.")]
+    pub uri: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ConstraintIndex {
+    #[schemars(description = "Artifact handle (e.g. 'spec://name') the constraints were read from.")]
+    pub artifact: String,
+    #[schemars(description = "Deterministic list of constraint groups in the specification.")]
+    pub constraints: Vec<ConstraintIndexEntry>,
+}
+
+fn ensure_specification_artifact(kind: ArtifactKind) -> Result<(), McpError> {
+    if kind == ArtifactKind::Specification {
+        Ok(())
+    } else {
+        Err(invalid_params(
+            "'/constraints' resources are only available for spec:// artifacts",
+        ))
+    }
+}
+
+fn validate_constraint_id(constraint_id: &str) -> Result<(), McpError> {
+    if constraint_id.is_empty() {
+        return Err(invalid_params("constraint_id must not be empty"));
+    }
+    if constraint_id.starts_with('!') || constraint_id.ends_with(':') {
+        return Err(invalid_params(
+            "constraint_id must not include leading '!' or trailing ':'",
+        ));
+    }
+    if constraint_id.contains('/') {
+        return Err(invalid_params("constraint_id must not include '/'"));
+    }
+    if constraint_id.contains(' ') || constraint_id.contains('\t') {
+        return Err(invalid_params(
+            "constraint_id must not include whitespace",
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug)]
+struct FenceState {
+    ch: char,
+    len: usize,
+}
+
+fn fence_update(current: Option<&FenceState>, line: &str) -> Option<Option<FenceState>> {
+    let trimmed = line.strip_prefix("   ").unwrap_or(line);
+    let (ch, run) = if trimmed.starts_with("```") {
+        ('`', trimmed.chars().take_while(|c| *c == '`').count())
+    } else if trimmed.starts_with("~~~") {
+        ('~', trimmed.chars().take_while(|c| *c == '~').count())
+    } else {
+        return None;
+    };
+
+    if current.is_none() {
+        return Some(Some(FenceState {
+            ch,
+            len: run.max(3),
+        }));
+    }
+
+    let cur = current.unwrap();
+    if cur.ch == ch && trimmed.chars().take_while(|c| *c == ch).count() >= cur.len {
+        return Some(None);
+    }
+
+    Some(Some(cur.clone()))
+}
+
+fn is_atx_heading_line(line: &str) -> bool {
+    let trimmed = line.strip_prefix("   ").unwrap_or(line);
+    let hashes = trimmed.chars().take_while(|c| *c == '#').count();
+    if !(1..=6).contains(&hashes) {
+        return false;
+    }
+    let Some(after) = trimmed.get(hashes..) else {
+        return false;
+    };
+    after.starts_with(' ')
+}
+
+fn is_constraint_identifier_line(trimmed: &str) -> bool {
+    if !trimmed.starts_with('!') || !trimmed.ends_with(':') {
+        return false;
+    }
+    if trimmed.contains(' ') || trimmed.contains('\t') {
+        return false;
+    }
+    let core = trimmed.trim_start_matches('!').trim_end_matches(':');
+    let groups: Vec<_> = core.split('.').filter(|s| !s.is_empty()).collect();
+    groups.len() >= 2
+}
+
+fn extract_constraint_block(body: &str, constraint_id: &str) -> Option<String> {
+    let lines: Vec<&str> = body.lines().collect();
+
+    let mut fence: Option<FenceState> = None;
+    let mut start: Option<usize> = None;
+
+    for (idx, raw) in lines.iter().enumerate() {
+        if let Some(updated) = fence_update(fence.as_ref(), raw) {
+            fence = updated;
+        }
+
+        if fence.is_some() {
+            continue;
+        }
+
+        let trimmed = raw.trim();
+        if !is_constraint_identifier_line(trimmed) {
+            continue;
+        }
+
+        let group = trimmed
+            .trim_start_matches('!')
+            .trim_end_matches(':');
+
+        if group == constraint_id {
+            start = Some(idx);
+            break;
+        }
+    }
+
+    let start = start?;
+
+    // Scan forward until the next constraint identifier or next heading.
+    let mut fence: Option<FenceState> = None;
+    let mut end = lines.len();
+    for raw in lines.iter().skip(start + 1).enumerate() {
+        let (offset, line) = raw;
+        if let Some(updated) = fence_update(fence.as_ref(), line) {
+            fence = updated;
+        }
+        if fence.is_some() {
+            continue;
+        }
+        let trimmed = line.trim();
+        if is_atx_heading_line(line) || is_constraint_identifier_line(trimmed) {
+            end = start + 1 + offset;
+            break;
+        }
+    }
+
+    let mut out = lines[start..end].join("\n");
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    Some(out)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ArtifactRecord {
@@ -103,6 +263,154 @@ fn artifact_record(summary: &ArtifactSummary, workspace: &WorkspacePaths) -> Art
 }
 
 impl SpecmanMcpServer {
+    async fn read_constraints_index(
+        &self,
+        uri: &str,
+        base_locator: &str,
+        artifact_id: &ArtifactId,
+        workspace: &WorkspacePaths,
+    ) -> Result<ResourceContents, McpError> {
+        ensure_specification_artifact(artifact_id.kind)?;
+
+        let path = artifact_path(artifact_id, workspace);
+        let body = fs::read_to_string(&path).map_err(|err| to_mcp_error(err.into()))?;
+        let body = specman::front_matter::split_front_matter(&body).map_err(to_mcp_error)?;
+        let lines: Vec<&str> = body.body.lines().collect();
+
+        // Map constraint group -> (document-order line number, literal line)
+        // by scanning the artifact body. This ensures `identifier_line` is truly literal.
+        let mut identifier_lines: BTreeMap<String, (usize, String)> = BTreeMap::new();
+        for (idx, raw) in lines.iter().enumerate() {
+            let trimmed = raw.trim();
+            if !trimmed.starts_with('!') || !trimmed.ends_with(':') {
+                continue;
+            }
+            if trimmed.contains(' ') || trimmed.contains('\t') {
+                continue;
+            }
+
+            let group = trimmed
+                .trim_start_matches('!')
+                .trim_end_matches(':')
+                .to_string();
+            identifier_lines.entry(group).or_insert((idx + 1, (*raw).to_string()));
+        }
+
+        let workspace_path = workspace_relative_path(workspace.root(), &path).ok_or_else(|| {
+            to_mcp_error(SpecmanError::Workspace(format!(
+                "failed to resolve workspace-relative path for '{}'",
+                path.display()
+            )))
+        })?;
+
+        let indexer = FilesystemStructureIndexer::new(self.workspace.clone());
+        let index = indexer
+            .build_once_with_workspace(workspace)
+            .map_err(to_mcp_error)?;
+
+        let mut entries: Vec<(usize, String, ConstraintIndexEntry)> = index
+            .constraints
+            .values()
+            .filter(|record| {
+                record.id.artifact.kind == ArtifactKind::Specification
+                    && record.id.artifact.workspace_path == workspace_path
+            })
+            .map(|record| {
+                let (doc_line, identifier_line) = identifier_lines
+                    .get(&record.id.group)
+                    .cloned()
+                    .unwrap_or_else(|| (usize::MAX, format!("!{}:", record.id.group)));
+
+                (
+                    doc_line,
+                    record.id.group.clone(),
+                    ConstraintIndexEntry {
+                        constraint_id: record.id.group.clone(),
+                        identifier_line,
+                        uri: format!("{}/constraints/{}", base_locator, record.id.group),
+                    },
+                )
+            })
+            .collect();
+
+        // Deterministic: document order first, then stable group id.
+        entries.sort_by(|(a_line, a_id, _), (b_line, b_id, _)| {
+            a_line.cmp(b_line).then_with(|| a_id.cmp(b_id))
+        });
+
+        let entries: Vec<ConstraintIndexEntry> = entries.into_iter().map(|(_, _, e)| e).collect();
+
+        let index = ConstraintIndex {
+            artifact: base_locator.to_string(),
+            constraints: entries,
+        };
+
+        let json = serde_json::to_string(&index)
+            .map_err(|err| to_mcp_error(SpecmanError::Serialization(err.to_string())))?;
+
+        Ok(ResourceContents::TextResourceContents {
+            uri: uri.to_string(),
+            mime_type: Some("application/json".to_string()),
+            text: json,
+            meta: None,
+        })
+    }
+
+    async fn read_constraint_content(
+        &self,
+        uri: &str,
+        base_locator: &str,
+        artifact_id: &ArtifactId,
+        constraint_id: &str,
+        workspace: &WorkspacePaths,
+    ) -> Result<ResourceContents, McpError> {
+        ensure_specification_artifact(artifact_id.kind)?;
+        validate_constraint_id(constraint_id)?;
+
+        // Validate the constraint exists via the structure index for exact matching.
+        let path = artifact_path(artifact_id, workspace);
+        let workspace_path = workspace_relative_path(workspace.root(), &path).ok_or_else(|| {
+            to_mcp_error(SpecmanError::Workspace(format!(
+                "failed to resolve workspace-relative path for '{}'",
+                path.display()
+            )))
+        })?;
+
+        let indexer = FilesystemStructureIndexer::new(self.workspace.clone());
+        let index = indexer
+            .build_once_with_workspace(workspace)
+            .map_err(to_mcp_error)?;
+
+        let key = ConstraintIdentifier {
+            artifact: ArtifactKey {
+                kind: ArtifactKind::Specification,
+                workspace_path,
+            },
+            group: constraint_id.to_string(),
+        };
+
+        if !index.constraints.contains_key(&key) {
+            return Err(invalid_params(format!(
+                "Constraint '{constraint_id}' not found in specification {base_locator}"
+            )));
+        }
+        let body = fs::read_to_string(&path).map_err(|err| to_mcp_error(err.into()))?;
+        let body = specman::front_matter::split_front_matter(&body).map_err(to_mcp_error)?;
+
+        let text = extract_constraint_block(body.body, constraint_id).ok_or_else(|| {
+            to_mcp_error(SpecmanError::Workspace(format!(
+                "failed to extract constraint '{constraint_id}' from {base_locator}"
+            )))
+        })?;
+
+        Ok(ResourceContents::TextResourceContents {
+            uri: uri.to_string(),
+            mime_type: Some("text/markdown".to_string()),
+            text,
+            meta: None,
+        })
+    }
+
     async fn collect_artifacts(
         &self,
         kind: ArtifactKind,
@@ -168,10 +476,45 @@ impl SpecmanMcpServer {
         uri: &str,
     ) -> Result<ResourceContents, McpError> {
         // Dependency resources use the same locator minus the /dependencies suffix for tree construction.
-        let (is_dependencies, base_locator) = uri
+        let (is_dependencies, locator) = uri
             .strip_suffix("/dependencies")
             .map(|base| (true, base))
             .unwrap_or((false, uri));
+
+        if locator.contains("/constraints//") {
+            return Err(invalid_params("malformed constraints locator (double slash)"));
+        }
+
+        // Normalize `.../constraints/` to `.../constraints`.
+        let locator = if locator.ends_with("/constraints/") {
+            locator.trim_end_matches('/')
+        } else {
+            locator
+        };
+
+        // Parse constraints routing:
+        // - `{base}/constraints` => index
+        // - `{base}/constraints/{constraint_id}` => content
+        let (constraints_mode, base_locator, constraint_id) = if let Some(base) =
+            locator.strip_suffix("/constraints")
+        {
+            (Some("index"), base, None)
+        } else if let Some((base, rest)) = locator.split_once("/constraints/") {
+            if rest.is_empty() {
+                (Some("index"), base, None)
+            } else {
+                (Some("content"), base, Some(rest))
+            }
+        } else {
+            (None, locator, None)
+        };
+
+        // Spec-only: reject non-spec schemes early.
+        if constraints_mode.is_some() && !base_locator.starts_with("spec://") {
+            return Err(invalid_params(
+                "'/constraints' resources are only available for spec:// artifacts",
+            ));
+        }
 
         let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
         let tree = self
@@ -188,6 +531,29 @@ impl SpecmanMcpServer {
                 text: json_tree,
                 meta: None,
             });
+        }
+
+        if let Some(mode) = constraints_mode {
+            match mode {
+                "index" => {
+                    return self
+                        .read_constraints_index(uri, base_locator, &tree.root.id, &workspace)
+                        .await;
+                }
+                "content" => {
+                    let id = constraint_id.unwrap_or("");
+                    return self
+                        .read_constraint_content(
+                            uri,
+                            base_locator,
+                            &tree.root.id,
+                            id,
+                            &workspace,
+                        )
+                        .await;
+                }
+                _ => {}
+            }
         }
 
         let path = artifact_path(&tree.root.id, &workspace);
@@ -298,6 +664,26 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                 title: Some("Specification dependency tree".to_string()),
                 description: Some("Return dependency tree JSON for a specification".to_string()),
                 mime_type: Some("application/json".to_string()),
+            },
+            annotations: None,
+        },
+        ResourceTemplate {
+            raw: RawResourceTemplate {
+                uri_template: "spec://{artifact}/constraints".to_string(),
+                name: "spec-constraints-index".to_string(),
+                title: Some("Specification constraints index".to_string()),
+                description: Some("Return constraint index JSON for a specification".to_string()),
+                mime_type: Some("application/json".to_string()),
+            },
+            annotations: None,
+        },
+        ResourceTemplate {
+            raw: RawResourceTemplate {
+                uri_template: "spec://{artifact}/constraints/{constraint_id}".to_string(),
+                name: "spec-constraint-content".to_string(),
+                title: Some("Specification constraint content".to_string()),
+                description: Some("Read a specific constraint group as Markdown".to_string()),
+                mime_type: Some("text/markdown".to_string()),
             },
             annotations: None,
         },
