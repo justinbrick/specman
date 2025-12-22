@@ -85,9 +85,9 @@ To allow MCP clients to update artifact metadata deterministically without rewri
 - The tool MUST accept an artifact locator identifying the target artifact.
   - Callers MAY supply a filesystem path, HTTPS URL, or a SpecMan locator handle (`spec://{artifact}`, `impl://{artifact}`, `scratch://{artifact}`) as the locator input.
   - If a SpecMan handle is supplied, the adapter MUST normalize it to a canonical workspace-relative path before applying any update, and it MUST NOT persist the handle into artifact content.
-- The tool MUST support removals for list-valued metadata via set/replace list semantics.
-  - When a list-valued front matter field is provided in the update request, the persisted list MUST be replaced with the provided list exactly.
-  - When a list-valued front matter field is omitted in the update request, the persisted list MUST remain unchanged.
+- The tool MUST accept an ops-based mutation request whose supported operations match (and do not exceed) the mutation surface defined by SpecMan Core metadata mutation.
+  - For list-valued fields (for example tags, dependencies, references), removals MUST be expressible via explicit remove ops, and additions MUST be idempotent when the entry already exists.
+  - The tool MUST NOT claim "replace list" semantics unless the underlying SpecMan Core mutation surface provides an explicit replace operation for that field.
 - The tool MUST enforce scratch pad `target` immutability; attempts to change `target` MUST fail with an MCP error.
 - The tool MUST support a persistence mode switch:
   - persist: write the updated artifact to disk

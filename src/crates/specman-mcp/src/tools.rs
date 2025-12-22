@@ -6,7 +6,7 @@ use rmcp::model::{
     Content, ContextInclusion, CreateMessageRequestParam, Role as SamplingRole, SamplingMessage,
 };
 use rmcp::service::Peer;
-use specman::{FrontMatterUpdateOp, FrontMatterUpdateRequest};
+use specman::{FrontMatterUpdateOp, FrontMatterUpdateRequest, apply_front_matter_update};
 
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
@@ -286,6 +286,88 @@ pub struct CreateArtifactResult {
     pub path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum UpdateMode {
+    #[schemars(description = "Persist the updated artifact to disk.")]
+    Persist,
+    #[schemars(description = "Preview-only: return the updated document without writing to disk.")]
+    Preview,
+}
+
+/// Tagged enum used to force callers to declare which artifact kind they expect.
+///
+/// This intentionally uses the externally-tagged form so inputs look like:
+/// `{ "spec": {} } | { "impl": {} } | { "scratch": {} }`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ExpectedArtifactKind {
+    #[schemars(description = "Expect a specification artifact.")]
+    Spec {},
+    #[schemars(description = "Expect an implementation artifact.")]
+    Impl {},
+    #[schemars(description = "Expect a scratch pad artifact.")]
+    Scratch {},
+}
+
+impl ExpectedArtifactKind {
+    fn as_artifact_kind(&self) -> ArtifactKind {
+        match self {
+            ExpectedArtifactKind::Spec { .. } => ArtifactKind::Specification,
+            ExpectedArtifactKind::Impl { .. } => ArtifactKind::Implementation,
+            ExpectedArtifactKind::Scratch { .. } => ArtifactKind::ScratchPad,
+        }
+    }
+}
+
+/// `update_artifact` input schema for MCP.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UpdateArtifactArgs {
+    #[schemars(
+        description = "Artifact locator: workspace-relative path, spec://.../impl://.../scratch://... handle, or an HTTPS URL."
+    )]
+    pub locator: String,
+
+    #[schemars(description = "Expected artifact kind, expressed as a tagged enum.")]
+    pub expected_kind: ExpectedArtifactKind,
+
+    #[schemars(
+        description = "Persistence mode: 'persist' writes to disk; 'preview' returns updated content without writing."
+    )]
+    pub mode: UpdateMode,
+
+    #[schemars(
+        description = "Ops-based front matter mutation list. MUST contain at least one op."
+    )]
+    pub ops: Vec<FrontMatterUpdateOp>,
+}
+
+/// Result payload returned by the `update_artifact` MCP tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateArtifactResult {
+    #[schemars(
+        description = "Stable artifact identifier (kind + name). For HTTPS locators, name is derived from the URL."
+    )]
+    pub id: ArtifactId,
+    #[schemars(
+        description = "Canonical handle (spec://..., impl://..., scratch://...) for workspace artifacts; for HTTPS locators this is the URL."
+    )]
+    pub handle: String,
+    #[schemars(
+        description = "Canonical workspace-relative path for workspace artifacts (present for both preview and persist)."
+    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[schemars(
+        description = "Full updated document content. Only YAML front matter may differ from the original."
+    )]
+    pub updated_document: String,
+    #[schemars(description = "Whether the updated document was persisted to disk.")]
+    pub persisted: bool,
+}
+
 #[tool_router]
 impl SpecmanMcpServer {
     #[tool(
@@ -298,6 +380,198 @@ impl SpecmanMcpServer {
         Parameters(args): Parameters<CreateArtifactArgs>,
     ) -> Result<Json<CreateArtifactResult>, McpError> {
         self.create_artifact_internal(Some(&peer), args).await
+    }
+
+    #[tool(
+        name = "update_artifact",
+        description = "Update YAML front matter metadata for a SpecMan artifact (spec/impl/scratch) while preserving the Markdown body. Supports preview and persist modes."
+    )]
+    pub(crate) async fn update_artifact(
+        &self,
+        Parameters(args): Parameters<UpdateArtifactArgs>,
+    ) -> Result<Json<UpdateArtifactResult>, McpError> {
+        self.update_artifact_internal(args).await
+    }
+}
+
+impl SpecmanMcpServer {
+    async fn update_artifact_internal(
+        &self,
+        args: UpdateArtifactArgs,
+    ) -> Result<Json<UpdateArtifactResult>, McpError> {
+        let locator = args.locator.trim();
+        if locator.is_empty() {
+            return Err(invalid_params("locator must not be empty"));
+        }
+
+        if locator.ends_with("/dependencies") || locator.contains("/dependencies/") {
+            return Err(invalid_params(
+                "mutation is not supported for '/dependencies' derived locators",
+            ));
+        }
+        if locator.ends_with("/constraints") || locator.contains("/constraints/") {
+            return Err(invalid_params(
+                "mutation is not supported for '/constraints' derived locators",
+            ));
+        }
+
+        if args.ops.is_empty() {
+            return Err(invalid_params("update requires at least one op"));
+        }
+
+        if locator.starts_with("http://") {
+            return Err(invalid_params(
+                "unsupported url scheme in locator; use https",
+            ));
+        }
+
+        if locator.starts_with("https://") {
+            if matches!(args.mode, UpdateMode::Persist) {
+                return Err(invalid_params(
+                    "persist is not supported for HTTPS locators; use mode=preview",
+                ));
+            }
+
+            let raw = fetch_https_document(locator).await?;
+
+            let expected_kind = args.expected_kind.as_artifact_kind();
+            let id = ArtifactId {
+                kind: expected_kind,
+                name: derive_name_from_https(locator),
+            };
+
+            let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
+            let fake_path = workspace.root().join("remote.md");
+            let request = FrontMatterUpdateRequest {
+                persist: false,
+                ops: args.ops,
+            };
+
+            let (updated_document, _mutated) =
+                apply_front_matter_update(&id, &fake_path, &workspace, &raw, &request)
+                    .map_err(to_mcp_error)?;
+
+            return Ok(Json(UpdateArtifactResult {
+                id,
+                handle: locator.to_string(),
+                path: None,
+                updated_document,
+                persisted: false,
+            }));
+        }
+
+        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
+        let tree = self
+            .dependency_mapper
+            .dependency_tree_from_locator(locator)
+            .map_err(to_mcp_error)?;
+
+        let expected = args.expected_kind.as_artifact_kind();
+        if tree.root.id.kind != expected {
+            return Err(invalid_params(format!(
+                "artifact kind mismatch: expected {:?} but locator resolved to {:?}",
+                expected, tree.root.id.kind
+            )));
+        }
+
+        let resolved = resolved_path_or_artifact_path(&tree.root, &workspace);
+        let absolute = PathBuf::from(resolved);
+        let relative = workspace_relative_path(workspace.root(), &absolute)
+            .ok_or_else(|| invalid_params("locator must resolve within the workspace"))?;
+
+        let specman = self.build_specman()?;
+        let request = FrontMatterUpdateRequest {
+            persist: matches!(args.mode, UpdateMode::Persist),
+            ops: args.ops,
+        };
+
+        let result = specman
+            .update(tree.root.id.clone(), request)
+            .map_err(to_mcp_error)?;
+
+        let handle = artifact_handle(&tree.root);
+        Ok(Json(UpdateArtifactResult {
+            id: result.artifact,
+            handle,
+            path: Some(relative),
+            updated_document: result.updated_document,
+            persisted: result.persisted.is_some(),
+        }))
+    }
+}
+
+async fn fetch_https_document(url: &str) -> Result<String, McpError> {
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|err| invalid_params(format!("invalid https url: {err}")))?;
+    if parsed.scheme() != "https" {
+        return Err(invalid_params(
+            "unsupported url scheme in locator; use https",
+        ));
+    }
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()
+        .map_err(|err| rmcp::model::ErrorData::internal_error(err.to_string(), None))?;
+
+    let response = client
+        .get(parsed)
+        .send()
+        .await
+        .map_err(|err| rmcp::model::ErrorData::internal_error(err.to_string(), None))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(invalid_params(format!(
+            "failed to fetch https locator (status={status})"
+        )));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|err| rmcp::model::ErrorData::internal_error(err.to_string(), None))?;
+
+    // Safety / determinism guard: refuse unbounded downloads.
+    const MAX_BYTES: usize = 2 * 1024 * 1024;
+    if bytes.len() > MAX_BYTES {
+        return Err(invalid_params(format!(
+            "https document too large ({} bytes; max {MAX_BYTES})",
+            bytes.len()
+        )));
+    }
+
+    String::from_utf8(bytes.to_vec())
+        .map_err(|err| invalid_params(format!("https response was not utf-8: {err}")))
+}
+
+fn derive_name_from_https(url: &str) -> String {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return "remote".to_string();
+    };
+    let candidate = parsed
+        .path_segments()
+        .and_then(|mut segs| segs.next_back())
+        .unwrap_or("remote");
+    let candidate = candidate.split('.').next().unwrap_or(candidate).trim();
+
+    let mut out = String::new();
+    let mut last_dash = false;
+    for ch in candidate.chars() {
+        let lower = ch.to_ascii_lowercase();
+        if lower.is_ascii_alphanumeric() {
+            out.push(lower);
+            last_dash = false;
+        } else if !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    out = out.trim_matches('-').to_string();
+    if out.is_empty() {
+        "remote".to_string()
+    } else {
+        out
     }
 }
 

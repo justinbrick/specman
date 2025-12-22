@@ -32,6 +32,7 @@ mod tests {
     use crate::resources::{
         artifact_handle, artifact_path, resource_templates, resources_from_inventory,
     };
+    use crate::tools::{ExpectedArtifactKind, UpdateArtifactArgs, UpdateMode};
 
     #[tokio::test]
     async fn list_resources_includes_handles() -> Result<(), Box<dyn std::error::Error>> {
@@ -657,6 +658,12 @@ mod tests {
         }
     }
 
+    fn body_of(doc: &str) -> &str {
+        specman::front_matter::split_front_matter(doc)
+            .expect("front matter split")
+            .body
+    }
+
     struct TestWorkspace {
         _temp: TempDir,
         server: SpecmanMcpServer,
@@ -675,6 +682,153 @@ mod tests {
                 server,
             })
         }
+    }
+
+    #[tokio::test]
+    async fn update_artifact_preview_does_not_persist_and_preserves_body()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+        let root = workspace._temp.path();
+
+        let path = root.join("spec/testspec/spec.md");
+        let before = fs::read_to_string(&path)?;
+
+        let result = workspace
+            .server
+            .update_artifact(rmcp::handler::server::wrapper::Parameters(
+                UpdateArtifactArgs {
+                    locator: "spec://testspec".to_string(),
+                    expected_kind: ExpectedArtifactKind::Spec {},
+                    mode: UpdateMode::Preview,
+                    ops: vec![specman::FrontMatterUpdateOp::SetVersion {
+                        version: "0.2.0".to_string(),
+                    }],
+                },
+            ))
+            .await?;
+
+        assert!(!result.0.persisted);
+        assert_eq!(body_of(&before), body_of(&result.0.updated_document));
+
+        let after_on_disk = fs::read_to_string(&path)?;
+        assert_eq!(before, after_on_disk, "preview must not write to disk");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_artifact_persist_writes_and_preserves_body()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+        let root = workspace._temp.path();
+
+        let path = root.join("impl/testimpl/impl.md");
+        let before = fs::read_to_string(&path)?;
+
+        let result = workspace
+            .server
+            .update_artifact(rmcp::handler::server::wrapper::Parameters(
+                UpdateArtifactArgs {
+                    locator: "impl://testimpl".to_string(),
+                    expected_kind: ExpectedArtifactKind::Impl {},
+                    mode: UpdateMode::Persist,
+                    ops: vec![specman::FrontMatterUpdateOp::AddTag {
+                        tag: "mcp".to_string(),
+                    }],
+                },
+            ))
+            .await?;
+
+        assert!(result.0.persisted);
+        assert_eq!(body_of(&before), body_of(&result.0.updated_document));
+
+        let after_on_disk = fs::read_to_string(&path)?;
+        assert!(after_on_disk.contains("mcp"));
+        assert_eq!(body_of(&before), body_of(&after_on_disk));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_artifact_rejects_kind_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let err = match workspace
+            .server
+            .update_artifact(rmcp::handler::server::wrapper::Parameters(
+                UpdateArtifactArgs {
+                    locator: "spec://testspec".to_string(),
+                    expected_kind: ExpectedArtifactKind::Impl {},
+                    mode: UpdateMode::Preview,
+                    ops: vec![specman::FrontMatterUpdateOp::SetVersion {
+                        version: "0.2.0".to_string(),
+                    }],
+                },
+            ))
+            .await
+        {
+            Ok(_) => panic!("kind mismatch should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.message.contains("kind mismatch"), "{err:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_artifact_rejects_scratch_target_mutation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let err = match workspace
+            .server
+            .update_artifact(rmcp::handler::server::wrapper::Parameters(
+                UpdateArtifactArgs {
+                    locator: "scratch://testscratch".to_string(),
+                    expected_kind: ExpectedArtifactKind::Scratch {},
+                    mode: UpdateMode::Preview,
+                    ops: vec![specman::FrontMatterUpdateOp::SetTarget {
+                        target: "spec://testspec".to_string(),
+                    }],
+                },
+            ))
+            .await
+        {
+            Ok(_) => panic!("scratch target mutation should fail"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.message.contains("immutable"),
+            "unexpected error: {err:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_artifact_rejects_https_persist() -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        let err = match workspace
+            .server
+            .update_artifact(rmcp::handler::server::wrapper::Parameters(
+                UpdateArtifactArgs {
+                    locator: "https://example.com/spec.md".to_string(),
+                    expected_kind: ExpectedArtifactKind::Spec {},
+                    mode: UpdateMode::Persist,
+                    ops: vec![specman::FrontMatterUpdateOp::SetVersion {
+                        version: "0.2.0".to_string(),
+                    }],
+                },
+            ))
+            .await
+        {
+            Ok(_) => panic!("https persist should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.message.contains("persist is not supported"), "{err:?}");
+        Ok(())
     }
 
     fn create_workspace_files(root: &Path) -> Result<(), Box<dyn std::error::Error>> {

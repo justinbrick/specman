@@ -92,6 +92,7 @@ The adapter exposes a focused subset of SpecMan functionality as MCP tools/promp
 ```
 
 - Current tool surface: `create_artifact`.
+- Current tool surface: `create_artifact`, `update_artifact`.
 - Current prompt surface: `feat`, `ref`, `revision`, `fix` (scratch pad prompt templates).
 
 ### Concept: [Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance)
@@ -108,6 +109,10 @@ fn artifact_handle(summary: &ArtifactSummary) -> String;
 async fn create_artifact(Parameters(args): Parameters<CreateArtifactArgs>)
   -> Result<Json<CreateArtifactResult>, McpError>;
 
+// Tool handler that updates YAML front matter via SpecMan Core metadata mutation.
+async fn update_artifact(Parameters(args): Parameters<UpdateArtifactArgs>)
+  -> Result<Json<UpdateArtifactResult>, McpError>;
+
 // `CreateArtifactArgs` is a tagged enum (tag field: `kind`) with variant-specific fields.
 // This keeps the MCP tool schema deterministic and avoids "bags of optional fields".
 
@@ -115,6 +120,21 @@ async fn create_artifact(Parameters(args): Parameters<CreateArtifactArgs>)
 // - { kind: "specification", intent?: string, name?: string, title?: string }
 // - { kind: "implementation", target: "spec://...", intent?: string, name?: string }
 // - { kind: "scratch_pad", target: "impl://...", scratch_kind: "ref", intent?: string, name?: string, branch?: string }
+
+// `update_artifact` uses an ops-based schema that mirrors SpecMan Core `FrontMatterUpdateOp`.
+// Example shape:
+// {
+//   locator: "spec://testspec" | "impl/testimpl/impl.md" | "https://...",
+//   expectedKind: { spec: {} } | { impl: {} } | { scratch: {} },
+//   mode: "persist" | "preview",
+//   ops: [ { op: "set_version", version: "1.2.3" }, ... ]
+// }
+
+// Semantics:
+// - Only YAML front matter changes; the Markdown body is preserved byte-for-byte.
+// - Scratch pad `target` is immutable; attempts to mutate it fail.
+// - HTTPS locators are preview-only (persist is rejected).
+// - List-valued changes are expressed via ops (e.g., add/remove) rather than implicit replace-list semantics.
 ```
 
 - Handles use the `spec://`, `impl://`, and `scratch://` schemes and are always emitted in normalized form.

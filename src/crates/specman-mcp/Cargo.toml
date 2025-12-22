@@ -9,13 +9,27 @@ license = "MIT"
 
 [dependencies]
 specman = { path = "../specman", version = "2.0.0" }
-rmcp = { version = "0.11.0", features = ["transport-io", "schemars", "elicitation"] }
-tokio = { version = "1.40", features = ["macros", "rt-multi-thread", "io-std", "sync"] }
+rmcp = { version = "0.11.0", features = [
+    "transport-io",
+    "schemars",
+    "elicitation",
+] }
+tokio = { version = "1.40", features = [
+    "macros",
+    "rt-multi-thread",
+    "io-std",
+    "sync",
+] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 schemars = { version = "1.1", features = ["derive", "semver1"] }
 tracing = "0.1"
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "gzip",
+    "brotli",
+] }
 
 [dev-dependencies]
 tempfile = "3.10"

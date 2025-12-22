@@ -234,20 +234,15 @@ Metadata mutation ensures YAML front matter for specifications, implementations,
 - Metadata mutation operations MUST reuse the dependency traversal validation flow (workspace boundary enforcement, supported locator schemes, YAML parsing guarantees) before applying edits to any artifact.
 - Metadata mutation operations MUST rewrite only the YAML front matter block and MUST either persist the updated artifact to its canonical path or return the full document with body content unchanged.
 - Metadata mutation helpers MUST support adding dependencies or references by artifact locator and MUST be idempotent when the supplied locator already exists in the corresponding list.
-- Metadata mutation helpers MUST support removals for list-valued fields by allowing callers to replace the persisted list with a caller-supplied list (see list semantics below).
+- Metadata mutation helpers MUST support list-valued field updates via an explicit ops-based mutation surface (for example add/remove operations), and MUST be idempotent where applicable.
 
 !concept-metadata-mutation.scope.supported-fields:
 
 - Metadata mutation MUST be supported for specification, implementation, and scratch pad artifacts.
-- For specifications, metadata mutation MUST support updating the `version` field and replacing the `dependencies` list.
-- For implementations, metadata mutation MUST support updating the `version` field and replacing the `references`, `primary_language`, and `secondary_languages` fields.
+- For specifications, metadata mutation MUST support updating the `version` field and adding/removing entries in the `dependencies` list.
+- For implementations, metadata mutation MUST support updating the `version` field, updating language fields, and adding/removing entries in the `references` list.
 - For scratch pads, metadata mutation MUST support updating any YAML front matter fields except `target`.
   - Scratch pad `target` MUST be treated as immutable; attempts to change it MUST fail with a descriptive error.
-
-!concept-metadata-mutation.list-semantics.replace:
-
-- When a list-valued front matter field is provided as part of a metadata mutation request, the persisted list MUST be replaced with the provided list exactly.
-- When a list-valued front matter field is omitted from a metadata mutation request, the persisted list MUST remain unchanged.
 
 ## Key Entities
 
