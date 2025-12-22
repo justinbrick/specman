@@ -698,7 +698,7 @@ mod tests {
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
                 UpdateArtifactArgs {
                     locator: "spec://testspec".to_string(),
-                    expected_kind: ExpectedArtifactKind::Spec {},
+                    expected_kind: ExpectedArtifactKind::Spec,
                     mode: UpdateMode::Preview,
                     ops: vec![specman::FrontMatterUpdateOp::SetVersion {
                         version: "0.2.0".to_string(),
@@ -730,7 +730,7 @@ mod tests {
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
                 UpdateArtifactArgs {
                     locator: "impl://testimpl".to_string(),
-                    expected_kind: ExpectedArtifactKind::Impl {},
+                    expected_kind: ExpectedArtifactKind::Impl,
                     mode: UpdateMode::Persist,
                     ops: vec![specman::FrontMatterUpdateOp::AddTag {
                         tag: "mcp".to_string(),
@@ -758,7 +758,7 @@ mod tests {
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
                 UpdateArtifactArgs {
                     locator: "spec://testspec".to_string(),
-                    expected_kind: ExpectedArtifactKind::Impl {},
+                    expected_kind: ExpectedArtifactKind::Impl,
                     mode: UpdateMode::Preview,
                     ops: vec![specman::FrontMatterUpdateOp::SetVersion {
                         version: "0.2.0".to_string(),
@@ -785,7 +785,7 @@ mod tests {
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
                 UpdateArtifactArgs {
                     locator: "scratch://testscratch".to_string(),
-                    expected_kind: ExpectedArtifactKind::Scratch {},
+                    expected_kind: ExpectedArtifactKind::Scratch,
                     mode: UpdateMode::Preview,
                     ops: vec![specman::FrontMatterUpdateOp::SetTarget {
                         target: "spec://testspec".to_string(),
@@ -814,7 +814,7 @@ mod tests {
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
                 UpdateArtifactArgs {
                     locator: "https://example.com/spec.md".to_string(),
-                    expected_kind: ExpectedArtifactKind::Spec {},
+                    expected_kind: ExpectedArtifactKind::Spec,
                     mode: UpdateMode::Persist,
                     ops: vec![specman::FrontMatterUpdateOp::SetVersion {
                         version: "0.2.0".to_string(),

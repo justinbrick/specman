@@ -295,27 +295,28 @@ pub(crate) enum UpdateMode {
     Preview,
 }
 
-/// Tagged enum used to force callers to declare which artifact kind they expect.
+/// Callers must declare which artifact kind they expect.
 ///
-/// This intentionally uses the externally-tagged form so inputs look like:
-/// `{ "spec": {} } | { "impl": {} } | { "scratch": {} }`.
+/// This is intentionally a simple string enum ("spec" | "impl" | "scratch")
+/// rather than a tagged object, to keep tool schemas compatible with stricter
+/// validators.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ExpectedArtifactKind {
     #[schemars(description = "Expect a specification artifact.")]
-    Spec {},
+    Spec,
     #[schemars(description = "Expect an implementation artifact.")]
-    Impl {},
+    Impl,
     #[schemars(description = "Expect a scratch pad artifact.")]
-    Scratch {},
+    Scratch,
 }
 
 impl ExpectedArtifactKind {
     fn as_artifact_kind(&self) -> ArtifactKind {
         match self {
-            ExpectedArtifactKind::Spec { .. } => ArtifactKind::Specification,
-            ExpectedArtifactKind::Impl { .. } => ArtifactKind::Implementation,
-            ExpectedArtifactKind::Scratch { .. } => ArtifactKind::ScratchPad,
+            ExpectedArtifactKind::Spec => ArtifactKind::Specification,
+            ExpectedArtifactKind::Impl => ArtifactKind::Implementation,
+            ExpectedArtifactKind::Scratch => ArtifactKind::ScratchPad,
         }
     }
 }
