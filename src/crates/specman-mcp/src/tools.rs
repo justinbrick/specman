@@ -322,51 +322,212 @@ impl ExpectedArtifactKind {
 }
 
 /// `update_artifact` input schema for MCP.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+///
+/// NOTE: We handcraft this JSON Schema instead of relying on schemars' derived
+/// output.
+///
+/// Some MCP clients (notably OpenAI tool schema validators) are significantly
+/// stricter than general JSON Schema, and may reject otherwise-valid schemas
+/// that contain `$defs/$ref`, `oneOf/anyOf`, or OpenAPI-style `nullable`.
+///
+/// The server still deserializes/validates using the concrete Rust types.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct UpdateArtifactArgs {
-    #[schemars(
-        description = "Artifact locator: workspace-relative path, spec://.../impl://.../scratch://... handle, or an HTTPS URL."
-    )]
     pub locator: String,
 
-    #[schemars(description = "Expected artifact kind, expressed as a tagged enum.")]
     pub expected_kind: ExpectedArtifactKind,
 
-    #[schemars(
-        description = "Persistence mode: 'persist' writes to disk; 'preview' returns updated content without writing."
-    )]
     pub mode: UpdateMode,
 
-    #[schemars(
-        description = "Ops-based front matter mutation list. MUST contain at least one op."
-    )]
     pub ops: Vec<FrontMatterUpdateOp>,
 }
 
+impl JsonSchema for UpdateArtifactArgs {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("UpdateArtifactArgs")
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        // Keep this schema deliberately simple (draft-07-ish) and inline.
+        // Validation of detailed op shapes happens server-side.
+        schemars::json_schema!({
+            "type": "object",
+            "description": "`update_artifact` input schema for MCP.",
+            "additionalProperties": false,
+            "properties": {
+                "locator": {
+                    "type": "string",
+                    "description": "Artifact locator: workspace-relative path, spec://.../impl://.../scratch://... handle, or an HTTPS URL."
+                },
+                "expectedKind": {
+                    "type": "string",
+                    "description": "Callers must declare which artifact kind they expect.",
+                    "enum": ["spec", "impl", "scratch"]
+                },
+                "mode": {
+                    "type": "string",
+                    "description": "Persistence mode: 'persist' writes to disk; 'preview' returns updated content without writing.",
+                    "enum": ["persist", "preview"]
+                },
+                "ops": {
+                    "type": "array",
+                    "description": "Ops-based front matter mutation list. MUST contain at least one op.",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "description": "Front matter update operation. The server validates required fields for each op.",
+                        "additionalProperties": true,
+                        "properties": {
+                            "op": {
+                                "type": "string",
+                                "description": "Operation discriminator.",
+                                "enum": [
+                                    "set_name",
+                                    "clear_name",
+                                    "set_title",
+                                    "clear_title",
+                                    "set_description",
+                                    "clear_description",
+                                    "set_version",
+                                    "clear_version",
+                                    "add_tag",
+                                    "remove_tag",
+                                    "add_dependency",
+                                    "remove_dependency",
+                                    "set_requires_implementation",
+                                    "clear_requires_implementation",
+                                    "set_spec",
+                                    "clear_spec",
+                                    "set_location",
+                                    "clear_location",
+                                    "set_library",
+                                    "clear_library",
+                                    "add_reference",
+                                    "remove_reference",
+                                    "set_primary_language",
+                                    "clear_primary_language",
+                                    "set_secondary_languages",
+                                    "clear_secondary_languages",
+                                    "set_target",
+                                    "clear_target",
+                                    "set_branch",
+                                    "clear_branch",
+                                    "set_work_type",
+                                    "clear_work_type"
+                                ]
+                            },
+                            "name": { "type": "string" },
+                            "title": { "type": "string" },
+                            "description": { "type": "string" },
+                            "version": { "type": "string" },
+                            "tag": { "type": "string" },
+                            "ref": { "type": "string" },
+                            "optional": { "type": "boolean" },
+                            "requires": { "type": "boolean" },
+                            "location": { "type": "string" },
+                            "library": {
+                                "description": "Library reference (string or object forms may be accepted by the server).",
+                                "type": "string"
+                            },
+                            "type": {
+                                "description": "Optional reference type hint.",
+                                "type": "string"
+                            },
+                            "language": {
+                                "description": "Primary language identifier.",
+                                "type": "string"
+                            },
+                            "languages": {
+                                "description": "Secondary implementing languages.",
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "language": { "type": "string" },
+                                        "libraries": { "type": "array", "items": { "type": "string" } },
+                                        "properties": { "type": "object", "additionalProperties": true }
+                                    },
+                                    "required": ["language"]
+                                }
+                            },
+                            "target": { "type": "string" },
+                            "branch": { "type": "string" },
+                            "work_type": {
+                                "description": "Scratch work type object (server validates exact shape).",
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        },
+                        "required": ["op"]
+                    }
+                }
+            },
+            "required": ["locator", "expectedKind", "mode", "ops"]
+        })
+    }
+}
+
 /// Result payload returned by the `update_artifact` MCP tool.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+///
+/// NOTE: Handcrafted schema for compatibility with stricter MCP clients.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateArtifactResult {
-    #[schemars(
-        description = "Stable artifact identifier (kind + name). For HTTPS locators, name is derived from the URL."
-    )]
     pub id: ArtifactId,
-    #[schemars(
-        description = "Canonical handle (spec://..., impl://..., scratch://...) for workspace artifacts; for HTTPS locators this is the URL."
-    )]
     pub handle: String,
-    #[schemars(
-        description = "Canonical workspace-relative path for workspace artifacts (present for both preview and persist)."
-    )]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
-    #[schemars(
-        description = "Full updated document content. Only YAML front matter may differ from the original."
-    )]
     pub updated_document: String,
-    #[schemars(description = "Whether the updated document was persisted to disk.")]
     pub persisted: bool,
+}
+
+impl JsonSchema for UpdateArtifactResult {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("UpdateArtifactResult")
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "object",
+            "description": "Result payload returned by the `update_artifact` MCP tool.",
+            "additionalProperties": false,
+            "properties": {
+                "id": {
+                    "type": "object",
+                    "description": "Stable artifact identifier (kind + name). For HTTPS locators, name is derived from the URL.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "description": "Artifact kind segmentation.",
+                            "enum": ["Specification", "Implementation", "ScratchPad"]
+                        },
+                        "name": { "type": "string" }
+                    },
+                    "required": ["kind", "name"]
+                },
+                "handle": {
+                    "type": "string",
+                    "description": "Canonical handle (spec://..., impl://..., scratch://...) for workspace artifacts; for HTTPS locators this is the URL."
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Canonical workspace-relative path for workspace artifacts (present for both preview and persist)."
+                },
+                "updatedDocument": {
+                    "type": "string",
+                    "description": "Full updated document content. Only YAML front matter may differ from the original."
+                },
+                "persisted": {
+                    "type": "boolean",
+                    "description": "Whether the updated document was persisted to disk."
+                }
+            },
+            "required": ["id", "handle", "updatedDocument", "persisted"]
+        })
+    }
 }
 
 #[tool_router]

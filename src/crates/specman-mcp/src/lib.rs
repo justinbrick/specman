@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 mod error;
 mod prompts;
 mod resources;
