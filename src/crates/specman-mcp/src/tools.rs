@@ -544,10 +544,10 @@ impl SpecmanMcpServer {
         self.create_artifact_internal(Some(&peer), args).await
     }
 
-    #[tool(
-        name = "update_artifact",
-        description = "Update YAML front matter metadata for a SpecMan artifact (spec/impl/scratch) while preserving the Markdown body. Supports preview and persist modes."
-    )]
+    // #[tool(
+    //     name = "update_artifact",
+    //     description = "Update YAML front matter metadata for a SpecMan artifact (spec/impl/scratch) while preserving the Markdown body. Supports preview and persist modes."
+    // )]
     pub(crate) async fn update_artifact(
         &self,
         Parameters(args): Parameters<UpdateArtifactArgs>,
