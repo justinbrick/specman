@@ -28,6 +28,8 @@ pub enum LifecycleError {
 pub enum SpecmanError {
     #[error("template error: {0}")]
     Template(String),
+    #[error("unknown work type: {0}")]
+    UnknownWorkType(String),
     #[error("dependency error: {0}")]
     Dependency(String),
     #[error("missing target: {0}")]
@@ -52,6 +54,9 @@ impl SpecmanError {
     pub fn context<T: fmt::Display>(self, ctx: T) -> Self {
         match self {
             SpecmanError::Template(msg) => SpecmanError::Template(format!("{ctx}: {msg}")),
+            SpecmanError::UnknownWorkType(kind) => {
+                SpecmanError::UnknownWorkType(format!("{ctx}: {kind}"))
+            }
             SpecmanError::Dependency(msg) => SpecmanError::Dependency(format!("{ctx}: {msg}")),
             SpecmanError::MissingTarget(path) => SpecmanError::MissingTarget(path),
             SpecmanError::Lifecycle(err) => SpecmanError::Lifecycle(LifecycleError::Context {

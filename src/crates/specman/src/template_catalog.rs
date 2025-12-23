@@ -17,7 +17,10 @@ use crate::workspace::WorkspacePaths;
 
 const EMBEDDED_SPEC: &str = include_str!("templates/spec/spec.md");
 const EMBEDDED_IMPL: &str = include_str!("templates/impl/impl.md");
-const EMBEDDED_SCRATCH: &str = include_str!("templates/scratch/scratch.md");
+const EMBEDDED_SCRATCH_REF: &str = include_str!("templates/scratch/ref.md");
+const EMBEDDED_SCRATCH_FEAT: &str = include_str!("templates/scratch/feat.md");
+const EMBEDDED_SCRATCH_FIX: &str = include_str!("templates/scratch/fix.md");
+const EMBEDDED_SCRATCH_REVISION: &str = include_str!("templates/scratch/revision.md");
 
 /// Canonical template catalog implementation backed by workspace overrides,
 /// pointer files, remote caches, and embedded defaults.
@@ -48,6 +51,7 @@ impl TemplateCatalog {
     /// Resolves a template descriptor for the given scenario following the
     /// override → pointer → embedded order mandated by SpecMan Core.
     pub fn resolve(&self, scenario: TemplateScenario) -> Result<ResolvedTemplate, SpecmanError> {
+        validate_scenario(&scenario)?;
         if let Some(resolved) = self.try_workspace_override(&scenario)? {
             return Ok(resolved);
         }
@@ -66,6 +70,7 @@ impl TemplateCatalog {
         scenario: TemplateScenario,
         locator: impl AsRef<str>,
     ) -> Result<ResolvedTemplate, SpecmanError> {
+        validate_scenario(&scenario)?;
         let pointer_name = pointer_name(&scenario);
         let templates_dir = self.templates_dir();
         let lock = PointerLock::acquire(&templates_dir, pointer_name)?;
@@ -87,6 +92,7 @@ impl TemplateCatalog {
         &self,
         scenario: TemplateScenario,
     ) -> Result<ResolvedTemplate, SpecmanError> {
+        validate_scenario(&scenario)?;
         let pointer_name = pointer_name(&scenario);
         let templates_dir = self.templates_dir();
         let lock = PointerLock::acquire(&templates_dir, pointer_name)?;
@@ -245,7 +251,7 @@ impl TemplateCatalog {
 
     /// Rewrites the embedded fallback cache copy immediately after pointer mutations.
     fn refresh_embedded_cache(&self, scenario: &TemplateScenario) -> Result<(), SpecmanError> {
-        let (key, body) = embedded_assets(scenario);
+        let (key, body) = embedded_assets(scenario)?;
         let cache = TemplateCache::new(&self.workspace);
         cache.write_embedded(key, body).map(|_| ())
     }
@@ -335,7 +341,7 @@ impl TemplateCatalog {
         &self,
         scenario: &TemplateScenario,
     ) -> Result<ResolvedTemplate, SpecmanError> {
-        let (key, body) = embedded_assets(scenario);
+        let (key, body) = embedded_assets(scenario)?;
 
         let cache = TemplateCache::new(&self.workspace);
         let path = cache.write_embedded(key, body)?;
@@ -357,15 +363,15 @@ impl TemplateCatalog {
         match scenario {
             TemplateScenario::Specification => vec![base.join("spec.md")],
             TemplateScenario::Implementation => vec![base.join("impl.md")],
-            TemplateScenario::ScratchPad => vec![base.join("scratch.md")],
             TemplateScenario::WorkType(kind) => {
                 let slug = sanitize_key(kind);
                 vec![
                     base.join("scratch").join(format!("{slug}.md")),
                     base.join(format!("scratch-{slug}.md")),
-                    base.join("scratch.md"),
                 ]
             }
+            // Scratch pads must always resolve via work type; generic scratch templates are not supported.
+            TemplateScenario::ScratchPad => Vec::new(),
         }
     }
 
@@ -437,12 +443,42 @@ fn pointer_name(scenario: &TemplateScenario) -> &'static str {
     }
 }
 
-fn embedded_assets(scenario: &TemplateScenario) -> (&'static str, &'static str) {
+fn validate_scenario(scenario: &TemplateScenario) -> Result<(), SpecmanError> {
     match scenario {
-        TemplateScenario::Specification => ("spec", EMBEDDED_SPEC),
-        TemplateScenario::Implementation => ("impl", EMBEDDED_IMPL),
-        TemplateScenario::ScratchPad | TemplateScenario::WorkType(_) => {
-            ("scratch", EMBEDDED_SCRATCH)
+        TemplateScenario::Specification | TemplateScenario::Implementation => Ok(()),
+        TemplateScenario::ScratchPad => Err(SpecmanError::Template(
+            "scratch pad templates require an explicit work type".to_string(),
+        )),
+        TemplateScenario::WorkType(kind) => normalize_work_type_slug(kind).map(|_| ()),
+    }
+}
+
+fn normalize_work_type_slug(kind: &str) -> Result<String, SpecmanError> {
+    let slug = sanitize_key(kind);
+    match slug.as_str() {
+        "ref" | "feat" | "fix" | "revision" => Ok(slug),
+        _ => Err(SpecmanError::UnknownWorkType(kind.to_string())),
+    }
+}
+
+fn embedded_assets(
+    scenario: &TemplateScenario,
+) -> Result<(&'static str, &'static str), SpecmanError> {
+    match scenario {
+        TemplateScenario::Specification => Ok(("spec", EMBEDDED_SPEC)),
+        TemplateScenario::Implementation => Ok(("impl", EMBEDDED_IMPL)),
+        TemplateScenario::ScratchPad => Err(SpecmanError::Template(
+            "scratch pad templates require an explicit work type".to_string(),
+        )),
+        TemplateScenario::WorkType(kind) => {
+            let slug = normalize_work_type_slug(kind)?;
+            match slug.as_str() {
+                "ref" => Ok(("scratch-ref", EMBEDDED_SCRATCH_REF)),
+                "feat" => Ok(("scratch-feat", EMBEDDED_SCRATCH_FEAT)),
+                "fix" => Ok(("scratch-fix", EMBEDDED_SCRATCH_FIX)),
+                "revision" => Ok(("scratch-revision", EMBEDDED_SCRATCH_REVISION)),
+                _ => Err(SpecmanError::UnknownWorkType(kind.to_string())),
+            }
         }
     }
 }
@@ -721,6 +757,120 @@ mod tests {
         } else {
             panic!("expected template error for http pointer");
         }
+    }
+
+    #[test]
+    fn worktype_resolves_to_distinct_embedded_defaults_and_cache_keys() {
+        let (_tempdir, workspace) = workspace_fixture();
+        let catalog = TemplateCatalog::new(workspace.clone());
+
+        let cases = vec![
+            (
+                "ref",
+                "embedded://scratch-ref",
+                "embedded-scratch-ref.md",
+                EMBEDDED_SCRATCH_REF,
+            ),
+            (
+                "feat",
+                "embedded://scratch-feat",
+                "embedded-scratch-feat.md",
+                EMBEDDED_SCRATCH_FEAT,
+            ),
+            (
+                "fix",
+                "embedded://scratch-fix",
+                "embedded-scratch-fix.md",
+                EMBEDDED_SCRATCH_FIX,
+            ),
+            (
+                "revision",
+                "embedded://scratch-revision",
+                "embedded-scratch-revision.md",
+                EMBEDDED_SCRATCH_REVISION,
+            ),
+        ];
+
+        for (kind, locator, cache_name, expected) in cases {
+            let resolved = catalog
+                .resolve(TemplateScenario::WorkType(kind.to_string()))
+                .expect("work type resolve");
+            assert!(matches!(
+                resolved.provenance.tier,
+                TemplateTier::EmbeddedDefault
+            ));
+            assert_eq!(resolved.provenance.locator, locator);
+            let cache_path = resolved
+                .provenance
+                .cache_path
+                .as_ref()
+                .expect("cache path set");
+            assert!(cache_path.ends_with(cache_name));
+            let abs_cache_path = workspace.root().join(cache_path);
+            assert_eq!(fs::read_to_string(abs_cache_path).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn worktype_workspace_override_wins_and_no_generic_fallback_is_used() {
+        let (_tempdir, workspace) = workspace_fixture();
+        let catalog = TemplateCatalog::new(workspace.clone());
+        let templates_dir = workspace.dot_specman().join("templates");
+        fs::create_dir_all(templates_dir.join("scratch")).unwrap();
+
+        // Provide a work-type specific override for ref.
+        let ref_override = templates_dir.join("scratch/ref.md");
+        fs::write(&ref_override, "# custom ref scratch").unwrap();
+
+        // Provide a generic scratch.md that should NOT be used as fallback.
+        let generic = templates_dir.join("scratch.md");
+        fs::write(&generic, "# generic scratch").unwrap();
+
+        let resolved_ref = catalog
+            .resolve(TemplateScenario::WorkType("ref".to_string()))
+            .expect("ref resolve");
+        assert!(matches!(
+            resolved_ref.provenance.tier,
+            TemplateTier::WorkspaceOverride
+        ));
+
+        let resolved_feat = catalog
+            .resolve(TemplateScenario::WorkType("feat".to_string()))
+            .expect("feat resolve");
+        assert!(matches!(
+            resolved_feat.provenance.tier,
+            TemplateTier::EmbeddedDefault
+        ));
+        let cache_path = resolved_feat.provenance.cache_path.unwrap();
+        let abs_cache_path = workspace.root().join(cache_path);
+        assert_eq!(
+            fs::read_to_string(abs_cache_path).unwrap(),
+            EMBEDDED_SCRATCH_FEAT
+        );
+    }
+
+    #[test]
+    fn scratchpad_scenario_is_rejected_and_unknown_work_types_raise_dedicated_error() {
+        let (_tempdir, workspace) = workspace_fixture();
+        let catalog = TemplateCatalog::new(workspace.clone());
+
+        let err = catalog
+            .resolve(TemplateScenario::ScratchPad)
+            .expect_err("scratch scenario rejected");
+        match err {
+            SpecmanError::Template(msg) => assert!(msg.contains("work type")),
+            other => panic!("expected template error, got {other:?}"),
+        }
+
+        let err = catalog
+            .resolve(TemplateScenario::WorkType("draft".to_string()))
+            .expect_err("draft should be rejected");
+        assert!(matches!(err, SpecmanError::UnknownWorkType(_)));
+
+        let err = catalog
+            .resolve(TemplateScenario::WorkType("weird".to_string()))
+            .expect_err("unknown should be rejected");
+        assert!(matches!(err, SpecmanError::UnknownWorkType(_)));
     }
 
     fn workspace_fixture() -> (tempfile::TempDir, WorkspacePaths) {

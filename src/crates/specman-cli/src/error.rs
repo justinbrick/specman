@@ -66,6 +66,7 @@ impl From<SpecmanError> for CliError {
             SpecmanError::Template(_)
             | SpecmanError::Dependency(_)
             | SpecmanError::MissingTarget(_) => ExitStatus::Data,
+            SpecmanError::UnknownWorkType(_) => ExitStatus::Usage,
             SpecmanError::Lifecycle(err) => match err {
                 LifecycleError::DeletionBlocked { .. } => ExitStatus::Data,
                 LifecycleError::PlanTargetMismatch { .. } => ExitStatus::Software,
@@ -81,6 +82,14 @@ impl From<SpecmanError> for CliError {
         };
         CliError::new(err.to_string(), status)
     }
+}
+
+#[cfg(test)]
+#[test]
+fn unknown_work_type_maps_to_usage() {
+    let err = CliError::from(SpecmanError::UnknownWorkType("nope".to_string()));
+    assert_eq!(err.status, ExitStatus::Usage);
+    assert_eq!(err.status.code(), EX_USAGE);
 }
 
 impl From<clap::Error> for CliError {

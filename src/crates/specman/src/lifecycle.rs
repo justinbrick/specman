@@ -301,7 +301,7 @@ mod tests {
             kind: ScratchPadProfileKind::Ref,
             name: "workspace-template-persist".into(),
             template: TemplateDescriptor {
-                scenario: TemplateScenario::ScratchPad,
+                scenario: TemplateScenario::WorkType("ref".to_string()),
                 ..Default::default()
             },
             provenance: None,
