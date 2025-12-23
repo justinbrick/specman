@@ -1138,14 +1138,69 @@ fn resolve_workspace_path(
     base: Option<&Path>,
     workspace: &WorkspacePaths,
 ) -> Result<PathBuf, SpecmanError> {
+    fn lexical_normalize(path: &Path) -> PathBuf {
+        use std::path::Component;
+
+        let mut normalized = PathBuf::new();
+        let mut pending_parents: usize = 0;
+
+        for component in path.components() {
+            match component {
+                Component::Prefix(prefix) => {
+                    normalized.push(prefix.as_os_str());
+                }
+                Component::RootDir => {
+                    normalized.push(Component::RootDir.as_os_str());
+                }
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    if normalized
+                        .components()
+                        .next_back()
+                        .is_some_and(|c| matches!(c, Component::Normal(_)))
+                    {
+                        normalized.pop();
+                    } else if normalized.is_absolute() {
+                        // Ignore attempts to go above the root for absolute paths.
+                    } else {
+                        pending_parents += 1;
+                    }
+                }
+                Component::Normal(part) => {
+                    while pending_parents > 0 {
+                        normalized.push("..");
+                        pending_parents -= 1;
+                    }
+                    normalized.push(part);
+                }
+            }
+        }
+
+        while pending_parents > 0 {
+            normalized.push("..");
+            pending_parents -= 1;
+        }
+
+        if normalized.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            normalized
+        }
+    }
+
     // Enforce workspace scoping and emit explicit missing-target errors before canonicalizing.
-    let path = if candidate.is_absolute() {
+    let raw = if candidate.is_absolute() {
         candidate.to_path_buf()
     } else if let Some(base_dir) = base {
         base_dir.join(candidate)
     } else {
         workspace.root().join(candidate)
     };
+
+    // Important: normalize `..`/`.` lexically before checking existence.
+    // On Unix, a path like `/ws/impl/new/../../spec/x` will fail `exists()` if
+    // `/ws/impl/new` doesn't exist yet, even though `/ws/spec/x` does.
+    let path = lexical_normalize(&raw);
 
     if !path.exists() {
         return Err(SpecmanError::MissingTarget(path));
