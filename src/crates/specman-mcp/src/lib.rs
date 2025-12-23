@@ -34,7 +34,7 @@ mod tests {
     use crate::resources::{
         artifact_handle, artifact_path, resource_templates, resources_from_inventory,
     };
-    use crate::tools::{ExpectedArtifactKind, UpdateArtifactArgs, UpdateMode};
+    use crate::tools::{UpdateArtifactArgs, UpdateMode};
 
     #[tokio::test]
     async fn list_resources_includes_handles() -> Result<(), Box<dyn std::error::Error>> {
@@ -94,8 +94,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_resource_constraints_index_returns_json()
-    -> Result<(), Box<dyn std::error::Error>> {
+    async fn read_resource_constraints_index_returns_json() -> Result<(), Box<dyn std::error::Error>>
+    {
         let workspace = TestWorkspace::create()?;
 
         let constraints = workspace
@@ -119,12 +119,18 @@ mod tests {
                 let first = &items[0];
                 assert_eq!(first["constraint_id"], "concept-test.group");
                 assert_eq!(first["identifier_line"], "!concept-test.group:");
-                assert_eq!(first["uri"], "spec://testspec/constraints/concept-test.group");
+                assert_eq!(
+                    first["uri"],
+                    "spec://testspec/constraints/concept-test.group"
+                );
 
                 let second = &items[1];
                 assert_eq!(second["constraint_id"], "concept-test.other");
                 assert_eq!(second["identifier_line"], "!concept-test.other:");
-                assert_eq!(second["uri"], "spec://testspec/constraints/concept-test.other");
+                assert_eq!(
+                    second["uri"],
+                    "spec://testspec/constraints/concept-test.other"
+                );
             }
             other => panic!("unexpected variant: {other:?}"),
         }
@@ -196,7 +202,10 @@ mod tests {
                 mime_type, text, ..
             } => {
                 assert_eq!(mime_type.as_deref(), Some("text/markdown"));
-                assert!(text.contains("!concept-test.group:"), "missing identifier line");
+                assert!(
+                    text.contains("!concept-test.group:"),
+                    "missing identifier line"
+                );
                 assert!(text.contains("MUST be indexable"));
                 assert!(
                     !text.contains("!concept-test.other:"),
@@ -226,10 +235,7 @@ mod tests {
             Err(err) => err,
         };
 
-        assert!(
-            err.message.contains("concept-test.missing"),
-            "{err:?}"
-        );
+        assert!(err.message.contains("concept-test.missing"), "{err:?}");
         assert!(err.message.contains("spec://testspec"), "{err:?}");
         Ok(())
     }
@@ -644,6 +650,31 @@ mod tests {
     }
 
     #[test]
+    fn tool_input_schemas_avoid_forbidden_json_schema_features() {
+        fn assert_no_forbidden_keys(schema: &impl serde::Serialize, label: &str) {
+            let json = serde_json::to_string(schema).expect("schema serializes");
+
+            for forbidden in [
+                "\"oneOf\"",
+                "\"anyOf\"",
+                "\"$ref\"",
+                "\"patternProperties\"",
+            ] {
+                assert!(
+                    !json.contains(forbidden),
+                    "{label} schema must not contain forbidden key {forbidden}: {json}"
+                );
+            }
+        }
+
+        let create_schema = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
+        assert_no_forbidden_keys(&create_schema, "create_artifact");
+
+        let update_schema = rmcp::schemars::schema_for!(crate::tools::UpdateArtifactArgs);
+        assert_no_forbidden_keys(&update_schema, "update_artifact");
+    }
+
+    #[test]
     fn create_artifact_input_schema_is_object_type() {
         let schema = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
         let value = serde_json::to_value(&schema).expect("schema serializes");
@@ -708,7 +739,17 @@ mod tests {
             }
         }
 
-        for key in ["kind", "target", "scratchKind", "intent", "name", "title"] {
+        // New externally-tagged schema: top-level variant keys plus inner common fields.
+        for key in [
+            "specification",
+            "implementation",
+            "scratch_pad",
+            "target",
+            "scratchKind",
+            "intent",
+            "name",
+            "title",
+        ] {
             assert_all_described(&value, key);
         }
     }
@@ -900,14 +941,13 @@ mod tests {
         let result = workspace
             .server
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
-                UpdateArtifactArgs {
+                UpdateArtifactArgs::Spec(crate::tools::UpdateArtifactVariantArgs {
                     locator: "spec://testspec".to_string(),
-                    expected_kind: ExpectedArtifactKind::Spec,
                     mode: UpdateMode::Preview,
                     ops: vec![specman::FrontMatterUpdateOp::SetVersion {
                         version: "0.2.0".to_string(),
                     }],
-                },
+                }),
             ))
             .await?;
 
@@ -932,14 +972,13 @@ mod tests {
         let result = workspace
             .server
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
-                UpdateArtifactArgs {
+                UpdateArtifactArgs::Impl(crate::tools::UpdateArtifactVariantArgs {
                     locator: "impl://testimpl".to_string(),
-                    expected_kind: ExpectedArtifactKind::Impl,
                     mode: UpdateMode::Persist,
                     ops: vec![specman::FrontMatterUpdateOp::AddTag {
                         tag: "mcp".to_string(),
                     }],
-                },
+                }),
             ))
             .await?;
 
@@ -960,14 +999,13 @@ mod tests {
         let err = match workspace
             .server
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
-                UpdateArtifactArgs {
+                UpdateArtifactArgs::Impl(crate::tools::UpdateArtifactVariantArgs {
                     locator: "spec://testspec".to_string(),
-                    expected_kind: ExpectedArtifactKind::Impl,
                     mode: UpdateMode::Preview,
                     ops: vec![specman::FrontMatterUpdateOp::SetVersion {
                         version: "0.2.0".to_string(),
                     }],
-                },
+                }),
             ))
             .await
         {
@@ -987,14 +1025,13 @@ mod tests {
         let err = match workspace
             .server
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
-                UpdateArtifactArgs {
+                UpdateArtifactArgs::Scratch(crate::tools::UpdateArtifactVariantArgs {
                     locator: "scratch://testscratch".to_string(),
-                    expected_kind: ExpectedArtifactKind::Scratch,
                     mode: UpdateMode::Preview,
                     ops: vec![specman::FrontMatterUpdateOp::SetTarget {
                         target: "spec://testspec".to_string(),
                     }],
-                },
+                }),
             ))
             .await
         {
@@ -1016,14 +1053,13 @@ mod tests {
         let err = match workspace
             .server
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
-                UpdateArtifactArgs {
+                UpdateArtifactArgs::Spec(crate::tools::UpdateArtifactVariantArgs {
                     locator: "https://example.com/spec.md".to_string(),
-                    expected_kind: ExpectedArtifactKind::Spec,
                     mode: UpdateMode::Persist,
                     ops: vec![specman::FrontMatterUpdateOp::SetVersion {
                         version: "0.2.0".to_string(),
                     }],
-                },
+                }),
             ))
             .await
         {
@@ -1070,9 +1106,9 @@ dependencies: []
 ",
         )?;
 
-    fs::write(
-        empty_spec_dir.join("spec.md"),
-        r"---
+        fs::write(
+            empty_spec_dir.join("spec.md"),
+            r"---
 name: empty
 version: '0.1.0'
 dependencies: []
@@ -1080,7 +1116,7 @@ dependencies: []
 
 # Empty Spec
 ",
-    )?;
+        )?;
 
         fs::write(
             impl_dir.join("impl.md"),

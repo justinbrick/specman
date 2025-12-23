@@ -63,14 +63,16 @@ impl ScratchKind {
 
 /// `create_artifact` input schema for MCP.
 ///
-/// This uses an internally-tagged enum (`kind`) so that each artifact type can have a
-/// clear, typed, and schema-enforced set of inputs.
+/// This uses an externally-tagged enum (exactly one of the keys `specification`,
+/// `implementation`, or `scratch_pad`) so each artifact type can have a clear,
+/// typed, and schema-enforced set of inputs, while keeping JSON Schema simple for
+/// strict MCP clients.
 ///
 /// The server intentionally does NOT accept arbitrary template substitutions. It is responsible
 /// for gathering any missing details via MCP sampling + elicitation and then mapping
 /// the result into a SpecMan core `CreateRequest`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 pub enum CreateArtifactArgs {
     /// Create a specification under `spec/`.
     Specification {
@@ -122,42 +124,30 @@ pub enum CreateArtifactArgs {
 }
 
 // NOTE:
-// The MCP Inspector currently expects tool `inputSchema.type` to be exactly
-// the string "object".
-//
-// For an internally-tagged enum, schemars can emit a schema whose top-level
-// object does not include a concrete `type: "object"` (e.g. only `oneOf`).
-// That’s valid JSON Schema, but it fails MCP Inspector validation.
-//
-// To keep MCP Inspector happy, we handcraft the schema in `CreateArtifactArgs::json_schema`.
+// Some MCP clients are significantly stricter than general JSON Schema.
+// To maximize compatibility, we handcraft a simple, inline schema that:
+// - has top-level `type: "object"`
+// - contains no `oneOf`/`anyOf`, no `$ref`, and no `patternProperties`
+// - enforces “exactly one variant” via `minProperties`/`maxProperties`
 
 impl JsonSchema for CreateArtifactArgs {
     fn schema_name() -> Cow<'static, str> {
         Cow::Borrowed("CreateArtifactArgs")
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        let scratch_kind_schema = generator.subschema_for::<ScratchKind>();
-
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
             "type": "object",
+            "description": "Externally-tagged create request: exactly one of 'specification', 'implementation', or 'scratch_pad'.",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "maxProperties": 1,
             "properties": {
-                "kind": {
-                    "type": "string",
-                    "description": "Discriminator selecting which artifact shape is being requested ('specification', 'implementation', or 'scratch_pad')."
-                }
-            },
-            "required": ["kind"],
-            "oneOf": [
-                {
+                "specification": {
                     "type": "object",
+                    "description": "Create a specification under 'spec/'.",
                     "additionalProperties": false,
                     "properties": {
-                        "kind": {
-                            "const": "specification",
-                            "type": "string",
-                            "description": "Selects the specification creation request shape."
-                        },
                         "intent": {
                             "type": "string",
                             "description": "Optional natural-language intent to guide sampling and prompt generation."
@@ -170,18 +160,13 @@ impl JsonSchema for CreateArtifactArgs {
                             "type": "string",
                             "description": "Optional human-readable title hint for the new specification."
                         }
-                    },
-                    "required": ["kind"]
+                    }
                 },
-                {
+                "implementation": {
                     "type": "object",
+                    "description": "Create an implementation under 'impl/'.",
                     "additionalProperties": false,
                     "properties": {
-                        "kind": {
-                            "const": "implementation",
-                            "type": "string",
-                            "description": "Selects the implementation creation request shape."
-                        },
                         "target": {
                             "type": "string",
                             "description": "Target locator that MUST resolve to a specification (e.g. 'spec://...')."
@@ -195,33 +180,30 @@ impl JsonSchema for CreateArtifactArgs {
                             "description": "Optional slug/name hint for the new implementation (may still require confirmation)."
                         }
                     },
-                    "required": ["kind", "target"]
+                    "required": ["target"]
                 },
-                {
+                "scratch_pad": {
                     "type": "object",
+                    "description": "Create a scratch pad under the workspace scratchpad directory.",
                     "additionalProperties": false,
                     "properties": {
-                        "kind": {
-                            "const": "scratch_pad",
-                            "type": "string",
-                            "description": "Selects the scratch pad creation request shape."
-                        },
                         "target": {
                             "type": "string",
                             "description": "Target locator for scratch pad creation. MUST resolve within the workspace and MUST NOT be an HTTP(S) URL."
                         },
                         "scratchKind": {
-                            "allOf": [scratch_kind_schema],
-                            "description": "Scratch pad work type selector ('feat', 'ref', 'revision', 'fix', or 'draft')."
+                            "type": "string",
+                            "description": "Scratch pad work type selector ('feat', 'ref', 'revision', 'fix', or 'draft').",
+                            "enum": ["draft", "revision", "feat", "ref", "fix"]
                         },
                         "intent": {
                             "type": "string",
                             "description": "Required natural-language intent to guide sampling and prompt generation."
                         }
                     },
-                    "required": ["kind", "target", "scratchKind", "intent"]
+                    "required": ["target", "scratchKind", "intent"]
                 }
-            ]
+            }
         })
     }
 }
@@ -332,15 +314,32 @@ impl ExpectedArtifactKind {
 ///
 /// The server still deserializes/validates using the concrete Rust types.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum UpdateArtifactArgs {
+    /// Update YAML front matter for a specification artifact.
+    Spec(UpdateArtifactVariantArgs),
+    /// Update YAML front matter for an implementation artifact.
+    Impl(UpdateArtifactVariantArgs),
+    /// Update YAML front matter for a scratch pad artifact.
+    Scratch(UpdateArtifactVariantArgs),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct UpdateArtifactArgs {
+pub(crate) struct UpdateArtifactVariantArgs {
     pub locator: String,
-
-    pub expected_kind: ExpectedArtifactKind,
-
     pub mode: UpdateMode,
-
     pub ops: Vec<FrontMatterUpdateOp>,
+}
+
+impl UpdateArtifactArgs {
+    fn into_parts(self) -> (ExpectedArtifactKind, UpdateArtifactVariantArgs) {
+        match self {
+            UpdateArtifactArgs::Spec(v) => (ExpectedArtifactKind::Spec, v),
+            UpdateArtifactArgs::Impl(v) => (ExpectedArtifactKind::Impl, v),
+            UpdateArtifactArgs::Scratch(v) => (ExpectedArtifactKind::Scratch, v),
+        }
+    }
 }
 
 impl JsonSchema for UpdateArtifactArgs {
@@ -351,19 +350,13 @@ impl JsonSchema for UpdateArtifactArgs {
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         // Keep this schema deliberately simple (draft-07-ish) and inline.
         // Validation of detailed op shapes happens server-side.
-        schemars::json_schema!({
+        let variant_schema = schemars::json_schema!({
             "type": "object",
-            "description": "`update_artifact` input schema for MCP.",
             "additionalProperties": false,
             "properties": {
                 "locator": {
                     "type": "string",
                     "description": "Artifact locator: workspace-relative path, spec://.../impl://.../scratch://... handle, or an HTTPS URL."
-                },
-                "expectedKind": {
-                    "type": "string",
-                    "description": "Callers must declare which artifact kind they expect.",
-                    "enum": ["spec", "impl", "scratch"]
                 },
                 "mode": {
                     "type": "string",
@@ -464,7 +457,20 @@ impl JsonSchema for UpdateArtifactArgs {
                     }
                 }
             },
-            "required": ["locator", "expectedKind", "mode", "ops"]
+            "required": ["locator", "mode", "ops"]
+        });
+
+        schemars::json_schema!({
+            "type": "object",
+            "description": "`update_artifact` input schema for MCP (externally-tagged: exactly one of 'spec', 'impl', or 'scratch').",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "maxProperties": 1,
+            "properties": {
+                "spec": variant_schema,
+                "impl": variant_schema,
+                "scratch": variant_schema
+            }
         })
     }
 }
@@ -544,10 +550,10 @@ impl SpecmanMcpServer {
         self.create_artifact_internal(Some(&peer), args).await
     }
 
-    // #[tool(
-    //     name = "update_artifact",
-    //     description = "Update YAML front matter metadata for a SpecMan artifact (spec/impl/scratch) while preserving the Markdown body. Supports preview and persist modes."
-    // )]
+    #[tool(
+        name = "update_artifact",
+        description = "Update YAML front matter metadata for a SpecMan artifact (spec/impl/scratch) while preserving the Markdown body. Supports preview and persist modes."
+    )]
     pub(crate) async fn update_artifact(
         &self,
         Parameters(args): Parameters<UpdateArtifactArgs>,
@@ -561,6 +567,9 @@ impl SpecmanMcpServer {
         &self,
         args: UpdateArtifactArgs,
     ) -> Result<Json<UpdateArtifactResult>, McpError> {
+        let (expected_kind, args) = args.into_parts();
+        let expected_kind = expected_kind.as_artifact_kind();
+
         let locator = args.locator.trim();
         if locator.is_empty() {
             return Err(invalid_params("locator must not be empty"));
@@ -596,7 +605,6 @@ impl SpecmanMcpServer {
 
             let raw = fetch_https_document(locator).await?;
 
-            let expected_kind = args.expected_kind.as_artifact_kind();
             let id = ArtifactId {
                 kind: expected_kind,
                 name: derive_name_from_https(locator),
@@ -628,7 +636,7 @@ impl SpecmanMcpServer {
             .dependency_tree_from_locator(locator)
             .map_err(to_mcp_error)?;
 
-        let expected = args.expected_kind.as_artifact_kind();
+        let expected = expected_kind;
         if tree.root.id.kind != expected {
             return Err(invalid_params(format!(
                 "artifact kind mismatch: expected {:?} but locator resolved to {:?}",
