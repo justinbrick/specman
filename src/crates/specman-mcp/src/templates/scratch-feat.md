@@ -17,11 +17,7 @@ Dependencies:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` with a JSON object that sets the exact schema fields:
-    - `kind`: `"scratch_pad"`
-    - `target`: `"{{target_path}}"`
-    - `scratchKind`: `"feat"`
-    - `intent` (required string): a concise, plain-language summary of the User Input requirements + constraints for this scratch pad. This is used to drive sampling/elicitation—include the actual requirements, not placeholders.
+1. Call the MCP tool `create_artifact` to create a new feature scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
 2. After `create_artifact` returns, infer `scratch_pad_name` from the returned handle (it will look like `scratch://{scratch_pad_name}`), then create and check out a branch:
     - Branch naming: `<target_name>/feat/<scratch_pad_name>` (example: `specman-mcp-rust/feat/action-being-done`).
     - If the branch does not exist yet: `git checkout -b <target_name>/feat/<scratch_pad_name>`.

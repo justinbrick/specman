@@ -37,11 +37,7 @@ Read the following dependencies before continuing:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` with a JSON object that sets the exact schema fields:
-    - `kind`: `"scratch_pad"`
-    - `target`: `"{{target_path}}"`
-    - `scratchKind`: `"revision"`
-    - `intent` (required string): a concise, plain-language summary of the User Input revision requests + constraints. This is used to drive sampling/elicitation—include the actual requirements, not placeholders.
+1. Call the MCP tool `create_artifact` to create a new revision scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
 2. After `create_artifact` returns, infer `scratch_pad_name` from the returned handle (it will look like `scratch://{scratch_pad_name}`), then create and check out a branch:
     - Branch naming: `<target_name>/revision/<scratch_pad_name>` (example: `specman-core/revision/clarify-tokens`).
     - If the branch does not exist yet: `git checkout -b <target_name>/revision/<scratch_pad_name>`.

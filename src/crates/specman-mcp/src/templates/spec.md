@@ -24,11 +24,7 @@ Before interpreting any inputs, complete these reading prerequisites:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` with a JSON object that sets the exact schema fields:
-    - `kind`: `"specification"`
-    - `intent` (optional string but SHOULD be set): a concise, plain-language summary of the User Input requirements + constraints for the new specification. This is used to drive sampling/elicitation—include the actual requirements, not placeholders.
-    - `name` (optional string): specification slug hint.
-    - `title` (optional string): human-readable title hint.
+1. Call the MCP tool `create_artifact` to create a new specification artifact, following the tool-call schema exposed by the current environment (do not rely on older examples that enumerate specific fields).
 2. Open the created specification artifact and fill it out:
     - Declare dependencies (if any) and ensure they are necessary and sufficient.
     - Define Concepts and Entities (use the required heading prefixes) and write normative requirements using RFC 2119 keywords.

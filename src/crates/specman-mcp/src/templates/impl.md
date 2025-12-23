@@ -12,11 +12,7 @@ Read the following dependencies before continuing:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` with a JSON object that sets the exact schema fields:
-    - `kind`: `"implementation"`
-    - `target`: `"{{target_spec_path}}"`
-    - `intent` (optional string but SHOULD be set): a concise, plain-language summary of the User Input requirements + constraints for the implementation. This is used to drive sampling/elicitation—include the actual requirements, not placeholders.
-    - `name` (optional string): implementation slug hint.
+1. Call the MCP tool `create_artifact` to create a new implementation artifact for the governing specification, following the tool-call schema exposed by the current environment (avoid hard-coding any specific field names).
 2. Open the created implementation artifact and fill it out:
     - Confirm the requested implementation language (ask the user if not specified) and record it in the implementation metadata/intro.
     - Break down how the implementation should work in that language: modules/components, key types, interfaces, error handling, data flow, and external integrations.
