@@ -44,6 +44,17 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 - The CLI MUST guard against executing outside the detected workspace by refusing to read or write files that resolve beyond the workspace root.
 
+!concept-workspace-context-resolution.initialization:
+
+- Workspace creation MUST be explicit: all commands except `init` MUST fail fast when no workspace is discovered instead of creating one implicitly.
+- The `init` command MUST delegate to the SpecMan Core workspace initializer/creator to provision `.specman/` and required subdirectories; the CLI MUST NOT reimplement directory scaffolding.
+- `init` MUST accept an explicit target path provided either as a positional argument or via `--workspace`; when both are supplied, `--workspace` MUST take precedence. When neither is supplied, the current working directory MUST be treated as the target path.
+- The target path MUST be absolute and MUST NOT escape the intended root via `..` traversal; invalid or relative paths MUST fail with `EX_USAGE` and a remedial message.
+- `init` MUST refuse nested workspace creation: if the resolved target sits inside an existing workspace discovered via ancestor scan, the command MUST fail with an error that cites the active workspace root.
+- `init` MUST be idempotent. When a `.specman` directory already exists at the target root, the command MUST succeed with `EX_OK`, emit that the workspace already existed, and avoid mutating files beyond what the SpecMan Core initializer reports as necessary.
+- `init` SHOULD offer a dry-run mode that reports the resolved workspace root and the paths that would be created or reused without writing to disk.
+- Filesystem or permission failures during initialization MUST bubble the closest matching `sysexits` constant (for example `EX_CANTCREAT`).
+
 ### Concept: Lifecycle Command Surface
 
 !concept-lifecycle-command-surface.requirements:
@@ -53,6 +64,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 - Delete commands MUST refuse to proceed when dependency analysis reveals downstream consumers unless the operator explicitly supplies `--force`; forced deletions MUST still print the blocking dependency tree, require explicit confirmation (flag or prompt), and MUST record in the command result that dependencies were overridden.
 - All lifecycle commands MUST persist results to the canonical workspace paths (`spec/`, `impl/`, `.specman/scratchpad/`) returned by workspace discovery, and MUST error when filesystem writes fail.
 - Every command group (`spec`, `impl`, `scratch`) MUST expose a read-only `dependencies` subcommand that invokes the `specman-core` dependency tree builder for the addressed artifact. These subcommands MUST default to rendering the downstream tree, MUST support mutually exclusive `--upstream`, `--downstream`, and `--all` flags (failing with `EX_USAGE` when callers combine them), and MUST return deterministic tree-formatted output suitable for parsing or display. Output MUST include the root artifact, indentation that conveys parent-child relationships, and MAY use ASCII characters for branches when ANSI is unavailable. Success MUST exit with `EX_OK`; unsupported locators, workspace violations, or traversal failures MUST bubble the closest matching `sysexits` constant surfaced by the dependency builder.
+- The lifecycle surface MUST include an explicit workspace initialization entry point (`init`) and MUST NOT implicitly create workspaces as part of other commands.
 
 !concept-lifecycle-command-surface.safety:
 
@@ -63,6 +75,18 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 - Extensions or plugins MUST NOT bypass dependency checks or naming validations defined by this specification.
 
 #### Command Catalog
+
+##### `init`
+
+!concept-lifecycle-command-surface.commands.init:
+
+- Purpose: create a SpecMan workspace at an explicit path.
+- MUST accept a target path as an optional positional argument plus a `--workspace <path>` flag; when both are present, `--workspace` MUST override the positional value. When neither is provided, the current working directory MUST be used as the target path.
+- MUST reject relative paths, path traversal outside the intended root, or attempts to create a nested workspace beneath an already discovered workspace. These validation failures MUST return `EX_USAGE` and cite the active workspace root when nesting is detected.
+- MUST delegate workspace creation to the SpecMan Core initializer/creator so `.specman/` and required subdirectories are provisioned atomically; the CLI MUST NOT manually craft directories.
+- MUST be idempotent: if `.specman/` already exists at the target root, the command MUST exit with `EX_OK` and emit a no-op report describing the reused workspace state.
+- MUST surface a `--dry-run` flag that resolves and prints the workspace root plus the directories/files that would be created or reused without writing to disk.
+- Success MUST exit with `EX_OK`. Permission or filesystem errors MUST bubble the closest matching `sysexits` constant (for example `EX_CANTCREAT`); validation failures MUST use `EX_USAGE`.
 
 ##### `status`
 
