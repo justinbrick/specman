@@ -1,9 +1,9 @@
 # TODO
 
-- ref(specman-mcp): check-list tasks, staged tasks
-- fix(specman-mcp): remove instructions for specific parameters to add to tool call
-- rev(specman-mcp): require revision impact analysis
-- feat(specman-mcp): revision impact analysis (read dependencies, create scratches for fixing)
+- rev(specman-core): require workspace initialization
+- feat(specman-library): workspace initialization
+- feat(specman-cli): workspace initialization
+- chore: create documentation for CLI, MCP
 - feat(specman-mcp): MCP published (docker?)
 - ref(specman-library): remove ops-based updating / editing
 - feat(specman-library): read constraint content given identifier
