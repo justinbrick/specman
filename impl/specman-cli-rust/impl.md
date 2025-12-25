@@ -69,6 +69,7 @@ Every command stores its rendered artifacts inside the canonical workspace direc
 
 | Root Command | Subcommands | Module | Notes |
 | --- | --- | --- | --- |
+| `init` | _n/a_ | [`commands/init.rs`](../../src/crates/specman-cli/src/commands/init.rs) | Resolves an absolute workspace target (positional or `--workspace`), guards against ancestor workspaces, supports dry-run reporting, and delegates creation to `WorkspaceDiscovery::create`. |
 | `status` | _n/a_ | [`commands/status.rs`](../../src/crates/specman-cli/src/commands/status.rs) | Validates the full workspace graph before exiting with `EX_OK`/`EX_DATAERR`. |
 | `spec` | `ls`, `new`, `delete`, `dependencies` | [`commands/spec.rs`](../../src/crates/specman-cli/src/commands/spec.rs) | Manages artifacts under `spec/`; honors `--name`, `--dependencies`, `--version`, and delete `--force`. |
 | `impl` | `ls`, `new`, `delete`, `dependencies` | [`commands/implementation.rs`](../../src/crates/specman-cli/src/commands/implementation.rs) | Mirrors the specification flows while requiring `--spec` and `--language` on creation. |
@@ -97,6 +98,8 @@ pub fn bootstrap(
 ```
 
 Each command receives the same `CliSession`, so downstream helpers (dependency mapper, persistence layer, lifecycle controller) reuse canonical paths without re-reading the filesystem.
+
+The `init` command resolves the target root before discovery, normalizes the path lexically (handling relative segments without consulting the filesystem), and rejects initialization when an ancestor `.specman` already exists. Dry runs return the resolved root and `.specman` path without writing, while real runs delegate workspace creation to `WorkspaceDiscovery::create` so initialization logic stays in the shared library.
 
 ### Concept: Lifecycle Command Surface ([spec/specman-cli/spec.md#concept-lifecycle-command-surface](../../spec/specman-cli/spec.md#concept-lifecycle-command-surface))
 
@@ -246,6 +249,7 @@ This trio enforces the same guarantees described in the specification: every req
 ## Operational Notes
 
 - **Building & Testing:** Run `cargo build -p specman-cli` and `cargo test -p specman-cli` from `src/`. Integration tests under `src/crates/specman-cli/tests/` spin up temporary workspaces, execute commands via `run_cli`, and assert on exit codes plus filesystem side effects.
+- **Workspace Initialization:** `specman init [PATH]` (or `--workspace PATH`) normalizes to an absolute root, refuses to nest inside another workspace, supports `--dry-run` for read-only planning, and returns `EX_OK` whether it creates or reuses `.specman`.
 - **Installing the Binary:** Run `cargo install --path src/crates/specman-cli` from the repository root (or any directory that can resolve that relative path). The crate now defines a `[[bin]]` target named `specman`, so installation places a `specman` executable on `$PATH` without extra flags while continuing to depend on the path-only `specman` library crate bundled in this workspace.
 - **Workspace Resolution:** The `--workspace <path>` flag overrides discovery; absent that flag, the CLI mirrors `specman-core` behavior by scanning ancestors for `.specman`. Invalid overrides fall back to ancestor search and emit `EX_USAGE` errors referencing the Workspace Context Resolution concept.
 - **Template Overrides:** Pointer files inside `.specman/templates/{SPEC|IMPL|SCRATCH}` are read on every invocation. Unsupported schemes, unreadable files, or pointers outside the workspace produce `EX_CONFIG` errors that cite [Concept: Template Integration & Token Handling](../../spec/specman-cli/spec.md#concept-template-integration--token-handling).

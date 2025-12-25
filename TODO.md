@@ -1,7 +1,6 @@
 # TODO
 
-- feat(specman-library): workspace initialization
-- feat(specman-cli): workspace initialization
+- impl: javascript MCP wrapper
 - chore: create documentation for CLI, MCP
 - ref(specman-library): function for reading constraint content
 - feat(specman-mcp): MCP published (docker?)

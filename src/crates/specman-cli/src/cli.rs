@@ -44,18 +44,8 @@ where
     };
 
     let workspace_override = matches.get_one::<String>("workspace").cloned();
-    let session = CliSession::bootstrap(workspace_override, verbosity)?;
-    if session.verbosity.verbose {
-        tracing::info!(
-            workspace = %session.workspace_paths.root().display(),
-            spec_dir = %session.workspace_paths.spec_dir().display(),
-            impl_dir = %session.workspace_paths.impl_dir().display(),
-            scratch_dir = %session.workspace_paths.scratchpad_dir().display(),
-            "resolved workspace context"
-        );
-    }
 
-    let result = dispatch(&session, &matches)?;
+    let result = dispatch(&matches, workspace_override, verbosity)?;
     emit_result(result, output)
 }
 
@@ -90,6 +80,7 @@ fn build_cli() -> Command {
                 .help("Emit additional logging about template locators, workspace paths, and adapters."),
         )
         .subcommand_required(true)
+        .subcommand(commands::init::command())
         .subcommand(commands::status::command())
         .subcommand(commands::spec::command())
         .subcommand(commands::implementation::command())
@@ -101,6 +92,29 @@ fn build_cli() -> Command {
 /// Command Surface stays thin and predictable. Unknown subcommands map to `EX_USAGE` so
 /// callers receive actionable feedback.
 fn dispatch(
+    matches: &ArgMatches,
+    workspace_override: Option<String>,
+    verbosity: Verbosity,
+) -> Result<commands::CommandResult, CliError> {
+    match matches.subcommand() {
+        Some(("init", sub)) => commands::init::run(workspace_override, sub),
+        _ => {
+            let session = CliSession::bootstrap(workspace_override, verbosity)?;
+            if session.verbosity.verbose {
+                tracing::info!(
+                    workspace = %session.workspace_paths.root().display(),
+                    spec_dir = %session.workspace_paths.spec_dir().display(),
+                    impl_dir = %session.workspace_paths.impl_dir().display(),
+                    scratch_dir = %session.workspace_paths.scratchpad_dir().display(),
+                    "resolved workspace context"
+                );
+            }
+            dispatch_with_session(&session, matches)
+        }
+    }
+}
+
+fn dispatch_with_session(
     session: &CliSession,
     matches: &ArgMatches,
 ) -> Result<commands::CommandResult, CliError> {

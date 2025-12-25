@@ -5,6 +5,7 @@ use crate::error::ExitStatus;
 
 pub mod dependencies;
 pub mod implementation;
+pub mod init;
 pub mod scratch;
 pub mod spec;
 pub mod status;
@@ -16,6 +17,12 @@ pub enum CommandResult {
     Status {
         reports: Vec<status::StatusReport>,
         healthy: bool,
+    },
+    WorkspaceInitialized {
+        root: String,
+        dot_specman: String,
+        created: bool,
+        dry_run: bool,
     },
     SpecList {
         specs: Vec<spec::SpecSummary>,
@@ -77,6 +84,7 @@ impl CommandResult {
                     ExitStatus::Data
                 }
             }
+            CommandResult::WorkspaceInitialized { .. } => ExitStatus::Ok,
             CommandResult::ScratchList {
                 missing_metadata, ..
             } => {

@@ -25,6 +25,19 @@ For the authoritative list of commands, semantics, and exit-code guarantees, see
 
 You can also run `specman --help` to list available commands and `specman <command> --help` for per-command usage.
 
+### Initialize a workspace
+
+```bash
+# Initialize at the current directory
+specman init
+
+# Initialize a specific path or reuse an existing workspace there
+specman init /path/to/workspace
+
+# Plan without writing
+specman init --workspace /path/to/workspace --dry-run
+```
+
 ## Repository
 
 Development and roadmap updates live in the main SpecMan repository:

@@ -42,6 +42,30 @@ fn print_text(result: &CommandResult) {
                 }
             }
         }
+        CommandResult::WorkspaceInitialized {
+            root,
+            dot_specman,
+            created,
+            dry_run,
+        } => {
+            if *dry_run {
+                if *created {
+                    println!(
+                        "Dry run: would initialize workspace at {} (.specman at {})",
+                        root, dot_specman
+                    );
+                } else {
+                    println!(
+                        "Dry run: workspace already initialized at {} (.specman at {})",
+                        root, dot_specman
+                    );
+                }
+            } else if *created {
+                println!("Initialized workspace at {} (.specman: {})", root, dot_specman);
+            } else {
+                println!("Workspace already initialized at {} (.specman: {})", root, dot_specman);
+            }
+        }
         CommandResult::SpecList { specs } => {
             println!("Specifications ({}):", specs.len());
             for spec in specs {
