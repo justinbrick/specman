@@ -1,7 +1,7 @@
 ---
 spec: ../../spec/specman-cli/spec.md
 name: specman-cli-rust
-version: "2.0.0"
+version: "2.1.0"
 location: ../../src/crates/specman-cli
 primary_language:
   language: rust@1.91.0
@@ -108,7 +108,7 @@ The four command groups expose symmetrical create/list/delete/dependencies flows
 ```
 Downstream: 2 edge(s)
     spec specman-cli@1.0.0
-  ├── impl specman-cli-rust@2.0.0
+  ├── impl specman-cli-rust@2.1.0
     └── scratch cli-entity-map
 ```
 

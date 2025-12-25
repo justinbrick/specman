@@ -1253,7 +1253,7 @@ mod tests {
 
         let request = FrontMatterUpdateRequest::new()
             .with_op(FrontMatterUpdateOp::SetVersion {
-                version: "2.0.0".into(),
+                version: "2.1.0".into(),
             })
             .with_op(FrontMatterUpdateOp::ClearVersion);
 

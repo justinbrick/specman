@@ -1,17 +1,17 @@
 ---
 spec: ../../spec/specman-mcp/spec.md
 name: specman-mcp-rust
-version: "0.3.0"
+version: "1.0.0"
 location: ../../src/crates/specman-mcp
 library:
-  name: specman-mcp-server@0.3.0
+  name: specman-mcp-server@1.0.0
 primary_language:
   language: rust@1.91.0
   properties:
     edition: "2024"
   libraries:
     - name: rmcp@latest
-    - name: specman-library@2.0.0
+    - name: specman-library@2.1.0
     - name: schemars
     - name: serde_json
 secondary_languages: []
@@ -56,7 +56,7 @@ Source code resides under `src/crates/specman-mcp`.
 ### Libraries
 
 - `rmcp@latest` — MCP server runtime used for STDIN lifecycle, tool/resource/prompt registration, streaming responses, and notifications.
-- `specman-library@2.0.0` — shared SpecMan Core implementation supplying workspace discovery, dependency mapping, lifecycle automation, metadata mutation, and schema derivation.
+- `specman-library@2.1.0` — shared SpecMan Core implementation supplying workspace discovery, dependency mapping, lifecycle automation, metadata mutation, and schema derivation.
 - `schemars` and `serde_json` — generate and serialize JSON Schemas for MCP tool parameters and outputs tied to SpecMan Data Model entities.
 
 ## Concept & Entity Breakdown
