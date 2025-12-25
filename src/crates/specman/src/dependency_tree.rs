@@ -1207,7 +1207,9 @@ fn resolve_workspace_path(
     }
 
     let canonical = fs::canonicalize(&path)?;
-    if !canonical.starts_with(workspace.root()) {
+    let canonical_root =
+        fs::canonicalize(workspace.root()).unwrap_or_else(|_| workspace.root().to_path_buf());
+    if !canonical.starts_with(workspace.root()) && !canonical.starts_with(&canonical_root) {
         return Err(SpecmanError::Workspace(format!(
             "locator {} escapes workspace {}",
             canonical.display(),

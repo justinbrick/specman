@@ -56,5 +56,6 @@ pub use template::{
 };
 pub use template_catalog::{ResolvedTemplate, TemplateCatalog};
 pub use workspace::{
-    FilesystemWorkspaceLocator, WorkspaceLocator, WorkspacePaths, discover as discover_workspace,
+    FilesystemWorkspaceLocator, WorkspaceContext, WorkspaceDiscovery, WorkspaceError,
+    WorkspaceLocator, WorkspacePaths, discover as discover_workspace,
 };

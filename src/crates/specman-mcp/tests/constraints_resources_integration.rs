@@ -7,7 +7,7 @@ use rmcp::model::{
     ClientRequest, ListResourceTemplatesRequest, ReadResourceRequest, ReadResourceRequestParam,
     ResourceContents, ServerResult,
 };
-use rmcp::service::{serve_client, serve_server, RoleClient, RoleServer, ServiceError};
+use rmcp::service::{RoleClient, RoleServer, ServiceError, serve_client, serve_server};
 use specman_mcp::SpecmanMcpServer;
 use tempfile::TempDir;
 
@@ -121,7 +121,8 @@ async fn templates_include_constraints_templates() -> Result<(), Box<dyn std::er
 }
 
 #[tokio::test]
-async fn constraints_index_routes_and_returns_expected_json() -> Result<(), Box<dyn std::error::Error>> {
+async fn constraints_index_routes_and_returns_expected_json()
+-> Result<(), Box<dyn std::error::Error>> {
     let ws = TestWorkspace::create().await?;
 
     let (mime, text) = ws.read_text_resource("spec://testspec/constraints").await?;
@@ -152,15 +153,19 @@ async fn constraints_index_routes_and_returns_expected_json() -> Result<(), Box<
 }
 
 #[tokio::test]
-async fn constraints_index_trailing_slash_routes_to_index() -> Result<(), Box<dyn std::error::Error>> {
+async fn constraints_index_trailing_slash_routes_to_index() -> Result<(), Box<dyn std::error::Error>>
+{
     let ws = TestWorkspace::create().await?;
-    let (mime, _text) = ws.read_text_resource("spec://testspec/constraints/").await?;
+    let (mime, _text) = ws
+        .read_text_resource("spec://testspec/constraints/")
+        .await?;
     assert_eq!(mime, "application/json");
     Ok(())
 }
 
 #[tokio::test]
-async fn constraints_index_empty_spec_returns_empty_list() -> Result<(), Box<dyn std::error::Error>> {
+async fn constraints_index_empty_spec_returns_empty_list() -> Result<(), Box<dyn std::error::Error>>
+{
     let ws = TestWorkspace::create().await?;
     let (mime, text) = ws.read_text_resource("spec://empty/constraints").await?;
     assert_eq!(mime, "application/json");
@@ -221,7 +226,8 @@ async fn constraints_double_slash_is_rejected() -> Result<(), Box<dyn std::error
 }
 
 #[tokio::test]
-async fn constraint_content_returns_only_the_exact_group() -> Result<(), Box<dyn std::error::Error>> {
+async fn constraint_content_returns_only_the_exact_group() -> Result<(), Box<dyn std::error::Error>>
+{
     let ws = TestWorkspace::create().await?;
 
     let (mime, text) = ws
@@ -240,7 +246,8 @@ async fn constraint_content_returns_only_the_exact_group() -> Result<(), Box<dyn
 }
 
 #[tokio::test]
-async fn constraint_content_includes_additional_markdown_until_next_boundary() -> Result<(), Box<dyn std::error::Error>> {
+async fn constraint_content_includes_additional_markdown_until_next_boundary()
+-> Result<(), Box<dyn std::error::Error>> {
     let ws = TestWorkspace::create().await?;
 
     let (_mime, text) = ws
@@ -261,7 +268,8 @@ async fn constraint_content_includes_additional_markdown_until_next_boundary() -
 }
 
 #[tokio::test]
-async fn constraint_content_missing_constraint_errors_with_context() -> Result<(), Box<dyn std::error::Error>> {
+async fn constraint_content_missing_constraint_errors_with_context()
+-> Result<(), Box<dyn std::error::Error>> {
     let ws = TestWorkspace::create().await?;
 
     let err = ws
@@ -442,7 +450,10 @@ work_type:
     )?;
 
     fs::write(dot_specman_templates.join("IMPL"), "templates/impl.md\n")?;
-    fs::write(dot_specman_templates.join("SCRATCH"), "templates/scratch.md\n")?;
+    fs::write(
+        dot_specman_templates.join("SCRATCH"),
+        "templates/scratch.md\n",
+    )?;
 
     // Minimal scratch artifact to keep workspace inventory logic happy.
     let scratch_dir = root.join(".specman/scratchpad/testscratch");

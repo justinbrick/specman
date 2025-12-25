@@ -15,8 +15,8 @@ use rmcp::service::{RequestContext, RoleServer};
 use serde::{Deserialize, Serialize};
 
 use specman::{
-    ArtifactId, ArtifactKey, ArtifactKind, ArtifactSummary, ConstraintIdentifier, SemVer,
-    SpecmanError, WorkspaceLocator, WorkspacePaths, FilesystemStructureIndexer,
+    ArtifactId, ArtifactKey, ArtifactKind, ArtifactSummary, ConstraintIdentifier,
+    FilesystemStructureIndexer, SemVer, SpecmanError, WorkspaceLocator, WorkspacePaths,
 };
 
 use crate::error::{McpError, invalid_params, to_mcp_error};
@@ -34,7 +34,9 @@ pub struct ConstraintIndexEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ConstraintIndex {
-    #[schemars(description = "Artifact handle (e.g. 'spec://name') the constraints were read from.")]
+    #[schemars(
+        description = "Artifact handle (e.g. 'spec://name') the constraints were read from."
+    )]
     pub artifact: String,
     #[schemars(description = "Deterministic list of constraint groups in the specification.")]
     pub constraints: Vec<ConstraintIndexEntry>,
@@ -63,9 +65,7 @@ fn validate_constraint_id(constraint_id: &str) -> Result<(), McpError> {
         return Err(invalid_params("constraint_id must not include '/'"));
     }
     if constraint_id.contains(' ') || constraint_id.contains('\t') {
-        return Err(invalid_params(
-            "constraint_id must not include whitespace",
-        ));
+        return Err(invalid_params("constraint_id must not include whitespace"));
     }
     Ok(())
 }
@@ -145,9 +145,7 @@ fn extract_constraint_block(body: &str, constraint_id: &str) -> Option<String> {
             continue;
         }
 
-        let group = trimmed
-            .trim_start_matches('!')
-            .trim_end_matches(':');
+        let group = trimmed.trim_start_matches('!').trim_end_matches(':');
 
         if group == constraint_id {
             start = Some(idx);
@@ -293,7 +291,9 @@ impl SpecmanMcpServer {
                 .trim_start_matches('!')
                 .trim_end_matches(':')
                 .to_string();
-            identifier_lines.entry(group).or_insert((idx + 1, (*raw).to_string()));
+            identifier_lines
+                .entry(group)
+                .or_insert((idx + 1, (*raw).to_string()));
         }
 
         let workspace_path = workspace_relative_path(workspace.root(), &path).ok_or_else(|| {
@@ -482,7 +482,9 @@ impl SpecmanMcpServer {
             .unwrap_or((false, uri));
 
         if locator.contains("/constraints//") {
-            return Err(invalid_params("malformed constraints locator (double slash)"));
+            return Err(invalid_params(
+                "malformed constraints locator (double slash)",
+            ));
         }
 
         // Normalize `.../constraints/` to `.../constraints`.
@@ -495,19 +497,18 @@ impl SpecmanMcpServer {
         // Parse constraints routing:
         // - `{base}/constraints` => index
         // - `{base}/constraints/{constraint_id}` => content
-        let (constraints_mode, base_locator, constraint_id) = if let Some(base) =
-            locator.strip_suffix("/constraints")
-        {
-            (Some("index"), base, None)
-        } else if let Some((base, rest)) = locator.split_once("/constraints/") {
-            if rest.is_empty() {
+        let (constraints_mode, base_locator, constraint_id) =
+            if let Some(base) = locator.strip_suffix("/constraints") {
                 (Some("index"), base, None)
+            } else if let Some((base, rest)) = locator.split_once("/constraints/") {
+                if rest.is_empty() {
+                    (Some("index"), base, None)
+                } else {
+                    (Some("content"), base, Some(rest))
+                }
             } else {
-                (Some("content"), base, Some(rest))
-            }
-        } else {
-            (None, locator, None)
-        };
+                (None, locator, None)
+            };
 
         // Spec-only: reject non-spec schemes early.
         if constraints_mode.is_some() && !base_locator.starts_with("spec://") {
@@ -543,13 +544,7 @@ impl SpecmanMcpServer {
                 "content" => {
                     let id = constraint_id.unwrap_or("");
                     return self
-                        .read_constraint_content(
-                            uri,
-                            base_locator,
-                            &tree.root.id,
-                            id,
-                            &workspace,
-                        )
+                        .read_constraint_content(uri, base_locator, &tree.root.id, id, &workspace)
                         .await;
                 }
                 _ => {}

@@ -53,98 +53,40 @@ pub fn validate_references(
 
 ## Concept: Workspace Discovery
 
-This module fulfills [Concept: Workspace Discovery](../../spec/specman-core/spec.md#concept-workspace-discovery) by providing reusable locators that normalize the current directory, enforce `.specman` ancestry rules, and cache the result for callers across the crate and downstream tooling.
+This module fulfills [Concept: Workspace Discovery](../../spec/specman-core/spec.md#concept-workspace-discovery) with a dedicated initializer, typed errors, and cached locator resolution that keeps callers anchored to the nearest `.specman` ancestor.
 
 ```rust
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WorkspacePaths {
-  root: PathBuf,
-  dot_specman: PathBuf,
+#[derive(Debug, Error)]
+pub enum WorkspaceError {
+  NotFound { searched_from: PathBuf },
+  DotSpecmanMissing { workspace_root: PathBuf },
+  InvalidStart { start: PathBuf, message: String },
+  InvalidHandle { locator: String, message: String },
+  OutsideWorkspace { candidate: PathBuf, workspace_root: PathBuf },
+  Io(#[from] std::io::Error),
 }
 
-impl WorkspacePaths {
-  pub fn new(root: PathBuf, dot_specman: PathBuf) -> Self {
-    Self { root, dot_specman }
-  }
-
-  pub fn root(&self) -> &Path {
-    &self.root
-  }
-
-  pub fn dot_specman(&self) -> &Path {
-    &self.dot_specman
-  }
-
-  pub fn spec_dir(&self) -> PathBuf {
-    self.root.join("spec")
-  }
-
-  pub fn impl_dir(&self) -> PathBuf {
-    self.root.join("impl")
-  }
-
-  pub fn scratchpad_dir(&self) -> PathBuf {
-    self.dot_specman.join("scratchpad")
-  }
+pub struct WorkspaceDiscovery;
+impl WorkspaceDiscovery {
+  pub fn initialize(start_path: impl Into<PathBuf>) -> Result<WorkspaceContext, WorkspaceError>;
+  pub fn from_explicit(workspace_root: impl Into<PathBuf>) -> Result<WorkspaceContext, WorkspaceError>;
+  pub fn create(workspace_root: impl Into<PathBuf>) -> Result<WorkspaceContext, WorkspaceError>;
 }
 
-pub trait WorkspaceLocator: Send + Sync {
-  fn workspace(&self) -> Result<WorkspacePaths, SpecmanError>;
-}
-
-pub struct FilesystemWorkspaceLocator {
-  start: PathBuf,
-  cache: Mutex<Option<WorkspacePaths>>,
-}
-
-impl FilesystemWorkspaceLocator {
-  pub fn new(start: impl Into<PathBuf>) -> Self {
-    Self {
-      start: start.into(),
-      cache: Mutex::new(None),
-    }
-  }
-
-  pub fn from_current_dir() -> Result<Self, SpecmanError> {
-    Ok(Self::new(env::current_dir()?))
-  }
-}
-
-impl WorkspaceLocator for FilesystemWorkspaceLocator {
-  fn workspace(&self) -> Result<WorkspacePaths, SpecmanError> {
-    if let Some(paths) = self.cache.lock().unwrap().clone() {
-      if paths.root().is_dir() && paths.dot_specman().is_dir() {
-        return Ok(paths);
-      }
-    }
-
-    let discovered = discover(&self.start)?;
-    *self.cache.lock().unwrap() = Some(discovered.clone());
-    Ok(discovered)
-  }
-}
-
-pub fn discover(start: impl AsRef<Path>) -> Result<WorkspacePaths, SpecmanError> {
-  let canonical_start = normalize_start(start.as_ref())?;
-
-  for ancestor in canonical_start.ancestors() {
-    let candidate = ancestor.join(".specman");
-    if candidate.is_dir() {
-      return Ok(WorkspacePaths::new(ancestor.to_path_buf(), candidate));
-    }
-  }
-
-  Err(SpecmanError::Workspace(format!(
-    "no .specman directory found from {}",
-    canonical_start.display()
-  )))
+#[derive(Clone, Debug)]
+pub struct WorkspaceContext { /* caches resolved locators */ }
+impl WorkspaceContext {
+  pub fn paths(&self) -> &WorkspacePaths;
+  pub fn resolve_locator(&self, locator: impl AsRef<str>) -> Result<PathBuf, WorkspaceError>;
 }
 ```
 
-- All workspace APIs return canonicalized paths and emit `SpecmanError::Workspace` when `.specman` is missing, ensuring downstream services never operate outside the active workspace root.
-- The locator cache is automatically invalidated when the `.specman` directory disappears, keeping long-running CLI sessions compliant with the spec’s revalidation requirement.
-- `normalize_start` (not shown) guarantees that discovery begins from a real directory, even when callers hand the locator a not-yet-created file path.
-- Workspace discovery output seeds every other concept (dependency mapping, metadata mutation, lifecycle automation) so branch tooling stays within the same root.
+- `initialize` walks ancestors from any starting path (file or directory) to find the nearest `.specman`, preserving symlinked segments via lexical normalization instead of `realpath`. It errors with `WorkspaceError::NotFound` when no workspace exists.
+- `from_explicit` validates an explicit workspace root and requires an on-disk `.specman`, returning `WorkspaceError::DotSpecmanMissing` when absent and `WorkspaceError::InvalidStart` when the root is not a directory.
+- `create` provisions `.specman` plus required subdirectories (`scratchpad/`, `cache/`) at an explicit root, rejects nested workspace creation (`NestedWorkspace`), and returns a ready `WorkspaceContext` for resolver reuse.
+- `WorkspaceContext::resolve_locator` accepts SpecMan handles (`spec://`, `impl://`, `scratch://`) and workspace-relative paths, rejects `http(s)://` inputs, and enforces workspace boundaries with `OutsideWorkspace` before memoizing the result.
+- `FilesystemWorkspaceLocator` wraps discovery with lightweight caching and revalidation so CLI runs never reuse a stale root; the compatibility shim `discover()` still returns raw `WorkspacePaths` for legacy callers.
+- `WorkspacePaths` continues to expose `spec_dir`, `impl_dir`, and `scratchpad_dir` helpers to centralize canonical layout derived from the discovered root.
 
 ## Concept: Data Model Backing Implementation
 

@@ -50,6 +50,8 @@ The workspace layout should now resemble:
   templates/
 ```
 
+Library embedders can derive the same layout programmatically via `WorkspaceDiscovery::initialize`, which walks up from any path to the nearest `.specman` and returns typed errors when discovery would escape the workspace or when the `.specman` folder is missing.
+
 ### Manage Template Pointers with the CLI
 
 Once the workspace exists, prefer the `specman template` command group over manual edits when you need to override or remove template pointers:
