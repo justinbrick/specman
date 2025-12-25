@@ -1,9 +1,9 @@
 # TODO
 
-- rev(specman-core): require workspace initialization
 - feat(specman-library): workspace initialization
 - feat(specman-cli): workspace initialization
 - chore: create documentation for CLI, MCP
+- ref(specman-library): function for reading constraint content
 - feat(specman-mcp): MCP published (docker?)
 - ref(specman-library): remove ops-based updating / editing
 - feat(specman-library): read constraint content given identifier
