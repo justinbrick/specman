@@ -8,7 +8,8 @@ mod tools;
 
 pub use crate::error::McpError;
 pub use crate::prompts::{
-    ImplPromptArgs, ScratchImplPromptArgs, ScratchSpecPromptArgs, SpecPromptArgs,
+    ImplPromptArgs, MigrationPromptArgs, ScratchImplPromptArgs, ScratchSpecPromptArgs,
+    SpecPromptArgs,
 };
 pub use crate::resources::{ArtifactInventory, ArtifactRecord};
 pub use crate::server::{SpecmanMcpServer, run_stdio_server};
@@ -532,6 +533,24 @@ mod tests {
             "rendered impl prompt must not leak target_path token: {impl_text}"
         );
 
+        let migration_text = prompt_text(
+            workspace
+                .server
+                .migration_prompt(Parameters(MigrationPromptArgs {
+                    target: "testspec".to_string(),
+                }))
+                .await?,
+        );
+
+        assert!(
+            migration_text.contains("spec://testspec"),
+            "rendered migration prompt must include normalized spec locator: {migration_text}"
+        );
+        assert!(
+            !migration_text.contains("{{target_path}}"),
+            "rendered migration prompt must not leak target_path token: {migration_text}"
+        );
+
         Ok(())
     }
 
@@ -592,6 +611,15 @@ mod tests {
                     }))
                     .await?,
             ),
+            (
+                "migration",
+                workspace
+                    .server
+                    .migration_prompt(Parameters(MigrationPromptArgs {
+                        target: "testspec".to_string(),
+                    }))
+                    .await?,
+            ),
         ];
 
         for (name, messages) in renderings {
@@ -611,9 +639,73 @@ mod tests {
         let prompts = server.prompt_router.list_all();
         let names: std::collections::HashSet<_> = prompts.iter().map(|p| p.name.as_str()).collect();
 
-        for expected in ["feat", "ref", "revision", "fix", "spec", "impl"] {
+        for expected in [
+            "feat",
+            "ref",
+            "revision",
+            "fix",
+            "spec",
+            "impl",
+            "migration",
+        ] {
             assert!(names.contains(expected), "missing prompt {expected}");
         }
+    }
+
+    #[tokio::test]
+    async fn migration_prompt_guides_spec_first_flow_and_phase_order()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+        let text = prompt_text(
+            workspace
+                .server
+                .migration_prompt(Parameters(MigrationPromptArgs {
+                    target: "testspec".to_string(),
+                }))
+                .await?,
+        );
+
+        let spec_instruction = text
+            .find("create_artifact` to create the specification artifact")
+            .expect("migration prompt should instruct spec creation first");
+        let scratch_instruction = text
+            .find("revision scratch pad")
+            .expect("migration prompt should instruct revision scratch pad creation");
+        let impl_instruction = text
+            .find("create an implementation targeting that specification")
+            .expect("migration prompt should instruct implementation creation");
+        let feat_instruction = text
+            .find("feature scratch pad targeting the implementation")
+            .expect("migration prompt should instruct feat scratch pad creation");
+        assert!(
+            spec_instruction < scratch_instruction,
+            "spec creation instruction must precede scratch pad creation"
+        );
+        assert!(
+            scratch_instruction < impl_instruction,
+            "revision scratch pad creation must precede implementation creation"
+        );
+        assert!(
+            impl_instruction < feat_instruction,
+            "implementation creation must precede feature scratch pad creation"
+        );
+
+        let phase1 = text
+            .find("Phase 1 - Enumerate sources")
+            .expect("phase 1 must be present");
+        let phase2 = text
+            .find("Phase 2 - Extract findings")
+            .expect("phase 2 must be present");
+        let phase3 = text
+            .find("Phase 3 - Draft/update specification")
+            .expect("phase 3 must be present");
+        let phase4 = text
+            .find("Phase 4 - Generate implementation documentation")
+            .expect("phase 4 must be present");
+
+        assert!(phase1 < phase2 && phase2 < phase3 && phase3 < phase4);
+
+        Ok(())
     }
 
     #[test]

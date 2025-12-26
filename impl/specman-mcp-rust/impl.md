@@ -91,9 +91,9 @@ The adapter exposes a focused subset of SpecMan functionality as MCP tools/promp
 // Each handler is a method on `SpecmanMcpServer` annotated with `#[tool(...)]` or `#[prompt(...)]`.
 ```
 
-- Current tool surface: `create_artifact`.
 - Current tool surface: `create_artifact`, `update_artifact`.
-- Current prompt surface: `feat`, `ref`, `revision`, `fix` (scratch pad prompt templates).
+- Current prompt surface: `feat`, `ref`, `revision`, `fix`, `spec`, `impl`, `migration`.
+  - `migration` renders deterministic guidance to create the target specification via lifecycle automation, then create a revision scratch pad for that spec before running the four mandated migration phases (enumerate sources, extract findings, draft/update specification, generate implementation documentation).
 
 ### Concept: [Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance)
 

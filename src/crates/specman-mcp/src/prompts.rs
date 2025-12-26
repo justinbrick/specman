@@ -23,6 +23,7 @@ const SCRATCH_REF_TEMPLATE: &str = include_str!("templates/scratch-ref.md");
 const SCRATCH_REVISION_TEMPLATE: &str = include_str!("templates/scratch-revision.md");
 const SPEC_TEMPLATE: &str = include_str!("templates/spec.md");
 const IMPL_TEMPLATE: &str = include_str!("templates/impl.md");
+const MIGRATION_TEMPLATE: &str = include_str!("templates/migration.md");
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ScratchImplPromptArgs {
@@ -36,6 +37,15 @@ pub struct ScratchImplPromptArgs {
 pub struct ScratchSpecPromptArgs {
     #[schemars(
         description = "Specification target. A bare name (e.g. 'founding-spec') is interpreted as 'spec://founding-spec'. You may also pass an explicit locator (spec://..., impl://..., scratch://...) or a workspace-relative path."
+    )]
+    pub target: String,
+}
+
+/// Arguments for rendering the migration prompt that guides converting external code into SpecMan artifacts.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct MigrationPromptArgs {
+    #[schemars(
+        description = "Migration target specification. A bare name (e.g. 'specman-core') is interpreted as 'spec://specman-core'. You may also pass an explicit locator (spec://..., impl://..., scratch://...) or a workspace-relative path."
     )]
     pub target: String,
 }
@@ -107,6 +117,17 @@ impl SpecmanMcpServer {
         Parameters(args): Parameters<ScratchImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
         self.render_scratch_prompt(SCRATCH_FIX_TEMPLATE, &args.target, "impl")
+    }
+
+    #[prompt(
+        name = "migration",
+        description = "Generate a deterministic migration prompt for converting external codebases into SpecMan artifacts"
+    )]
+    pub async fn migration_prompt(
+        &self,
+        Parameters(args): Parameters<MigrationPromptArgs>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        self.render_migration_prompt(MIGRATION_TEMPLATE, &args.target)
     }
 
     #[prompt(
@@ -203,6 +224,31 @@ impl SpecmanMcpServer {
         let replacements = vec![
             ("{{target_path}}", resolved.handle.clone()),
             ("{{target_spec_path}}", resolved.handle.clone()),
+            ("{{context}}", context),
+            ("{{dependencies}}", dependencies),
+        ];
+
+        let rendered = apply_tokens(template, &replacements)?;
+        Ok(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            rendered,
+        )])
+    }
+
+    /// Render the migration prompt for guiding external-to-SpecMan conversions.
+    fn render_migration_prompt(
+        &self,
+        template: &str,
+        target_reference: &str,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        let locator = coerce_reference(target_reference, "spec");
+        let resolved = self.resolve_target(&locator)?;
+
+        let context = bullet_list(&dependency_lines(&resolved));
+        let dependencies = context.clone();
+
+        let replacements = vec![
+            ("{{target_path}}", resolved.handle.clone()),
             ("{{context}}", context),
             ("{{dependencies}}", dependencies),
         ];
