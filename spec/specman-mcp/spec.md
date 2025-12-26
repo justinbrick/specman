@@ -109,6 +109,12 @@ Prompt catalog tooling defines how MCP clients obtain deterministic prompts for 
 - Prompt catalog governance applies exclusively to MCP prompt- and resource-oriented surfaces. CLI documentation MUST NOT expose prompt templates directly; CLI usage relies on the same SpecMan Core lifecycle automation without surfacing prompt text.
 - Prompt catalog responses MAY tailor wording for specific MCP scenarios, but they MUST remain deterministic for a given template/version combination.
 
+!concept-prompt-catalog.migration-prompts:
+
+- MCP adapters MUST expose a deterministic “migration” prompt in the prompt catalog that instructs migrating non-SpecMan code into SpecMan artifacts.
+- The migration prompt MUST direct the operator/agent to create a new scratch pad for the target specification before any analysis, using lifecycle automation and the canonical scratch pad locations defined in the SpecMan Data Model.
+- The migration prompt MUST enumerate and sequence explicit phases as a checklist: (1) enumerate source files to be scanned; (2) read the codebase and extract candidate concepts, entities, and constraints; (3) draft or update the specification from those findings; (4) generate implementation documentation after the specification draft is produced.
+
 ### Concept: Constraint Resources
 
 Constraint resources allow MCP clients to discover and read constraint groups defined inside specifications through MCP resources, without requiring clients to parse Markdown.
