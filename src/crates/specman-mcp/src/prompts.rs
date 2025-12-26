@@ -45,7 +45,7 @@ pub struct ScratchSpecPromptArgs {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct MigrationPromptArgs {
     #[schemars(
-        description = "Migration target specification. A bare name (e.g. 'specman-core') is interpreted as 'spec://specman-core'. You may also pass an explicit locator (spec://..., impl://..., scratch://...) or a workspace-relative path."
+        description = "Migration target specification (may be newly created). A bare name (e.g. 'specman-core') is interpreted as 'spec://specman-core'. You may also pass an explicit locator (spec://..., impl://..., scratch://...) or a workspace-relative path; the value is not validated for existence."
     )]
     pub target: String,
 }
@@ -241,17 +241,10 @@ impl SpecmanMcpServer {
         template: &str,
         target_reference: &str,
     ) -> Result<Vec<PromptMessage>, McpError> {
+        // Migration target may not exist yet; normalize without resolving.
         let locator = coerce_reference(target_reference, "spec");
-        let resolved = self.resolve_target(&locator)?;
 
-        let context = bullet_list(&dependency_lines(&resolved));
-        let dependencies = context.clone();
-
-        let replacements = vec![
-            ("{{target_path}}", resolved.handle.clone()),
-            ("{{context}}", context),
-            ("{{dependencies}}", dependencies),
-        ];
+        let replacements = vec![("{{target_path}}", locator)];
 
         let rendered = apply_tokens(template, &replacements)?;
         Ok(vec![PromptMessage::new_text(
