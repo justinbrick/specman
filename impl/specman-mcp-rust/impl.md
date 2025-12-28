@@ -31,7 +31,7 @@ references:
 
 ## Overview
 
-This adapter implements the [SpecMan MCP Server](../../spec/specman-mcp/spec.md) by projecting SpecMan Core capabilities into MCP tools over a STDIN transport. The runtime uses the `rmcp` crate for lifecycle negotiation and framing, delegates capability logic to the shared `specman-library`, and preserves data-model fidelity for every request and response. Version negotiation and tool schemas adhere to [Concept: MCP Transport Compliance](../../spec/specman-mcp/spec.md#concept-mcp-transport-compliance), while capability mapping aligns with [Concept: SpecMan Capability Parity](../../spec/specman-mcp/spec.md#concept-specman-capability-parity) and [Concept: Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance).
+This adapter implements the [SpecMan MCP Server](../../spec/specman-mcp/spec.md) by projecting SpecMan Core capabilities into MCP tools over a STDIN transport. The runtime uses the `rmcp` crate for lifecycle negotiation and framing, delegates capability logic to the shared `specman-library`, and preserves data-model fidelity for every request and response. Version negotiation and tool schemas adhere to [Concept: MCP Transport Compliance](../../spec/specman-mcp/spec.md#concept-mcp-transport-compliance), while capability mapping aligns with [Concept: SpecMan Capability Parity](../../spec/specman-mcp/spec.md#concept-specman-capability-parity) and [Concept: Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance). The binary accepts an optional `--workspace <path>` argument to pin workspace discovery to a specific root; when omitted it defaults to the current working directory.
 
 ## Implementing Languages
 
@@ -69,6 +69,9 @@ The adapter runs as a STDIN/STDOUT MCP server using `rmcp`, advertising supporte
 
 ```rust
 pub async fn run_stdio_server() -> Result<(), ServerInitializeError>;
+pub async fn run_stdio_server_with_root(
+  workspace_root: Option<PathBuf>,
+) -> Result<(), ServerInitializeError>;
 
 impl SpecmanMcpServer {
   pub fn new() -> Result<Self, SpecmanError>;
@@ -77,7 +80,8 @@ impl SpecmanMcpServer {
 }
 ```
 
-- `run_stdio_server` builds the handler, serves it over `rmcp`’s stdio transport, and blocks until the peer closes the transport.
+- `run_stdio_server_with_root` accepts an optional workspace root (defaulting to the current working directory), builds the handler, serves it over `rmcp`’s stdio transport, and blocks until the peer closes the transport.
+- `run_stdio_server` is a convenience wrapper that defaults to the current working directory.
 - `new_with_root` allows hosts/tests to pin workspace discovery to a specific directory.
 
 ### Concept: [SpecMan Capability Parity](../../spec/specman-mcp/spec.md#concept-specman-capability-parity)

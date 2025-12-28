@@ -51,8 +51,19 @@ impl SpecmanMcpServer {
 }
 
 /// Convenience entry point that builds the server and runs it over stdio.
-pub async fn run_stdio_server() -> Result<(), ServerInitializeError> {
-    let server = SpecmanMcpServer::new()
-        .map_err(|err| ServerInitializeError::InitializeFailed(to_mcp_error(err)))?;
+/// Accepts an optional workspace root; when `None`, the current working directory is used.
+pub async fn run_stdio_server_with_root(
+    workspace_root: Option<PathBuf>,
+) -> Result<(), ServerInitializeError> {
+    let server = match workspace_root {
+        Some(root) => SpecmanMcpServer::new_with_root(root),
+        None => SpecmanMcpServer::new(),
+    }
+    .map_err(|err| ServerInitializeError::InitializeFailed(to_mcp_error(err)))?;
     server.run_stdio().await
+}
+
+/// Convenience entry point that defaults to the current working directory.
+pub async fn run_stdio_server() -> Result<(), ServerInitializeError> {
+    run_stdio_server_with_root(None).await
 }

@@ -12,7 +12,7 @@ pub use crate::prompts::{
     SpecPromptArgs,
 };
 pub use crate::resources::{ArtifactInventory, ArtifactRecord};
-pub use crate::server::{SpecmanMcpServer, run_stdio_server};
+pub use crate::server::{SpecmanMcpServer, run_stdio_server, run_stdio_server_with_root};
 pub use crate::tools::{CreateArtifactResult, WorkspaceInfo};
 
 #[cfg(test)]
