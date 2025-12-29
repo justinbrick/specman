@@ -190,9 +190,12 @@ impl WorkspaceDiscovery {
             });
         }
 
+        let root_canonical = fs::canonicalize(&root)?;
+        let dot_specman_canonical = fs::canonicalize(&dot_specman)?;
+
         Ok(WorkspaceContext::new(WorkspacePaths::new(
-            root,
-            dot_specman,
+            root_canonical,
+            dot_specman_canonical,
         )))
     }
 
@@ -224,9 +227,12 @@ impl WorkspaceDiscovery {
         fs::create_dir_all(dot_specman.join("scratchpad"))?;
         fs::create_dir_all(dot_specman.join("cache"))?;
 
+        let root_canonical = fs::canonicalize(&root)?;
+        let dot_specman_canonical = fs::canonicalize(&dot_specman)?;
+
         Ok(WorkspaceContext::new(WorkspacePaths::new(
-            root,
-            dot_specman,
+            root_canonical,
+            dot_specman_canonical,
         )))
     }
 
@@ -237,7 +243,11 @@ impl WorkspaceDiscovery {
             if candidate.is_dir() {
                 let normalized_root = lexical_normalize(ancestor);
                 let normalized_dot = normalized_root.join(".specman");
-                return Ok(WorkspacePaths::new(normalized_root, normalized_dot));
+
+                let canonical_root = fs::canonicalize(&normalized_root)?;
+                let canonical_dot = fs::canonicalize(&normalized_dot)?;
+
+                return Ok(WorkspacePaths::new(canonical_root, canonical_dot));
             }
         }
 
@@ -558,8 +568,10 @@ mod tests {
 
         let ctx = WorkspaceDiscovery::initialize(nested.join("deep")).unwrap();
 
-        assert_eq!(ctx.paths().root(), nested.as_path());
-        assert_eq!(ctx.paths().dot_specman(), nested.join(".specman").as_path());
+        let nested_canonical = fs::canonicalize(&nested).unwrap();
+
+        assert_eq!(ctx.paths().root(), nested_canonical.as_path());
+        assert_eq!(ctx.paths().dot_specman(), nested_canonical.join(".specman").as_path());
     }
 
     #[test]
@@ -590,16 +602,18 @@ mod tests {
         fs::create_dir_all(root.join(".specman")).unwrap();
         let ctx = WorkspaceDiscovery::from_explicit(&root).unwrap();
 
+        let canonical_root = fs::canonicalize(&root).unwrap();
+
         let spec_path = ctx.resolve_locator("spec://core").unwrap();
-        assert_eq!(spec_path, root.join("spec/core/spec.md"));
+        assert_eq!(spec_path, canonical_root.join("spec/core/spec.md"));
 
         let rel = ctx.resolve_locator("docs/guide.md").unwrap();
-        assert_eq!(rel, root.join("docs/guide.md"));
+        assert_eq!(rel, canonical_root.join("docs/guide.md"));
 
         let abs = ctx
-            .resolve_locator(root.join("impl/core/impl.md").to_string_lossy())
+            .resolve_locator(canonical_root.join("impl/core/impl.md").to_string_lossy())
             .unwrap();
-        assert_eq!(abs, root.join("impl/core/impl.md"));
+        assert_eq!(abs, canonical_root.join("impl/core/impl.md"));
     }
 
     #[test]
@@ -645,7 +659,8 @@ mod tests {
         let locator = FilesystemWorkspaceLocator::new(workspace_root.join("sub"));
 
         let first = locator.workspace().expect("initial lookup succeeds");
-        assert_eq!(first.root(), workspace_root.as_path());
+        let workspace_root_canonical = fs::canonicalize(&workspace_root).unwrap();
+        assert_eq!(first.root(), workspace_root_canonical.as_path());
 
         fs::remove_dir_all(first.dot_specman()).unwrap();
 

@@ -166,7 +166,9 @@ impl<L: WorkspaceLocator> WorkspacePersistence<L> {
             )));
         }
 
-        fs::remove_dir_all(directory)?;
+        // Canonicalize before removal so we return a stable, non-8.3 path representation.
+        let canonical_directory = fs::canonicalize(directory)?;
+        fs::remove_dir_all(&canonical_directory)?;
         if let Some(inventory) = &self.dependency_inventory {
             inventory.invalidate();
         }
@@ -174,7 +176,7 @@ impl<L: WorkspaceLocator> WorkspacePersistence<L> {
 
         Ok(RemovedArtifact {
             artifact: artifact.clone(),
-            directory: directory.to_path_buf(),
+            directory: canonical_directory,
             workspace,
         })
     }
