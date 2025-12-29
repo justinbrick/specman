@@ -12,7 +12,7 @@ use crate::error::SpecmanError;
 use crate::front_matter::{
     ArtifactFrontMatter, ImplementationFrontMatter, ScratchFrontMatter, SpecificationFrontMatter,
 };
-use crate::workspace::WorkspacePaths;
+use crate::workspace::{normalize_workspace_path, WorkspacePaths};
 
 use super::index::{
     ArtifactKey, ArtifactRecord, ConstraintIdentifier, ConstraintRecord, HeadingIdentifier,
@@ -548,11 +548,12 @@ impl PersistedWorkspaceIndex {
         for record in self.artifacts {
             let key: ArtifactKey = record.key.into();
             let absolute_path = workspace.root().join(&key.workspace_path);
-            let canonical = fs::canonicalize(&absolute_path).unwrap_or(absolute_path);
-            if !canonical.starts_with(workspace.root()) {
+            let normalized = normalize_workspace_path(&absolute_path);
+            let normalized_root = normalize_workspace_path(workspace.root());
+            if !normalized.starts_with(workspace.root()) && !normalized.starts_with(&normalized_root) {
                 return Err(SpecmanError::Workspace(format!(
                     "cached artifact {} escapes workspace {}",
-                    canonical.display(),
+                    normalized.display(),
                     workspace.root().display()
                 )));
             }
@@ -561,7 +562,7 @@ impl PersistedWorkspaceIndex {
                 key.clone(),
                 ArtifactRecord {
                     key,
-                    absolute_path: canonical,
+                    absolute_path: normalized,
                     front_matter,
                 },
             );
