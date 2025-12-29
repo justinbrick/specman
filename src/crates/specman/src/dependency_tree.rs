@@ -213,6 +213,12 @@ impl<L: WorkspaceLocator> FilesystemDependencyMapper<L> {
         self.graph.clone() as Arc<dyn DependencyInventory>
     }
 
+    /// Clears any cached workspace inventory so subsequent dependency traversals
+    /// observe newly created or removed artifacts.
+    pub fn invalidate_inventory(&self) {
+        self.graph.invalidate_inventory();
+    }
+
     /// Builds a dependency tree by reading the artifact located at the provided filesystem path.
     pub fn dependency_tree_from_path(
         &self,

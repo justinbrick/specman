@@ -983,6 +983,63 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn create_scratchpad_after_new_spec_with_warm_inventory()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = TestWorkspace::create()?;
+
+        // Warm the dependency mapper so it caches inventory before creating a new spec.
+        workspace
+            .server
+            .dependency_mapper
+            .dependency_tree_from_locator("spec://testspec")
+            .expect("dependency mapper seeded");
+
+        let spec = workspace
+            .server
+            .create_artifact_internal(
+                None,
+                crate::tools::CreateArtifactArgs::Specification {
+                    name: Some("tempspec".to_string()),
+                    title: Some("Temp Spec".to_string()),
+                    intent: None,
+                },
+            )
+            .await?
+            .0;
+
+        assert_eq!(spec.handle, "spec://tempspec");
+
+        let scratch = workspace
+            .server
+            .create_artifact_internal(
+                None,
+                crate::tools::CreateArtifactArgs::ScratchPad {
+                    target: "spec://tempspec".to_string(),
+                    scratch_kind: crate::tools::ScratchKind::Revision,
+                    intent: "add regression coverage".to_string(),
+                },
+            )
+            .await?
+            .0;
+
+        assert_eq!(scratch.handle, "scratch://add-regression-coverage");
+        assert_eq!(
+            scratch.path,
+            ".specman/scratchpad/add-regression-coverage/scratch.md"
+        );
+
+        let workspace_paths = workspace.server.workspace.workspace()?;
+        let scratch_path = workspace_paths.root().join(&scratch.path);
+        assert!(
+            scratch_path.exists(),
+            "scratch pad should be written at {}",
+            scratch_path.display()
+        );
+
+        Ok(())
+    }
+
     fn prompt_text(messages: Vec<PromptMessage>) -> String {
         let message = messages
             .into_iter()

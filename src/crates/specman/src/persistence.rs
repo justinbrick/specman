@@ -325,7 +325,7 @@ fn ensure_safe_name(name: &str) -> Result<(), SpecmanError> {
 mod tests {
     use super::*;
     use crate::adapter::DataModelAdapter;
-    use crate::dependency_tree::ArtifactSummary;
+    use crate::dependency_tree::{ArtifactSummary, FilesystemDependencyMapper};
     use crate::template::TemplateDescriptor;
     use crate::workspace::FilesystemWorkspaceLocator;
     use std::sync::{Arc, Mutex};
@@ -558,5 +558,37 @@ mod tests {
         let removed = persistence.remove(&target).expect("remove with adapter");
         assert_eq!(removed.artifact, target);
         assert_eq!(adapter.invalidated(), vec![target.clone()]);
+    }
+
+    #[test]
+    fn persisting_new_artifact_invalidates_dependency_inventory() {
+        let (_temp, root, locator) = workspace_with_locator();
+        fs::create_dir_all(root.join("spec")).unwrap();
+
+        let locator = Arc::new(locator);
+        let dependency_mapper = FilesystemDependencyMapper::new(locator.clone());
+        let persistence = WorkspacePersistence::with_inventory(locator, dependency_mapper.inventory_handle());
+
+        let anchor = artifact(ArtifactKind::Specification, "anchor");
+        let anchor_doc = "---\nname: anchor\nversion: '0.1.0'\ndependencies: []\n---\n# Anchor\n";
+        persistence
+            .persist_document(&anchor, anchor_doc)
+            .expect("persist anchor spec");
+
+        dependency_mapper
+            .dependency_tree_from_locator("spec://anchor")
+            .expect("warm inventory with anchor");
+
+        let fresh = artifact(ArtifactKind::Specification, "fresh");
+        let fresh_doc = "---\nname: fresh\nversion: '0.1.0'\ndependencies: []\n---\n# Fresh\n";
+        persistence
+            .persist_document(&fresh, fresh_doc)
+            .expect("persist fresh spec");
+
+        let fresh_tree = dependency_mapper
+            .dependency_tree_from_locator("spec://fresh")
+            .expect("fresh spec resolves after inventory invalidation");
+
+        assert_eq!(fresh_tree.root.id.name, "fresh");
     }
 }

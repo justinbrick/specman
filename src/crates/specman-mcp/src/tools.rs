@@ -23,7 +23,9 @@ use specman::{
 };
 
 use crate::error::{McpError, invalid_params, to_mcp_error};
-use crate::resources::{artifact_handle, resolved_path_or_artifact_path, workspace_relative_path};
+use crate::resources::{
+    artifact_handle, artifact_path, resolved_path_or_artifact_path, workspace_relative_path,
+};
 use crate::server::SpecmanMcpServer;
 
 type SpecmanInstance = Specman<
@@ -644,10 +646,7 @@ impl SpecmanMcpServer {
             )));
         }
 
-        let resolved = resolved_path_or_artifact_path(&tree.root, &workspace);
-        let absolute = PathBuf::from(resolved);
-        let relative = workspace_relative_path(workspace.root(), &absolute)
-            .ok_or_else(|| invalid_params("locator must resolve within the workspace"))?;
+        let relative = self.workspace_relative_artifact_path(&tree.root, &workspace)?;
 
         let specman = self.build_specman()?;
         let request = FrontMatterUpdateRequest {
@@ -658,6 +657,10 @@ impl SpecmanMcpServer {
         let result = specman
             .update(tree.root.id.clone(), request)
             .map_err(to_mcp_error)?;
+
+        if result.persisted.is_some() {
+            self.invalidate_dependency_inventory();
+        }
 
         let handle = artifact_handle(&tree.root);
         Ok(Json(UpdateArtifactResult {
@@ -764,6 +767,8 @@ impl SpecmanMcpServer {
             }
             _ => specman.create(normalized).map_err(to_mcp_error)?,
         };
+
+        self.invalidate_dependency_inventory();
 
         Ok(Json(create_artifact_result(&persisted)))
     }
@@ -1217,6 +1222,31 @@ impl SpecmanMcpServer {
         Ok(Specman::new(controller, catalog, persistence))
     }
 
+    fn invalidate_dependency_inventory(&self) {
+        self.dependency_mapper
+            .dependency_graph()
+            .invalidate_inventory();
+    }
+
+    fn workspace_relative_artifact_path(
+        &self,
+        summary: &specman::ArtifactSummary,
+        workspace: &specman::WorkspacePaths,
+    ) -> Result<String, McpError> {
+        let resolved = resolved_path_or_artifact_path(summary, workspace);
+        let mut absolute = PathBuf::from(&resolved);
+        if absolute.is_relative() {
+            absolute = workspace.root().join(&absolute);
+        }
+
+        workspace_relative_path(workspace.root(), &absolute)
+            .or_else(|| {
+                let fallback = artifact_path(&summary.id, workspace);
+                workspace_relative_path(workspace.root(), &fallback)
+            })
+            .ok_or_else(|| invalid_params("locator must resolve within the workspace"))
+    }
+
     fn normalize_locator_to_workspace_path(&self, locator: &str) -> Result<String, McpError> {
         let trimmed = locator.trim();
         if trimmed.is_empty() {
@@ -1235,10 +1265,7 @@ impl SpecmanMcpServer {
             .dependency_tree_from_locator(trimmed)
             .map_err(to_mcp_error)?;
 
-        let resolved = resolved_path_or_artifact_path(&tree.root, &workspace);
-        let absolute = PathBuf::from(resolved);
-        workspace_relative_path(workspace.root(), &absolute)
-            .ok_or_else(|| invalid_params("locator must resolve within the workspace"))
+        self.workspace_relative_artifact_path(&tree.root, &workspace)
     }
 
     fn normalize_locator_to_handle(
