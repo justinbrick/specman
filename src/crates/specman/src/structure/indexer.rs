@@ -8,7 +8,7 @@ use unicode_normalization::UnicodeNormalization;
 use crate::dependency_tree::ArtifactKind;
 use crate::error::SpecmanError;
 use crate::front_matter::{ArtifactFrontMatter, optional_front_matter};
-use crate::workspace::{WorkspaceLocator, WorkspacePaths};
+use crate::workspace::{WorkspaceLocator, WorkspacePaths, workspace_relative_path};
 
 use super::cache::{IndexCache, UnresolvedHeadingRef, UnresolvedTarget, resolve_unresolved_refs};
 
@@ -495,11 +495,6 @@ fn body_after_front_matter<'a>(full: &'a str) -> Option<&'a str> {
 
 fn normalize_newlines(input: &str) -> String {
     input.replace("\r\n", "\n").replace('\r', "\n")
-}
-
-fn workspace_relative_path(root: &Path, absolute: &Path) -> Option<String> {
-    let relative = absolute.strip_prefix(root).ok()?;
-    Some(relative.to_string_lossy().replace('\\', "/"))
 }
 
 fn parse_markdown_structure(

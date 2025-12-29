@@ -13,7 +13,7 @@ use crate::scratchpad::{ScratchPadProfile, ScratchPadProfileKind};
 use crate::template::{
     TemplateDescriptor, TemplateLocator, TemplateProvenance, TemplateScenario, TemplateTier,
 };
-use crate::workspace::WorkspacePaths;
+use crate::workspace::{WorkspacePaths, workspace_relative_path};
 
 const EMBEDDED_SPEC: &str = include_str!("templates/spec/spec.md");
 const EMBEDDED_IMPL: &str = include_str!("templates/impl/impl.md");
@@ -491,9 +491,8 @@ fn sanitize_key(raw: &str) -> String {
 }
 
 fn workspace_relative(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| path.to_string_lossy().to_string())
+    workspace_relative_path(root, path)
+        .unwrap_or_else(|| path.to_string_lossy().to_string())
 }
 
 struct TemplateCache {

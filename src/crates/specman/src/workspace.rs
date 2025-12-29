@@ -76,6 +76,20 @@ impl WorkspacePaths {
     }
 }
 
+/// Computes a workspace-relative path using normalized, forward-slash separators.
+///
+/// On Windows, this strips verbatim (`\\?\`) prefixes and normalizes drive letters
+/// to avoid mixups between UNC/verbatim and drive-letter prefixes when diffing paths.
+pub fn workspace_relative_path(root: &Path, absolute: &Path) -> Option<String> {
+    let normalized_root = normalize_workspace_path(root);
+    let normalized_absolute = normalize_workspace_path(absolute);
+
+    normalized_absolute
+        .strip_prefix(&normalized_root)
+        .ok()
+        .map(|relative| to_forward_slashes(relative))
+}
+
 #[derive(Clone, Debug)]
 pub struct WorkspaceContext {
     paths: WorkspacePaths,
@@ -381,6 +395,45 @@ fn lexical_normalize(path: &Path) -> PathBuf {
     }
 }
 
+fn to_forward_slashes(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn normalize_workspace_path(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+            let raw = path.as_os_str().to_string_lossy();
+            if let Some(rest) = raw.strip_prefix(r"\\?\\UNC\\") {
+                PathBuf::from(format!(r"\\\\{}", rest.trim_start_matches('\\')))
+            } else if let Some(rest) = raw.strip_prefix(r"\\?\\") {
+                PathBuf::from(rest)
+            } else {
+                path.to_path_buf()
+            }
+        }
+
+        fn uppercase_drive_letter(buf: PathBuf) -> PathBuf {
+            let raw = buf.to_string_lossy();
+            let mut chars: Vec<char> = raw.chars().collect();
+            if chars.get(1) == Some(&':') {
+                chars[0] = chars[0].to_ascii_uppercase();
+                return PathBuf::from(chars.into_iter().collect::<String>());
+            }
+            buf
+        }
+
+        let stripped = strip_verbatim_prefix(path);
+        let drive_normalized = uppercase_drive_letter(stripped);
+        lexical_normalize(&drive_normalized)
+    }
+
+    #[cfg(not(windows))]
+    {
+        lexical_normalize(path)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WorkspaceHandleKind {
     Specification,
@@ -490,6 +543,8 @@ impl From<WorkspaceError> for SpecmanError {
 mod tests {
     use super::*;
     use std::fs;
+    #[cfg(windows)]
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
@@ -637,5 +692,29 @@ mod tests {
         let ctx = WorkspaceDiscovery::create(&link_root).expect("create via symlink");
         assert_eq!(ctx.paths().root(), link_root.as_path());
         assert_eq!(ctx.paths().dot_specman(), link_root.join(".specman"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn workspace_relative_path_accepts_verbatim_prefix() {
+        let root = PathBuf::from(r"c:\workspace");
+        let absolute = PathBuf::from(r"\\?\\C:\\workspace\\spec\\core\\spec.md");
+
+        let relative = workspace_relative_path(&root, &absolute)
+            .expect("verbatim and drive-letter paths should diff");
+
+        assert_eq!(relative, "spec/core/spec.md");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn workspace_relative_path_accepts_unc_prefix() {
+        let root = PathBuf::from(r"\\?\\UNC\\server\\share\\workspace");
+        let absolute = PathBuf::from(r"\\\\server\\share\\workspace\\impl\\foo\\impl.md");
+
+        let relative =
+            workspace_relative_path(&root, &absolute).expect("UNC and verbatim UNC should diff");
+
+        assert_eq!(relative, "impl/foo/impl.md");
     }
 }

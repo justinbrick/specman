@@ -210,10 +210,8 @@ pub struct ArtifactInventory {
     pub scratchpads: Vec<ArtifactRecord>,
 }
 
-pub(crate) fn workspace_relative_path(root: &Path, absolute: &Path) -> Option<String> {
-    let relative = absolute.strip_prefix(root).ok()?;
-    Some(relative.to_string_lossy().replace('\\', "/"))
-}
+// Re-export for crate-local callers.
+pub(crate) use specman::workspace_relative_path;
 
 pub(crate) fn artifact_path(id: &ArtifactId, workspace: &WorkspacePaths) -> PathBuf {
     match id.kind {

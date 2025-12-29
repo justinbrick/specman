@@ -1,5 +1,7 @@
 use std::path::{Component, Path};
 
+use specman::workspace_relative_path;
+
 use crate::error::{CliError, ExitStatus};
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -85,7 +87,6 @@ pub fn validate_slug(name: &str, kind: &str) -> Result<(), CliError> {
 }
 
 pub fn workspace_relative(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|_| path.to_string_lossy().into_owned())
+    workspace_relative_path(root, path)
+        .unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
