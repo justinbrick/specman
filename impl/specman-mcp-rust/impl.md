@@ -1,17 +1,16 @@
 ---
 spec: ../../spec/specman-mcp/spec.md
 name: specman-mcp-rust
-version: "1.0.0"
+version: "1.0.1"
 location: ../../src/crates/specman-mcp
-library:
-  name: specman-mcp-server@1.0.0
+  name: specman-mcp-server@1.0.1
 primary_language:
   language: rust@1.91.0
   properties:
     edition: "2024"
   libraries:
     - name: rmcp@latest
-    - name: specman-library@2.1.1
+    - name: specman-library@2.1.2
     - name: schemars
     - name: serde_json
 secondary_languages: []

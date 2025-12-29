@@ -1,10 +1,10 @@
 ---
 spec: ../../spec/specman-core/spec.md
 name: specman-library
-version: "2.1.1"
+version: "2.1.2"
 location: ../../src/crates/specman
 library:
-  name: specman-library@2.1.1
+  name: specman-library@2.1.2
 primary_language:
   language: rust@1.91.0
   properties:

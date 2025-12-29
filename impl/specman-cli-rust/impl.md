@@ -1,7 +1,7 @@
 ---
 spec: ../../spec/specman-cli/spec.md
 name: specman-cli-rust
-version: "2.1.0"
+version: "2.1.1"
 location: ../../src/crates/specman-cli
 primary_language:
   language: rust@1.91.0
