@@ -8,7 +8,7 @@ use unicode_normalization::UnicodeNormalization;
 use crate::dependency_tree::ArtifactKind;
 use crate::error::SpecmanError;
 use crate::front_matter::{ArtifactFrontMatter, optional_front_matter};
-use crate::workspace::{WorkspaceLocator, WorkspacePaths, workspace_relative_path};
+use crate::workspace::{normalize_workspace_path, WorkspaceLocator, WorkspacePaths, workspace_relative_path};
 
 use super::cache::{IndexCache, UnresolvedHeadingRef, UnresolvedTarget, resolve_unresolved_refs};
 
@@ -317,18 +317,19 @@ fn enumerate_canonical_artifact_files(
         }
     }
 
-    // Canonicalize + enforce workspace boundary deterministically.
+    // Normalize + enforce workspace boundary deterministically without resolving symlinks.
     let mut canon: Vec<(ArtifactKind, PathBuf)> = Vec::with_capacity(out.len());
+    let normalized_root = normalize_workspace_path(workspace.root());
     for (kind, file) in out {
-        let canonical = fs::canonicalize(&file)?;
-        if !canonical.starts_with(workspace.root()) {
+        let normalized = normalize_workspace_path(&file);
+        if !normalized.starts_with(workspace.root()) && !normalized.starts_with(&normalized_root) {
             return Err(SpecmanError::Workspace(format!(
                 "indexed artifact {} escapes workspace {}",
-                canonical.display(),
+                normalized.display(),
                 workspace.root().display()
             )));
         }
-        canon.push((kind, canonical));
+        canon.push((kind, normalized));
     }
 
     canon.sort_by(|a, b| a.1.cmp(&b.1));
@@ -905,7 +906,7 @@ fn resolve_workspace_link_path(
 
     // If the target exists, prefer canonical path for stable workspace-relative output.
     let stable = if normalized.exists() {
-        fs::canonicalize(&normalized).unwrap_or(normalized)
+        normalize_workspace_path(&normalized)
     } else {
         normalized
     };

@@ -12,7 +12,7 @@ use crate::error::SpecmanError;
 
 use crate::front_matter::{self, ArtifactFrontMatter, DependencyEntry, FrontMatterKind};
 use crate::shared_function::SemVer;
-use crate::workspace::{WorkspaceLocator, WorkspacePaths};
+use crate::workspace::{normalize_workspace_path, WorkspaceLocator, WorkspacePaths};
 use std::fmt;
 
 /// Fetches remote artifact content (e.g., HTTPS markdown documents).
@@ -1212,17 +1212,17 @@ fn resolve_workspace_path(
         return Err(SpecmanError::MissingTarget(path));
     }
 
-    let canonical = fs::canonicalize(&path)?;
-    let canonical_root =
-        fs::canonicalize(workspace.root()).unwrap_or_else(|_| workspace.root().to_path_buf());
-    if !canonical.starts_with(workspace.root()) && !canonical.starts_with(&canonical_root) {
+    let normalized_path = normalize_workspace_path(&path);
+    let normalized_root = normalize_workspace_path(workspace.root());
+
+    if !normalized_path.starts_with(workspace.root()) && !normalized_path.starts_with(&normalized_root) {
         return Err(SpecmanError::Workspace(format!(
             "locator {} escapes workspace {}",
-            canonical.display(),
+            normalized_path.display(),
             workspace.root().display()
         )));
     }
-    Ok(canonical)
+    Ok(normalized_path)
 }
 
 /// Verifies that a dependency reference stays within the workspace boundaries or points to a
@@ -1288,7 +1288,7 @@ pub fn normalize_persisted_reference(
         resolve_workspace_path(candidate, Some(parent), workspace)?
     };
 
-    let canonical_parent = fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+    let canonical_parent = normalize_workspace_path(parent);
     let rel = diff_paths(&canonical, &canonical_parent).ok_or_else(|| {
         SpecmanError::Workspace(format!(
             "unable to compute workspace-relative path from {} to {}",
@@ -1322,7 +1322,7 @@ pub fn normalize_persisted_reference_for_create(
 
     if let Some(handle) = ResourceHandle::parse(reference)? {
         let path = handle.to_path(workspace);
-        let canonical_parent = fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+        let canonical_parent = normalize_workspace_path(parent);
         let rel = diff_paths(&path, &canonical_parent).ok_or_else(|| {
             SpecmanError::Workspace(format!(
                 "unable to compute workspace-relative path from {} to {}",
