@@ -275,7 +275,7 @@ pub struct ScratchWorkloadExtras {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct ScratchRevisionMetadata {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_heading_list")]
     pub revised_headings: Vec<String>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, JsonValue>,
@@ -283,7 +283,7 @@ pub struct ScratchRevisionMetadata {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct ScratchRefactorMetadata {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_heading_list")]
     pub refactored_headings: Vec<String>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, JsonValue>,
@@ -291,7 +291,7 @@ pub struct ScratchRefactorMetadata {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct ScratchFixMetadata {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_heading_list")]
     pub fixed_headings: Vec<String>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, JsonValue>,
@@ -446,6 +446,48 @@ fn has_key(mapping: &Mapping, name: &str) -> bool {
     mapping.contains_key(YamlValue::String(name.to_string()))
 }
 
+fn deserialize_heading_list<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw: Vec<YamlValue> = Vec::deserialize(deserializer)?;
+    raw.into_iter()
+        .map(coerce_heading_value)
+        .collect::<Result<Vec<_>, _>>()
+}
+
+fn coerce_heading_value<E>(value: YamlValue) -> Result<String, E>
+where
+    E: de::Error,
+{
+    match value {
+        YamlValue::String(s) => Ok(s),
+        YamlValue::Number(n) => Ok(n.to_string()),
+        YamlValue::Bool(flag) => Ok(flag.to_string()),
+        YamlValue::Null => Ok(String::new()),
+        YamlValue::Mapping(map) => {
+            if map.len() != 1 {
+                return Err(E::custom("heading mapping must contain exactly one entry"));
+            }
+            let (key, value) = map.into_iter().next().unwrap();
+            let key = coerce_heading_value::<E>(key)?;
+            let value = coerce_heading_value::<E>(value)?;
+            if value.is_empty() {
+                Ok(key)
+            } else {
+                Ok(format!("{key}: {value}"))
+            }
+        }
+        YamlValue::Sequence(_) => Err(E::custom(
+            "heading value must be a scalar or single-entry mapping",
+        )),
+        YamlValue::Tagged(tagged) => Err(E::custom(format!(
+            "unsupported tagged heading value: {:?}",
+            tagged
+        ))),
+    }
+}
+
 fn variant_schema(key: &str, schema: Schema) -> Schema {
     serde_json::from_value(serde_json::json!({
         "type": "object",
@@ -506,5 +548,32 @@ work_type:
         let deserialized: ScratchWorkType =
             serde_yaml::from_str(&serialized).expect("deserialize work type");
         assert_eq!(deserialized.kind(), ScratchWorkTypeKind::Revision);
+    }
+
+    #[test]
+    fn parses_headings_with_embedded_colons() {
+        let yaml = r#"
+target: ../spec/specman-mcp/spec.md
+work_type:
+  revision:
+    revised_headings:
+      - Concept: Prompt Catalog
+      - Concept: SpecMan Capability Parity
+"#;
+
+        let front = ArtifactFrontMatter::from_yaml_str(yaml).expect("parse scratch front matter");
+        let scratch = front.as_scratch().expect("scratch variant");
+        let headings = match scratch.work_type.as_ref().expect("work_type") {
+            ScratchWorkType::Revision(meta) => meta.revised_headings.clone(),
+            other => panic!("unexpected work_type variant: {other:?}"),
+        };
+
+        assert_eq!(
+            headings,
+            vec![
+                "Concept: Prompt Catalog".to_string(),
+                "Concept: SpecMan Capability Parity".to_string()
+            ]
+        );
     }
 }
