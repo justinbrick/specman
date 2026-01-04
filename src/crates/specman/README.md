@@ -53,6 +53,43 @@ fn classify(err: SpecmanError) {
 }
 ```
 
+## Reference Validation
+
+Use the reference validator when you need to sanity-check Markdown link destinations inside a workspace. Typical flow:
+
+```rust
+use specman::{
+    ReferenceValidationStatus, ReferenceValidator, ValidationMode, discover_workspace,
+};
+
+let workspace = discover_workspace(".")?; // or WorkspaceDiscovery::initialize(start)
+
+// Default mode: reachability on, fragments on, transitive traversal on (64 doc limit).
+let validator = ReferenceValidator::new(&workspace);
+let report = validator.validate("spec/my-spec/spec.md")?;
+
+if report.status == ReferenceValidationStatus::Failure {
+    for issue in &report.issues {
+        eprintln!("{:?}: {}", issue.kind, issue.message);
+    }
+}
+
+// To tweak behavior (e.g., disable fragment checks or reachability):
+let mut mode = ValidationMode::default();
+mode.resolve_fragments = false; // skip heading-fragment verification
+mode.reachability = specman::ReachabilityPolicy::Disabled; // syntax-only for https://
+let report = ReferenceValidator::with_mode(&workspace, mode).validate("impl/foo/impl.md")?;
+```
+
+Intricate details to be aware of:
+
+- Root locators may be workspace paths or SpecMan handles (`spec://{name}`, `impl://{name}`, `scratch://{slug}`); handles found **inside** Markdown links are rejected as `DisallowedHandle`.
+- HTTPS reachability is on by default. Redirects count as success; timeouts surface as `Diagnostic`, while 4xx responses become `Error` and fail the run.
+- Filesystem targets are resolved relative to the source document, canonicalized, and must stay inside the workspace root; missing files still count as `WorkspaceBoundary` or `FileMissing` errors even if they never existed.
+- Fragment validation uses SpecMan’s slug rules (NFKD + lowercase + punctuation filtering + suffix `-1`, `-2`, ...). Cross-document fragments are validated transitively by default up to 64 Markdown documents.
+- Images are ignored; inline links, reference-style links, and autolinks are validated. Unresolved reference identifiers are reported as errors.
+- Results are deterministic: issues are reported in source order and the report carries both `discovered` references and `issues` for consumers.
+
 ## Repository
 
 All source, issue tracking, and release notes live in the main GitHub repository:

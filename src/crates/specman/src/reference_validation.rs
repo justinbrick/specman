@@ -7,7 +7,7 @@ use std::time::Duration;
 use unicode_normalization::UnicodeNormalization;
 use url::Url;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct ReferenceValidationOptions {
     pub https: HttpsValidationOptions,
     pub transitive: TransitiveOptions,
@@ -66,7 +66,11 @@ pub struct HttpsValidationOptions {
 impl Default for HttpsValidationOptions {
     fn default() -> Self {
         Self {
-            mode: HttpsValidationMode::SyntaxOnly,
+            mode: HttpsValidationMode::Reachability {
+                timeout: Duration::from_secs(30),
+                max_redirects: 10,
+                method: HttpsMethod::Head,
+            },
         }
     }
 }
@@ -91,7 +95,11 @@ pub enum HttpsMethod {
 
 impl Default for HttpsValidationMode {
     fn default() -> Self {
-        Self::SyntaxOnly
+        HttpsValidationMode::Reachability {
+            timeout: Duration::from_secs(30),
+            max_redirects: 10,
+            method: HttpsMethod::Head,
+        }
     }
 }
 
@@ -112,6 +120,43 @@ impl Default for TransitiveOptions {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ValidationMode {
+    /// Validate fragments inside markdown documents.
+    pub resolve_fragments: bool,
+    /// Reachability policy for `https://` references.
+    pub reachability: ReachabilityPolicy,
+    /// Whether to traverse linked markdown documents.
+    pub transitive: bool,
+    /// Maximum number of documents to process when transitive traversal is enabled.
+    pub max_documents: usize,
+}
+
+impl Default for ValidationMode {
+    fn default() -> Self {
+        Self {
+            resolve_fragments: true,
+            reachability: ReachabilityPolicy::Online {
+                timeout: Duration::from_secs(30),
+                max_redirects: 10,
+                method: HttpsMethod::Head,
+            },
+            transitive: true,
+            max_documents: 64,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ReachabilityPolicy {
+    Disabled,
+    Online {
+        timeout: Duration,
+        max_redirects: u32,
+        method: HttpsMethod,
+    },
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ReferenceValidationStatus {
     Success,
@@ -121,8 +166,12 @@ pub enum ReferenceValidationStatus {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReferenceValidationReport {
     pub status: ReferenceValidationStatus,
+    /// Normalized reference records for the run (mirrors `discovered`).
+    pub records: Vec<ReferenceRecord>,
     /// All references discovered across processed documents.
     pub discovered: Vec<DiscoveredReference>,
+    /// Issues for the run (mirrors `issues`).
+    pub errors: Vec<ReferenceValidationIssue>,
     /// Issues across processed documents.
     pub issues: Vec<ReferenceValidationIssue>,
     /// How many documents were processed.
@@ -133,15 +182,25 @@ impl ReferenceValidationReport {
     fn new() -> Self {
         Self {
             status: ReferenceValidationStatus::Success,
+            records: Vec::new(),
             discovered: Vec::new(),
+            errors: Vec::new(),
             issues: Vec::new(),
             processed_documents: 0,
         }
     }
 
     fn finalize(&mut self) {
+        // Keep legacy fields in sync.
+        if self.records.is_empty() {
+            self.records = self.discovered.clone();
+        }
+        if self.errors.is_empty() {
+            self.errors = self.issues.clone();
+        }
+
         if self
-            .issues
+            .errors
             .iter()
             .any(|i| i.severity == IssueSeverity::Error)
         {
@@ -158,26 +217,60 @@ pub enum IssueSeverity {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReferenceValidationIssue {
+    #[serde(default)]
+    pub kind: ReferenceIssueKind,
     pub severity: IssueSeverity,
     pub message: String,
     pub source: ReferenceSource,
     pub destination: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ReferenceIssueKind {
+    UnsupportedScheme,
+    DisallowedHandle,
+    WorkspaceBoundary,
+    FileMissing,
+    InvalidFragment,
+    MalformedUrl,
+    UnreachableUrl,
+    ParseFailure,
+    TraversalLimit,
+    Io,
+    UnresolvedReference,
+    EmptyDestination,
+    CrossDocumentFragmentSkipped,
+    Fetch,
+    Unknown,
+}
+
+impl Default for ReferenceIssueKind {
+    fn default() -> Self {
+        ReferenceIssueKind::Unknown
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DiscoveredReference {
+pub struct ReferenceRecord {
     pub source: ReferenceSource,
     pub destination: String,
-    pub kind: DestinationKind,
+    pub normalized: Option<String>,
+    pub kind: ReferenceKind,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum DestinationKind {
-    WorkspaceFilesystem,
+pub enum ReferenceKind {
+    WorkspacePath,
     HttpsUrl,
     FragmentOnly,
-    UnsupportedOrUnknown,
+    SpecHandle,
+    UnsupportedScheme,
 }
+
+/// Legacy compatibility alias; slated for removal once callers migrate to `ReferenceKind`.
+pub type DestinationKind = ReferenceKind;
+/// Legacy compatibility alias; slated for removal once callers migrate to `ReferenceRecord`.
+pub type DiscoveredReference = ReferenceRecord;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReferenceSource {
@@ -204,6 +297,105 @@ enum DocumentKey {
     Url(String),
 }
 
+impl From<&ValidationMode> for ReferenceValidationOptions {
+    fn from(mode: &ValidationMode) -> Self {
+        let https_mode = match &mode.reachability {
+            ReachabilityPolicy::Disabled => HttpsValidationMode::SyntaxOnly,
+            ReachabilityPolicy::Online {
+                timeout,
+                max_redirects,
+                method,
+            } => HttpsValidationMode::Reachability {
+                timeout: *timeout,
+                max_redirects: *max_redirects,
+                method: method.clone(),
+            },
+        };
+
+        ReferenceValidationOptions {
+            https: HttpsValidationOptions { mode: https_mode },
+            transitive: TransitiveOptions {
+                enabled: mode.transitive,
+                max_documents: mode.max_documents,
+            },
+        }
+    }
+}
+
+impl From<ValidationMode> for ReferenceValidationOptions {
+    fn from(mode: ValidationMode) -> Self {
+        ReferenceValidationOptions::from(&mode)
+    }
+}
+
+impl From<&ReferenceValidationOptions> for ValidationMode {
+    fn from(options: &ReferenceValidationOptions) -> Self {
+        let reachability = match &options.https.mode {
+            HttpsValidationMode::SyntaxOnly => ReachabilityPolicy::Disabled,
+            HttpsValidationMode::Reachability {
+                timeout,
+                max_redirects,
+                method,
+            } => ReachabilityPolicy::Online {
+                timeout: *timeout,
+                max_redirects: *max_redirects,
+                method: method.clone(),
+            },
+        };
+
+        ValidationMode {
+            resolve_fragments: true,
+            reachability,
+            transitive: options.transitive.enabled,
+            max_documents: options.transitive.max_documents,
+        }
+    }
+}
+
+impl From<ReferenceValidationOptions> for ValidationMode {
+    fn from(options: ReferenceValidationOptions) -> Self {
+        ValidationMode::from(&options)
+    }
+}
+
+impl Default for ReferenceValidationOptions {
+    fn default() -> Self {
+        ValidationMode::default().into()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ReferenceValidator<'a> {
+    workspace: &'a WorkspacePaths,
+    mode: ValidationMode,
+}
+
+impl<'a> ReferenceValidator<'a> {
+    pub fn new(workspace: &'a WorkspacePaths) -> Self {
+        Self {
+            workspace,
+            mode: ValidationMode::default(),
+        }
+    }
+
+    pub fn with_mode(workspace: &'a WorkspacePaths, mode: ValidationMode) -> Self {
+        Self { workspace, mode }
+    }
+
+    pub fn mode(&self) -> &ValidationMode {
+        &self.mode
+    }
+
+    pub fn validate(&self, locator: &str) -> Result<ReferenceValidationReport, SpecmanError> {
+        validate_references_internal(
+            locator,
+            self.workspace,
+            self.mode.clone().into(),
+            self.mode.resolve_fragments,
+        )
+    }
+}
+
 /// Validate Markdown link destinations in the given artifact.
 ///
 /// - `locator` may be: workspace path (absolute or workspace-relative), `https://...`, or a
@@ -213,6 +405,15 @@ pub fn validate_references(
     locator: &str,
     workspace: &WorkspacePaths,
     options: ReferenceValidationOptions,
+) -> Result<ReferenceValidationReport, SpecmanError> {
+    validate_references_internal(locator, workspace, options, true)
+}
+
+fn validate_references_internal(
+    locator: &str,
+    workspace: &WorkspacePaths,
+    options: ReferenceValidationOptions,
+    resolve_fragments: bool,
 ) -> Result<ReferenceValidationReport, SpecmanError> {
     let mut report = ReferenceValidationReport::new();
 
@@ -240,6 +441,7 @@ pub fn validate_references(
             && report.processed_documents > options.transitive.max_documents
         {
             report.issues.push(ReferenceValidationIssue {
+                kind: ReferenceIssueKind::TraversalLimit,
                 severity: IssueSeverity::Diagnostic,
                 message: format!(
                     "transitive traversal stopped after {} documents (max_documents)",
@@ -268,25 +470,29 @@ pub fn validate_references(
             &content,
             workspace,
             &options,
+            resolve_fragments,
             &mut pending_fragments,
         );
         report.discovered.extend(discovered);
         report.issues.extend(issues);
 
-        // Validate any fragments discovered previously that target this document.
-        if let Some(checks) = pending_fragments.remove(&key) {
-            for check in checks {
-                if !heading_slugs.contains(&check.fragment) {
-                    report.issues.push(ReferenceValidationIssue {
-                        severity: IssueSeverity::Error,
-                        message: format!(
-                            "fragment '#{}' does not match any heading slug in {}",
-                            check.fragment,
-                            target.describe()
-                        ),
-                        source: check.source,
-                        destination: Some(check.destination),
-                    });
+        if resolve_fragments {
+            // Validate any fragments discovered previously that target this document.
+            if let Some(checks) = pending_fragments.remove(&key) {
+                for check in checks {
+                    if !heading_slugs.contains(&check.fragment) {
+                        report.issues.push(ReferenceValidationIssue {
+                            kind: ReferenceIssueKind::InvalidFragment,
+                            severity: IssueSeverity::Error,
+                            message: format!(
+                                "fragment '#{}' does not match any heading slug in {}",
+                                check.fragment,
+                                target.describe()
+                            ),
+                            source: check.source,
+                            destination: Some(check.destination),
+                        });
+                    }
                 }
             }
         }
@@ -384,6 +590,7 @@ fn load_document_content(
         ResolvedDocument::File { path, .. } => match fs::read_to_string(path) {
             Ok(s) => Ok(Some(s)),
             Err(err) => Err(ReferenceValidationIssue {
+                kind: ReferenceIssueKind::Io,
                 severity: IssueSeverity::Error,
                 message: format!("failed to read file {}: {err}", path.display()),
                 source: ReferenceSource {
@@ -415,6 +622,7 @@ fn fetch_url(url: &Url, mode: &HttpsValidationMode) -> Result<String, ReferenceV
         } => (*timeout, *max_redirects, method.clone()),
         HttpsValidationMode::SyntaxOnly => {
             return Err(ReferenceValidationIssue {
+                kind: ReferenceIssueKind::Fetch,
                 severity: IssueSeverity::Diagnostic,
                 message: "fetch_url called in syntax-only mode".into(),
                 source: ReferenceSource {
@@ -441,6 +649,7 @@ fn fetch_url(url: &Url, mode: &HttpsValidationMode) -> Result<String, ReferenceV
         Ok(response) => match response.into_string() {
             Ok(s) => Ok(s),
             Err(err) => Err(ReferenceValidationIssue {
+                kind: ReferenceIssueKind::Fetch,
                 severity: IssueSeverity::Diagnostic,
                 message: format!("failed reading response body: {err}"),
                 source: ReferenceSource {
@@ -459,6 +668,7 @@ fn fetch_url(url: &Url, mode: &HttpsValidationMode) -> Result<String, ReferenceV
 
             let hint = response.status_text().to_string();
             Err(ReferenceValidationIssue {
+                kind: ReferenceIssueKind::UnreachableUrl,
                 severity,
                 message: format!("https reachability failed with status {code} ({hint})"),
                 source: ReferenceSource {
@@ -469,6 +679,7 @@ fn fetch_url(url: &Url, mode: &HttpsValidationMode) -> Result<String, ReferenceV
             })
         }
         Err(err) => Err(ReferenceValidationIssue {
+            kind: ReferenceIssueKind::UnreachableUrl,
             severity: IssueSeverity::Diagnostic,
             message: format!("https request failed: {err}"),
             source: ReferenceSource {
@@ -485,6 +696,7 @@ fn validate_document(
     markdown_source: &str,
     workspace: &WorkspacePaths,
     options: &ReferenceValidationOptions,
+    resolve_fragments: bool,
     pending_fragments: &mut BTreeMap<DocumentKey, BTreeSet<PendingFragmentCheck>>,
 ) -> (
     Vec<DiscoveredReference>,
@@ -504,6 +716,7 @@ fn validate_document(
         Ok(node) => node,
         Err(message) => {
             issues.push(ReferenceValidationIssue {
+                kind: ReferenceIssueKind::ParseFailure,
                 severity: IssueSeverity::Error,
                 message: format!("markdown parse error: {message}"),
                 source: ReferenceSource {
@@ -517,11 +730,16 @@ fn validate_document(
     };
 
     let definition_map = collect_definitions(&root);
-    let heading_slugs = collect_heading_slugs(&root, &mut issues, &document_id);
+    let heading_slugs = if resolve_fragments {
+        collect_heading_slugs(&root, &mut issues, &document_id)
+    } else {
+        BTreeSet::new()
+    };
 
     for extracted in extract_destinations(&root, &definition_map) {
         if let Some(missing) = extracted.unresolved_reference_identifier {
             issues.push(ReferenceValidationIssue {
+                kind: ReferenceIssueKind::UnresolvedReference,
                 severity: IssueSeverity::Error,
                 message: format!("unresolved link reference identifier: {missing:?}"),
                 source: ReferenceSource {
@@ -541,35 +759,51 @@ fn validate_document(
         };
 
         let kind = classify_destination(&destination);
-        discovered.push(DiscoveredReference {
+        discovered.push(ReferenceRecord {
             source: source.clone(),
             destination: destination.clone(),
+            normalized: None,
             kind: kind.clone(),
         });
 
+        let record = discovered
+            .last_mut()
+            .expect("record inserted for discovered reference");
+
         match kind {
-            DestinationKind::FragmentOnly => {
-                let fragment = destination.trim_start_matches('#');
-                let fragment = fragment.split('?').next().unwrap_or(fragment);
-                if fragment.is_empty() {
-                    issues.push(ReferenceValidationIssue {
-                        severity: IssueSeverity::Error,
-                        message: "empty fragment is invalid".into(),
-                        source,
-                        destination: Some(destination),
-                    });
-                } else if !heading_slugs.contains(fragment) {
-                    issues.push(ReferenceValidationIssue {
-                        severity: IssueSeverity::Error,
-                        message: format!("fragment '#{fragment}' does not match any heading slug"),
-                        source,
-                        destination: Some(destination),
-                    });
+            ReferenceKind::FragmentOnly => {
+                record.normalized = Some(destination.clone());
+
+                if resolve_fragments {
+                    let fragment = destination.trim_start_matches('#');
+                    let fragment = fragment.split('?').next().unwrap_or(fragment);
+                    if fragment.is_empty() {
+                        issues.push(ReferenceValidationIssue {
+                            kind: ReferenceIssueKind::InvalidFragment,
+                            severity: IssueSeverity::Error,
+                            message: "empty fragment is invalid".into(),
+                            source,
+                            destination: Some(destination),
+                        });
+                    } else if !heading_slugs.contains(fragment) {
+                        issues.push(ReferenceValidationIssue {
+                            kind: ReferenceIssueKind::InvalidFragment,
+                            severity: IssueSeverity::Error,
+                            message: format!(
+                                "fragment '#{fragment}' does not match any heading slug"
+                            ),
+                            source,
+                            destination: Some(destination),
+                        });
+                    }
                 }
             }
-            DestinationKind::HttpsUrl => {
+            ReferenceKind::HttpsUrl => {
+                record.normalized = Some(destination.clone());
+
                 if parse_https_url(&destination).is_err() {
                     issues.push(ReferenceValidationIssue {
+                        kind: ReferenceIssueKind::MalformedUrl,
                         severity: IssueSeverity::Error,
                         message: "invalid https url".into(),
                         source,
@@ -581,23 +815,29 @@ fn validate_document(
                     if let Ok(url) = Url::parse(&destination) {
                         if let Err(issue) = fetch_url(&url, &options.https.mode).map(|_| ()) {
                             issues.push(ReferenceValidationIssue {
+                                kind: issue.kind,
+                                severity: issue.severity,
+                                message: issue.message,
                                 source: ReferenceSource {
                                     document: source.document.clone(),
                                     range: source.range.clone(),
                                 },
-                                ..issue
+                                destination: Some(destination),
                             });
                         }
                     }
                 }
             }
-            DestinationKind::WorkspaceFilesystem => {
+            ReferenceKind::WorkspacePath => {
                 let (path_part, fragment_opt) = split_path_and_fragment(&destination);
 
                 match resolve_markdown_destination_path(target, &path_part, workspace) {
                     Ok(resolved) => {
+                        record.normalized = Some(path_to_forward_slashes(&resolved));
+
                         if !resolved.exists() {
                             issues.push(ReferenceValidationIssue {
+                                kind: ReferenceIssueKind::FileMissing,
                                 severity: IssueSeverity::Error,
                                 message: format!(
                                     "missing filesystem target {}",
@@ -610,44 +850,51 @@ fn validate_document(
 
                         // Fragment validation only for markdown targets.
                         if is_markdown_path(&resolved) {
-                            if let Some(fragment) = fragment_opt {
-                                if fragment.is_empty() {
-                                    issues.push(ReferenceValidationIssue {
-                                        severity: IssueSeverity::Error,
-                                        message: "empty fragment is invalid".into(),
-                                        source: source.clone(),
-                                        destination: Some(destination.clone()),
-                                    });
-                                } else {
-                                    // If this resolves to the current document, validate now.
-                                    if let ResolvedDocument::File { path, .. } = target {
-                                        if fs::canonicalize(path).ok().as_ref() == Some(&resolved) {
-                                            if !heading_slugs.contains(&fragment) {
+                            if resolve_fragments {
+                                if let Some(fragment) = fragment_opt {
+                                    if fragment.is_empty() {
+                                        issues.push(ReferenceValidationIssue {
+                                            kind: ReferenceIssueKind::InvalidFragment,
+                                            severity: IssueSeverity::Error,
+                                            message: "empty fragment is invalid".into(),
+                                            source: source.clone(),
+                                            destination: Some(destination.clone()),
+                                        });
+                                    } else {
+                                        // If this resolves to the current document, validate now.
+                                        if let ResolvedDocument::File { path, .. } = target {
+                                            if fs::canonicalize(path).ok().as_ref()
+                                                == Some(&resolved)
+                                            {
+                                                if !heading_slugs.contains(&fragment) {
+                                                    issues.push(ReferenceValidationIssue {
+                                                        kind: ReferenceIssueKind::InvalidFragment,
+                                                        severity: IssueSeverity::Error,
+                                                        message: format!(
+                                                            "fragment '#{fragment}' does not match any heading slug"
+                                                        ),
+                                                        source: source.clone(),
+                                                        destination: Some(destination.clone()),
+                                                    });
+                                                }
+                                            } else if options.transitive.enabled {
+                                                pending_fragments
+                                                    .entry(DocumentKey::File(resolved.clone()))
+                                                    .or_default()
+                                                    .insert(PendingFragmentCheck {
+                                                        source: source.clone(),
+                                                        fragment: fragment.clone(),
+                                                        destination: destination.clone(),
+                                                    });
+                                            } else {
                                                 issues.push(ReferenceValidationIssue {
-                                                    severity: IssueSeverity::Error,
-                                                    message: format!(
-                                                        "fragment '#{fragment}' does not match any heading slug"
-                                                    ),
+                                                    kind: ReferenceIssueKind::CrossDocumentFragmentSkipped,
+                                                    severity: IssueSeverity::Diagnostic,
+                                                    message: "cross-document fragment validation skipped (transitive disabled)".into(),
                                                     source: source.clone(),
                                                     destination: Some(destination.clone()),
                                                 });
                                             }
-                                        } else if options.transitive.enabled {
-                                            pending_fragments
-                                                .entry(DocumentKey::File(resolved.clone()))
-                                                .or_default()
-                                                .insert(PendingFragmentCheck {
-                                                    source: source.clone(),
-                                                    fragment: fragment.clone(),
-                                                    destination: destination.clone(),
-                                                });
-                                        } else {
-                                            issues.push(ReferenceValidationIssue {
-                                                severity: IssueSeverity::Diagnostic,
-                                                message: "cross-document fragment validation skipped (transitive disabled)".into(),
-                                                source: source.clone(),
-                                                destination: Some(destination.clone()),
-                                            });
                                         }
                                     }
                                 }
@@ -667,16 +914,37 @@ fn validate_document(
                             }
                         }
                     }
-                    Err(msg) => issues.push(ReferenceValidationIssue {
-                        severity: IssueSeverity::Error,
-                        message: msg,
-                        source,
-                        destination: Some(destination),
-                    }),
+                    Err(msg) => {
+                        let issue_kind = if msg.contains("empty path destination") {
+                            ReferenceIssueKind::EmptyDestination
+                        } else if msg.contains("absolute paths are not supported") {
+                            ReferenceIssueKind::UnsupportedScheme
+                        } else {
+                            ReferenceIssueKind::WorkspaceBoundary
+                        };
+
+                        issues.push(ReferenceValidationIssue {
+                            kind: issue_kind,
+                            severity: IssueSeverity::Error,
+                            message: msg,
+                            source,
+                            destination: Some(destination),
+                        })
+                    }
                 }
             }
-            DestinationKind::UnsupportedOrUnknown => {
+            ReferenceKind::SpecHandle => {
                 issues.push(ReferenceValidationIssue {
+                    kind: ReferenceIssueKind::DisallowedHandle,
+                    severity: IssueSeverity::Error,
+                    message: "SpecMan handles are not valid markdown destinations".into(),
+                    source,
+                    destination: Some(destination),
+                });
+            }
+            ReferenceKind::UnsupportedScheme => {
+                issues.push(ReferenceValidationIssue {
+                    kind: ReferenceIssueKind::UnsupportedScheme,
                     severity: IssueSeverity::Error,
                     message: "unsupported or invalid destination".into(),
                     source,
@@ -699,39 +967,42 @@ fn parse_https_url(input: &str) -> Result<Url, ()> {
     }
 }
 
-fn classify_destination(destination: &str) -> DestinationKind {
+fn classify_destination(destination: &str) -> ReferenceKind {
     let trimmed = destination.trim();
 
     if trimmed.starts_with("spec://")
         || trimmed.starts_with("impl://")
         || trimmed.starts_with("scratch://")
-        || trimmed.starts_with("http://")
     {
-        return DestinationKind::UnsupportedOrUnknown;
+        return ReferenceKind::SpecHandle;
+    }
+
+    if trimmed.starts_with("http://") {
+        return ReferenceKind::UnsupportedScheme;
     }
 
     if trimmed.starts_with('#') {
-        return DestinationKind::FragmentOnly;
+        return ReferenceKind::FragmentOnly;
     }
 
     if trimmed.starts_with("https://") {
-        return DestinationKind::HttpsUrl;
+        return ReferenceKind::HttpsUrl;
     }
 
     // Windows path-ish forms are explicitly invalid/unsupported.
     if trimmed.contains('\\') {
-        return DestinationKind::UnsupportedOrUnknown;
+        return ReferenceKind::UnsupportedScheme;
     }
     if looks_like_windows_drive_path(trimmed) {
-        return DestinationKind::UnsupportedOrUnknown;
+        return ReferenceKind::UnsupportedScheme;
     }
 
     // We treat all other bare/relative paths as workspace filesystem references.
     if trimmed.contains("://") {
-        return DestinationKind::UnsupportedOrUnknown;
+        return ReferenceKind::UnsupportedScheme;
     }
 
-    DestinationKind::WorkspaceFilesystem
+    ReferenceKind::WorkspacePath
 }
 
 fn looks_like_windows_drive_path(s: &str) -> bool {
@@ -1044,6 +1315,7 @@ fn collect_heading_slugs(
                     }
                     None => {
                         issues.push(ReferenceValidationIssue {
+                            kind: ReferenceIssueKind::InvalidFragment,
                             severity: IssueSeverity::Diagnostic,
                             message: format!("heading produces empty slug (title: {title:?})"),
                             source: ReferenceSource {

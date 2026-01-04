@@ -34,9 +34,10 @@ pub use persistence::{
 };
 pub use reference_validation::{
     DestinationKind, DiscoveredReference, HttpsMethod, HttpsValidationMode, HttpsValidationOptions,
-    IssueSeverity, ReferenceSource, ReferenceValidationIssue, ReferenceValidationOptions,
-    ReferenceValidationReport, ReferenceValidationStatus, SourcePoint, SourceRange,
-    TransitiveOptions, validate_references,
+    IssueSeverity, ReachabilityPolicy, ReferenceIssueKind, ReferenceKind, ReferenceRecord,
+    ReferenceSource, ReferenceValidationIssue, ReferenceValidationOptions,
+    ReferenceValidationReport, ReferenceValidationStatus, ReferenceValidator, SourcePoint,
+    SourceRange, TransitiveOptions, ValidationMode, validate_references,
 };
 pub use scratchpad::ScratchPadProfile;
 pub use service::{
