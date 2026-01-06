@@ -1,0 +1,22 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "cargo test (workspace)",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"test",
+				"--workspace"
+			],
+			"isBackground": false,
+			"options": {
+				"cwd": "${workspaceFolder}/src"
+			},
+			"group": "test",
+			"presentation": {
+				"reveal": "always"
+			}
+		}
+	]
+}
