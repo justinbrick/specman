@@ -92,9 +92,16 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 !concept-lifecycle-command-surface.commands.status:
 
-- Purpose: validate the entire workspace graph.
-- MUST parse every specification and implementation, invoke the `specman-core` dependency tree builder, and detect invalid references or circular dependencies before completing.
-- Exit codes MUST be deterministic: `EX_OK` for a healthy graph, `EX_DATAERR` for failures alongside the artifact identifiers and a concise summary of the missing reference or cycle.
+- Purpose: Validate the comprehensive integrity of the workspace, including dependency graphs and content references.
+- MUST invoke the `specman-core` **Dependency Mapping** services to build the full dependency graph and detect circular dependencies.
+- MUST invoke the `specman-core` **Reference Validation** services on every specification, implementation, and scratch pad in the workspace to verify inline links and destinations.
+- MUST perform network reachability checks for HTTPS references by default (invoking Reference Validation in reachability mode).
+- MUST accept a `--local` flag that disables network reachability checks, restricting Reference Validation to filesystem and syntax checks only.
+- MUST emit a structured report of all detected errors (grouped by artifact) to stdout and MUST support `--json` output.
+- Exit codes:
+  - `EX_OK`: No graph cycles, missing dependencies, or invalid references found.
+  - `EX_DATAERR`: Validation failures detected (cycles, broken links, etc.).
+  - `EX_USAGE` or other constants: Workspace resolution failures or internal errors.
 
 ##### `spec` command group
 
