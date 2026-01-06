@@ -242,7 +242,8 @@ Constraint identifiers are made up of one or more *groups*.
 !concept-constraints.groups.ordering:
 
 - There MUST be at least two groups in a group set.
-  - The first group MUST be the heading slug of the concept/entity heading being constrained.
+  - The first group MAY be the heading slug of the concept/entity heading being constrained.
+    - If the first group matches a heading slug, tooling MAY use this match to associate the constraint group with the heading.
   - The second group MUST be a short, human-chosen category name that distinguishes the constraint set (for example `formatting`, `ordering`, `referencing`).
   - Additional groups MAY be appended for further categorization.
 

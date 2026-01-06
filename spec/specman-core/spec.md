@@ -205,8 +205,8 @@ Relationships provide a way to construct a relationship graph by parsing the con
 
 - Headings MUST have a mapped relationship to the implementation or specification which it is stored in.
 - Headings MUST have a mapped relationship to other headings that have been referenced via inline links inside of the heading content.
-- Constraint groups MUST have a mapped relationship to the heading who's slug may be discovered by the first part of the constraint group.
-  - If a heading can not be matched via slug to the first group, then a relationship MUST be indexed to the nearest heading which contains the constraint group.
+- Constraint groups MAY have a mapped relationship to the heading whose slug may be discovered by the first part of the constraint group.
+  - If a heading can not be matched via slug to the first group, then a relationship MUST be indexed to the nearest containing heading which contains the constraint group.
 
 !concept-specman-structure.referencing.validation:
 
@@ -229,8 +229,10 @@ Rendering the markdown content allows for readers to properly understand all pos
 - Implementations MUST return markdown content when provided with a heading slug.
   - The content inside of the heading slug must return content under any related headings that have been referenced via inline link, in the order of which the inline links were referenced.
   - Implementations MUST ensure that referenced headings content is not duplicated, so that it may only appear once when rendering the markdown content and its related content.
+  - Implementations MUST detect cycles during recursive rendering and MUST NOT enter a cycle.
+  - Implementations MUST enforce a maximum recursion depth of 50 levels when following referenced headings.
 - Implementations MUST return markdown content when provided with a constraint group identifier.
-  - The rendered content MUST contain the content of the heading which the constraint group has an active relationship to.
+  - The rendered content MUST contain the content of the heading which the constraint group has an active relationship to, which MUST recursively include content from inline-linked headings subject to the heading-rendering rules above.
 
 ### Concept: Metadata Mutation
 
