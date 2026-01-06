@@ -67,7 +67,7 @@ fn cached_index_creates_expected_files() {
     assert!(
         workspace
             .dot_specman()
-            .join("cache/index/index.v1.json")
+            .join("cache/index/index.v2.json")
             .is_file()
     );
 }
@@ -136,7 +136,7 @@ fn corrupt_index_json_triggers_rebuild() {
 
     indexer.build_cached_with_workspace(&workspace).unwrap();
 
-    let index_path = workspace.dot_specman().join("cache/index/index.v1.json");
+    let index_path = workspace.dot_specman().join("cache/index/index.v2.json");
     fs::write(&index_path, "{not valid json").unwrap();
 
     indexer.build_cached_with_workspace(&workspace).unwrap();
@@ -185,7 +185,7 @@ fn scratch_pads_are_excluded_from_persisted_cache() {
     }
 
     // Persisted index excludes scratch.
-    let index_path = workspace.dot_specman().join("cache/index/index.v1.json");
+    let index_path = workspace.dot_specman().join("cache/index/index.v2.json");
     let persisted = read_json(&index_path);
     let artifacts = persisted["artifacts"].as_array().unwrap();
     assert!(

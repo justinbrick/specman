@@ -8,7 +8,9 @@ use unicode_normalization::UnicodeNormalization;
 use crate::dependency_tree::ArtifactKind;
 use crate::error::SpecmanError;
 use crate::front_matter::{ArtifactFrontMatter, optional_front_matter};
-use crate::workspace::{normalize_workspace_path, WorkspaceLocator, WorkspacePaths, workspace_relative_path};
+use crate::workspace::{
+    WorkspaceLocator, WorkspacePaths, normalize_workspace_path, workspace_relative_path,
+};
 
 use super::cache::{IndexCache, UnresolvedHeadingRef, UnresolvedTarget, resolve_unresolved_refs};
 
@@ -150,6 +152,7 @@ fn index_add_artifacts(
     }
 
     let mut pending_heading_refs: Vec<PendingHeadingRef> = Vec::new();
+    let mut pending_constraint_refs: Vec<PendingConstraintRef> = Vec::new();
     let mut relationships: Vec<RelationshipEdge> = index.relationships.clone();
 
     for (kind, path) in artifacts {
@@ -157,6 +160,7 @@ fn index_add_artifacts(
 
         relationships.extend(parsed.relationships);
         pending_heading_refs.extend(parsed.pending_heading_refs);
+        pending_constraint_refs.extend(parsed.pending_constraint_refs);
 
         artifact_by_path.insert(
             parsed.artifact.key.workspace_path.clone(),
@@ -244,6 +248,52 @@ fn index_add_artifacts(
         }
     }
 
+    for pending in pending_constraint_refs {
+        match pending.target {
+            PendingTarget::IntraDoc { slug } => {
+                let to = HeadingIdentifier {
+                    artifact: pending.from.artifact.clone(),
+                    slug: slug.clone(),
+                };
+                if index.headings.contains_key(&to) {
+                    attach_constraint_reference(index, &pending.from, &to);
+                    resolved_relationships.push(RelationshipEdge {
+                        kind: RelationshipKind::ConstraintToHeading,
+                        from: format!(
+                            "{}!{}",
+                            pending.from.artifact.workspace_path, pending.from.group
+                        ),
+                        to: heading_ref_string(&to),
+                    });
+                }
+            }
+            PendingTarget::InterDoc {
+                workspace_path,
+                slug,
+            } => {
+                let Some(artifact_key) = artifact_by_path.get(&workspace_path).cloned() else {
+                    continue;
+                };
+                let to = HeadingIdentifier {
+                    artifact: artifact_key,
+                    slug: slug.clone(),
+                };
+                if index.headings.contains_key(&to) {
+                    attach_constraint_reference(index, &pending.from, &to);
+                    resolved_relationships.push(RelationshipEdge {
+                        kind: RelationshipKind::ConstraintToHeading,
+                        from: format!(
+                            "{}!{}",
+                            pending.from.artifact.workspace_path, pending.from.group
+                        ),
+                        to: heading_ref_string(&to),
+                    });
+                }
+            }
+            PendingTarget::File { .. } => {}
+        }
+    }
+
     relationships.extend(resolved_relationships);
     index.relationships = relationships.clone();
 
@@ -256,6 +306,16 @@ fn attach_heading_reference(
     to: &HeadingIdentifier,
 ) {
     if let Some(record) = index.headings.get_mut(from) {
+        record.referenced_headings.push(to.clone());
+    }
+}
+
+fn attach_constraint_reference(
+    index: &mut WorkspaceIndex,
+    from: &ConstraintIdentifier,
+    to: &HeadingIdentifier,
+) {
+    if let Some(record) = index.constraints.get_mut(from) {
         record.referenced_headings.push(to.clone());
     }
 }
@@ -348,11 +408,18 @@ struct ParsedArtifact {
     constraints: BTreeMap<ConstraintIdentifier, ConstraintRecord>,
     relationships: Vec<RelationshipEdge>,
     pending_heading_refs: Vec<PendingHeadingRef>,
+    pending_constraint_refs: Vec<PendingConstraintRef>,
 }
 
 #[derive(Clone, Debug)]
 struct PendingHeadingRef {
     from: HeadingIdentifier,
+    target: PendingTarget,
+}
+
+#[derive(Clone, Debug)]
+struct PendingConstraintRef {
+    from: ConstraintIdentifier,
     target: PendingTarget,
 }
 
@@ -421,6 +488,7 @@ fn parse_artifact(
 
     let mut relationships: Vec<RelationshipEdge> = Vec::new();
     let mut pending_heading_refs: Vec<PendingHeadingRef> = Vec::new();
+    let mut pending_constraint_refs: Vec<PendingConstraintRef> = Vec::new();
 
     let artifact = ArtifactRecord {
         key: artifact_key.clone(),
@@ -429,11 +497,12 @@ fn parse_artifact(
     };
 
     // Parse headings + content.
-    let (mut headings, constraints, mut local_relationships, mut pending) =
+    let (mut headings, constraints, mut local_relationships, mut pending, mut pending_const) =
         parse_markdown_structure(&artifact_key, canonical_path, workspace, body)?;
 
     relationships.append(&mut local_relationships);
     pending_heading_refs.append(&mut pending);
+    pending_constraint_refs.append(&mut pending_const);
 
     // Derive constraint->heading relationships.
     for record in constraints.values() {
@@ -483,6 +552,7 @@ fn parse_artifact(
         constraints,
         relationships,
         pending_heading_refs,
+        pending_constraint_refs,
     })
 }
 
@@ -509,6 +579,7 @@ fn parse_markdown_structure(
         BTreeMap<ConstraintIdentifier, ConstraintRecord>,
         Vec<RelationshipEdge>,
         Vec<PendingHeadingRef>,
+        Vec<PendingConstraintRef>,
     ),
     SpecmanError,
 > {
@@ -516,6 +587,7 @@ fn parse_markdown_structure(
     let mut constraints: BTreeMap<ConstraintIdentifier, ConstraintRecord> = BTreeMap::new();
     let mut relationships: Vec<RelationshipEdge> = Vec::new();
     let mut pending_refs: Vec<PendingHeadingRef> = Vec::new();
+    let mut pending_constraint_refs: Vec<PendingConstraintRef> = Vec::new();
 
     let mut slug_seen: HashMap<String, (usize, String)> = HashMap::new();
     let mut constraint_seen: HashSet<String> = HashSet::new();
@@ -615,7 +687,7 @@ fn parse_markdown_structure(
         let content_lines = content_buffers.remove(&id).unwrap_or_default();
         record.content = join_lines(&content_lines);
 
-        let (mut heading_constraints, mut refs, mut rels) =
+        let (mut heading_constraints, mut refs, mut const_refs, mut rels) =
             extract_constraints_and_links(&id, &content_lines, dir, workspace)?;
 
         for (group, line_no, first_group_slug, nearest_heading) in heading_constraints.drain(..) {
@@ -647,15 +719,23 @@ fn parse_markdown_structure(
                 id: cid.clone(),
                 heading: owning_heading,
                 line: line_no,
+                referenced_headings: Vec::new(),
             };
             constraints.insert(cid, cref);
         }
 
         pending_refs.append(&mut refs);
+        pending_constraint_refs.append(&mut const_refs);
         relationships.append(&mut rels);
     }
 
-    Ok((headings, constraints, relationships, pending_refs))
+    Ok((
+        headings,
+        constraints,
+        relationships,
+        pending_refs,
+        pending_constraint_refs,
+    ))
 }
 
 fn join_lines(lines: &[String]) -> String {
@@ -726,15 +806,18 @@ fn extract_constraints_and_links(
     (
         Vec<(String, usize, String, HeadingIdentifier)>,
         Vec<PendingHeadingRef>,
+        Vec<PendingConstraintRef>,
         Vec<RelationshipEdge>,
     ),
     SpecmanError,
 > {
     let mut constraints: Vec<(String, usize, String, HeadingIdentifier)> = Vec::new();
     let mut pending: Vec<PendingHeadingRef> = Vec::new();
+    let mut pending_constraints: Vec<PendingConstraintRef> = Vec::new();
     let mut relationships: Vec<RelationshipEdge> = Vec::new();
 
     let mut fence: Option<FenceState> = None;
+    let mut current_constraint_group: Option<String> = None;
 
     for (idx, raw) in content_lines.iter().enumerate() {
         let line_no = idx + 1;
@@ -752,43 +835,52 @@ fn extract_constraints_and_links(
                     .to_string();
 
                 let first_group = group.split('.').next().unwrap_or("").to_string();
-                constraints.push((group, line_no, first_group, heading.clone()));
+                constraints.push((group.clone(), line_no, first_group, heading.clone()));
+                current_constraint_group = Some(group);
             }
 
             for dest in extract_inline_link_destinations(raw) {
-                if let Some(rest) = dest.strip_prefix('#') {
-                    pending.push(PendingHeadingRef {
-                        from: heading.clone(),
-                        target: PendingTarget::IntraDoc {
-                            slug: rest.to_string(),
-                        },
-                    });
-                    continue;
-                }
-
-                if let Some((path_part, frag)) = dest.split_once('#') {
+                let target = if let Some(rest) = dest.strip_prefix('#') {
+                    Some(PendingTarget::IntraDoc {
+                        slug: rest.to_string(),
+                    })
+                } else if let Some((path_part, frag)) = dest.split_once('#') {
                     if let Some(workspace_path) =
                         resolve_workspace_link_path(path_part, base_dir, workspace)?
                     {
-                        pending.push(PendingHeadingRef {
-                            from: heading.clone(),
-                            target: PendingTarget::InterDoc {
-                                workspace_path,
-                                slug: frag.to_string(),
-                            },
-                        });
+                        Some(PendingTarget::InterDoc {
+                            workspace_path,
+                            slug: frag.to_string(),
+                        })
+                    } else {
+                        None
                     }
-                    continue;
-                }
+                } else {
+                    // Bare file link.
+                    if let Some(workspace_path) =
+                        resolve_workspace_link_path(dest.as_str(), base_dir, workspace)?
+                    {
+                        Some(PendingTarget::File { workspace_path })
+                    } else {
+                        None
+                    }
+                };
 
-                // Bare file link.
-                if let Some(workspace_path) =
-                    resolve_workspace_link_path(dest.as_str(), base_dir, workspace)?
-                {
+                if let Some(target) = target {
                     pending.push(PendingHeadingRef {
                         from: heading.clone(),
-                        target: PendingTarget::File { workspace_path },
+                        target: target.clone(),
                     });
+
+                    if let Some(group) = &current_constraint_group {
+                        pending_constraints.push(PendingConstraintRef {
+                            from: ConstraintIdentifier {
+                                artifact: heading.artifact.clone(),
+                                group: group.clone(),
+                            },
+                            target,
+                        });
+                    }
                 }
             }
         }
@@ -818,7 +910,7 @@ fn extract_constraints_and_links(
         }
     }
 
-    Ok((constraints, pending, relationships))
+    Ok((constraints, pending, pending_constraints, relationships))
 }
 
 fn is_constraint_identifier_line(trimmed: &str) -> bool {

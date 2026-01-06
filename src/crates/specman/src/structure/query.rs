@@ -76,7 +76,50 @@ impl StructureQuery for WorkspaceIndex {
             ))
         })?;
 
-        self.render_heading_internal(&record.heading, false)
+        // Initial queue: Associated Heading -> Associated Heading references -> Constraint references
+        let mut queue: Vec<HeadingIdentifier> = Vec::new();
+        queue.push(record.heading.clone());
+
+        if let Some(heading_record) = self.headings.get(&record.heading) {
+            for link in &heading_record.referenced_headings {
+                queue.push(link.clone());
+            }
+        }
+
+        for link in &record.referenced_headings {
+            queue.push(link.clone());
+        }
+
+        let mut rendered = String::new();
+        let mut visited: HashSet<HeadingIdentifier> = HashSet::new();
+
+        // Perform transitive closure via BFS/queue consumption.
+        let mut i = 0;
+        while i < queue.len() {
+            let id = queue[i].clone();
+            i += 1;
+
+            if !visited.insert(id.clone()) {
+                continue;
+            }
+
+            let section = self.render_heading_section(&id)?;
+            if !rendered.is_empty() {
+                rendered.push('\n');
+            }
+            rendered.push_str(&section);
+
+            // Append transitive references
+            if let Some(h) = self.headings.get(&id) {
+                for r in &h.referenced_headings {
+                    if !visited.contains(r) {
+                        queue.push(r.clone());
+                    }
+                }
+            }
+        }
+
+        Ok(rendered)
     }
 }
 

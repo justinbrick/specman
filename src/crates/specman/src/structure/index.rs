@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::dependency_tree::ArtifactKind;
 use crate::front_matter::ArtifactFrontMatter;
 
-pub const WORKSPACE_INDEX_SCHEMA_VERSION: u32 = 1;
+pub const WORKSPACE_INDEX_SCHEMA_VERSION: u32 = 2;
 
 /// Stable identifier for an indexed artifact.
 ///
@@ -64,6 +64,8 @@ pub struct ConstraintRecord {
     pub heading: HeadingIdentifier,
     /// Line number within the artifact body (1-based) where the identifier appears.
     pub line: usize,
+    /// Resolved heading references found within the constraint group's text.
+    pub referenced_headings: Vec<HeadingIdentifier>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]

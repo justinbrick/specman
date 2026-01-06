@@ -413,6 +413,7 @@ struct PersistedConstraintRecord {
     id: PersistedConstraintIdentifier,
     heading: PersistedHeadingIdentifier,
     line: usize,
+    referenced_headings: Vec<PersistedHeadingIdentifier>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -501,6 +502,12 @@ impl PersistedWorkspaceIndex {
                 id: PersistedConstraintIdentifier::from(&record.id),
                 heading: PersistedHeadingIdentifier::from(&record.heading),
                 line: record.line,
+                referenced_headings: record
+                    .referenced_headings
+                    .iter()
+                    .filter(|id| id.artifact.kind != ArtifactKind::ScratchPad)
+                    .map(PersistedHeadingIdentifier::from)
+                    .collect(),
             })
             .collect();
         constraints.sort_by(|a, b| a.id.cmp(&b.id));
@@ -601,6 +608,11 @@ impl PersistedWorkspaceIndex {
                     id,
                     heading: HeadingIdentifier::from(record.heading),
                     line: record.line,
+                    referenced_headings: record
+                        .referenced_headings
+                        .into_iter()
+                        .map(HeadingIdentifier::from)
+                        .collect(),
                 },
             );
         }

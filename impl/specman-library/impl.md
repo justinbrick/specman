@@ -231,7 +231,7 @@ struct ResourceHandle { kind: ArtifactKind, slug: String }
 
 This module fulfills [Concept: SpecMan Structure](../../spec/specman-core/spec.md#concept-specman-structure) by providing **parsing-only** structure indexing and discovery utilities over the local workspace.
 
-- **One-shot indexing:** the indexer walks canonical artifact documents (`spec/*/spec.md`, `impl/*/impl.md`, `.specman/scratchpad/*/scratch.md`), parses headings + heading content, extracts constraint identifier lines, and records relationships derived from inline links.
+- **One-shot indexing:** the indexer walks canonical artifact documents (`spec/*/spec.md`, `impl/*/impl.md`, `.specman/scratchpad/*/scratch.md`), parses headings + heading content, extracts constraint identifier lines, and records relationships derived from inline links (from both headings and constraint definition blocks).
 - **Deterministic side effects:** indexing is parsing-only and deterministic; `build_once` is read-only and returns a fully in-memory `WorkspaceIndex`. A separate cached path may persist a cache under `.specman/cache/index` (safe to delete) to avoid re-parsing unchanged workspaces.
 - **Workspace boundaries:** all indexed files and all workspace-local link targets are validated to remain inside the discovered workspace root.
 - **Duplicate heading slugs:** indexing fails fast when two headings within the same document resolve to the same slug (this is a deliberate stricter behavior than the disambiguation rule described in the data model’s slug concept).
@@ -316,7 +316,10 @@ pub trait StructureQuery {
 }
 ```
 
-Rendering follows the Structure Discovery requirements: `render_heading` returns the requested section and then appends content for headings referenced via inline links in the order they are referenced, deduplicating repeated references so each heading section appears at most once.
+Rendering follows the Structure Discovery requirements:
+
+- `render_heading` returns the requested section and then appends content for headings referenced via inline links in the order they are referenced, deduplicating repeated references so each heading section appears at most once.
+- `render_constraint_group` returns the content of the associated heading plus all headings referenced by the constraint group's text (and the associated heading's own references), transitively resolving all inline links to ensure the full context is included.
 
 ## Concept: Template Orchestration
 
