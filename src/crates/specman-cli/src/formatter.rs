@@ -37,8 +37,22 @@ fn print_text(result: &CommandResult) {
             for report in reports {
                 if report.ok {
                     println!("  [OK] {} ({})", report.name, report.kind);
-                } else if let Some(message) = &report.message {
-                    println!("  [ERR] {} ({}): {message}", report.name, report.kind);
+                } else {
+                    if !report.errors.is_empty() {
+                        println!("  [ERR] {} ({}):", report.name, report.kind);
+                        for error in &report.errors {
+                            let loc = error
+                                .location
+                                .as_deref()
+                                .map(|l| format!(" [{}]", l))
+                                .unwrap_or_default();
+                            println!("    - {}{}", error.message, loc);
+                        }
+                    } else if let Some(message) = &report.message {
+                        println!("  [ERR] {} ({}): {message}", report.name, report.kind);
+                    } else {
+                        println!("  [ERR] {} ({}): unknown error", report.name, report.kind);
+                    }
                 }
             }
         }
@@ -61,9 +75,15 @@ fn print_text(result: &CommandResult) {
                     );
                 }
             } else if *created {
-                println!("Initialized workspace at {} (.specman: {})", root, dot_specman);
+                println!(
+                    "Initialized workspace at {} (.specman: {})",
+                    root, dot_specman
+                );
             } else {
-                println!("Workspace already initialized at {} (.specman: {})", root, dot_specman);
+                println!(
+                    "Workspace already initialized at {} (.specman: {})",
+                    root, dot_specman
+                );
             }
         }
         CommandResult::SpecList { specs } => {
