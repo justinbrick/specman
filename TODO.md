@@ -1,11 +1,10 @@
 # TODO
 
-- impl: javascript MCP wrapper
-- chore: create documentation for CLI, MCP
-- ref(specman-library): function for reading constraint content
-- feat(specman-mcp): MCP published (docker?)
+- rev(specman-core): add requirement to provide endpoint for checking workspace status
+  - includes checking all of the specs + implementations:
+  - ensures references are valid (references should include inline links, dependencies, references, and the location of the source code for implementations)
+  - ensures no cyclic dependencies
 - ref(specman-library): remove ops-based updating / editing
-- feat(specman-library): read constraint content given identifier
 - feat(specman-cli): list constraints
 - feat(specman-cli): read constraint content
 - rev(specman-core): constraint-based unit test adapters (create test files)
