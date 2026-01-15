@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use specman::dependency_tree::ArtifactId;
-use specman::front_matter::{ImplementingLanguage, ScratchWorkType};
+use specman::front_matter::ScratchWorkType;
 use specman::metadata::{FrontMatterUpdateOp, FrontMatterUpdateRequest, apply_front_matter_update};
 use specman::workspace::WorkspacePaths;
 
@@ -45,14 +45,8 @@ pub fn update_impl_document(
     workspace: &WorkspacePaths,
     name: &str,
     spec_locator: &str,
-    language: &str,
     location: &str,
 ) -> Result<String, CliError> {
-    let language = ImplementingLanguage {
-        language: language.to_string(),
-        ..Default::default()
-    };
-
     let request = FrontMatterUpdateRequest::new()
         .persist(false)
         .with_op(FrontMatterUpdateOp::SetName {
@@ -64,7 +58,6 @@ pub fn update_impl_document(
         .with_op(FrontMatterUpdateOp::SetLocation {
             location: location.to_string(),
         })
-        .with_op(FrontMatterUpdateOp::SetPrimaryLanguage { language })
         .with_op(FrontMatterUpdateOp::AddReference {
             ref_: spec_locator.to_string(),
             type_: Some("specification".to_string()),

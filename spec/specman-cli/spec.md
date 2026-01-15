@@ -153,7 +153,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 !concept-lifecycle-command-surface.commands.impl-ls:
 
 - MUST enumerate every implementation discovered under `impl/` after resolving the workspace root.
-- Output MUST include, at minimum, the implementation name, the implementation version, and the targeted specification identifier derived from `spec` front matter (name plus version when available). Additional fields (such as primary language) MAY be included when available, but the required set MUST remain present and parseable without ANSI sequences.
+- Output MUST include, at minimum, the implementation name, the implementation version, and the targeted specification identifier derived from `spec` front matter (name plus version when available).
 - Results MUST be emitted in a deterministic order (for example, lexical by implementation name) so tooling can diff outputs reliably.
 - Exit codes MUST follow the same rules as `status`: `EX_OK` when enumeration succeeds and `EX_DATAERR` (or another `sysexits` value) when parsing failures or workspace violations occur.
 
@@ -167,8 +167,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
   - A workspace-relative filesystem path.
   - An HTTPS URL. Unsupported schemes MUST fail fast with `EX_USAGE` and clear remediation guidance.
 - MUST require a single implementation name provided either as the positional argument immediately after `impl new` **or** via `--name`. When both are supplied the CLI MUST raise an error; when neither is supplied the CLI MUST fail with a missing-argument error.
-- MUST require `--language <identifier@version>` so the resulting front matter can satisfy the data-model implementing-language constraints. The flag MUST NOT have a default value.
-- Creation MUST validate that the supplied name satisfies implementation naming rules (≤4 words, hyphenated, includes the implementing language identifier) and MUST invoke template rendering only after resolving all template tokens, including HTML comment directives.
+- Creation MUST validate that the supplied name satisfies implementation naming rules (≤4 words, hyphenated) and MUST invoke template rendering only after resolving all template tokens, including HTML comment directives.
 
 ###### `impl dependencies`
 

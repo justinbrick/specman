@@ -3,28 +3,22 @@ spec: ../../spec/specman-core/spec.md
 name: specman-library
 version: "2.1.2"
 location: ../../src/crates/specman
-library:
-  name: specman-library@2.1.2
-primary_language:
-  language: rust@1.91.0
-  properties:
-    edition: "2024"
-  libraries:
-    - name: schemars
-    - name: serde_json
-    - name: markdown
-secondary_languages: []
 ---
 
 # Implementation — SpecMan Library Rust Crate
 
 The `specman-library` implementation delivers the reusable library surface defined in [SpecMan Core](../../spec/specman-core/spec.md) by packaging deterministic helpers inside a dedicated Rust crate rooted at `src/crates/specman`. Each module honors the constraints from the [SpecMan Data Model](../../spec/specman-data-model/spec.md) so downstream tools can consume uniform structures regardless of host environment.
 
-- **Primary — `rust@1.91.0` (2024 edition):** The crate leverages the stable 1.91 toolchain to compose performant, strongly typed services. Rust traits organize entry-point catalogs, while enums and structs model deterministic function descriptors, `DependencyTree`, and `TemplateDescriptor`. Edition 2024 features (inline `let`, `if-let` chains, and `impl Trait` in return position) keep the ergonomics modern without compromising MSRV requirements. Supporting crates include:
-  - `schemars` for deriving JSON Schema artifacts tied to the SpecMan Data Model entities.
-  - `serde_json` for canonical serialization/deserialization of request and response payloads.
-  - `markdown` for parsing templates and emitting deterministic Markdown outputs for generated specifications, implementations, and scratch pads.
-- **Secondary languages:** None. All orchestration, validation, and I/O run in Rust; shell glue or scripting layers consume the library through binary wrappers built from the same crate.
+## Implementation Stack
+
+The core library is implemented in **Rust (2024 Edition)** (1.91.0) and provides the logic defined in the SpecMan Data Model. It handles Markdown parsing, YAML front matter serialization/deserialization, and schema enforcement for artifacts.
+
+The implementation relies on:
+
+- `serde` / `serde_json` / `serde_yaml`: For parsing metadata.
+- `schemars`: For ensuring JSON Schema compliance for MCP tool schemas.
+- `thiserror`: For structured error handling.
+- `markdown`: For parsing templates and emitting deterministic Markdown outputs.
 
 ## Concept: Reference Validation
 

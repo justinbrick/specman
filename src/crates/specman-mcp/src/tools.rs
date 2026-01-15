@@ -396,14 +396,8 @@ impl JsonSchema for UpdateArtifactArgs {
                                     "clear_spec",
                                     "set_location",
                                     "clear_location",
-                                    "set_library",
-                                    "clear_library",
                                     "add_reference",
                                     "remove_reference",
-                                    "set_primary_language",
-                                    "clear_primary_language",
-                                    "set_secondary_languages",
-                                    "clear_secondary_languages",
                                     "set_target",
                                     "clear_target",
                                     "set_branch",
@@ -421,31 +415,9 @@ impl JsonSchema for UpdateArtifactArgs {
                             "optional": { "type": "boolean" },
                             "requires": { "type": "boolean" },
                             "location": { "type": "string" },
-                            "library": {
-                                "description": "Library reference (string or object forms may be accepted by the server).",
-                                "type": "string"
-                            },
                             "type": {
                                 "description": "Optional reference type hint.",
                                 "type": "string"
-                            },
-                            "language": {
-                                "description": "Primary language identifier.",
-                                "type": "string"
-                            },
-                            "languages": {
-                                "description": "Secondary implementing languages.",
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "additionalProperties": true,
-                                    "properties": {
-                                        "language": { "type": "string" },
-                                        "libraries": { "type": "array", "items": { "type": "string" } },
-                                        "properties": { "type": "object", "additionalProperties": true }
-                                    },
-                                    "required": ["language"]
-                                }
                             },
                             "target": { "type": "string" },
                             "branch": { "type": "string" },

@@ -12,9 +12,8 @@ use crate::persistence::PersistedArtifact;
 use crate::workspace::WorkspacePaths;
 
 use crate::front_matter::{
-    ArtifactIdentityFields, DependencyEntry, ImplementationFrontMatter, ImplementingLanguage,
-    LibraryReference, ReferenceEntry, ScratchFrontMatter, ScratchWorkType,
-    SpecificationFrontMatter,
+    ArtifactIdentityFields, DependencyEntry, ImplementationFrontMatter, ReferenceEntry,
+    ScratchFrontMatter, ScratchWorkType, SpecificationFrontMatter,
 };
 
 /// Request to update an artifact's YAML front matter while preserving the Markdown body.
@@ -107,10 +106,6 @@ pub enum FrontMatterUpdateOp {
         location: String,
     },
     ClearLocation,
-    SetLibrary {
-        library: LibraryReference,
-    },
-    ClearLibrary,
     AddReference {
         #[serde(rename = "ref")]
         ref_: String,
@@ -123,14 +118,6 @@ pub enum FrontMatterUpdateOp {
         #[serde(rename = "ref")]
         ref_: String,
     },
-    SetPrimaryLanguage {
-        language: ImplementingLanguage,
-    },
-    ClearPrimaryLanguage,
-    SetSecondaryLanguages {
-        languages: Vec<ImplementingLanguage>,
-    },
-    ClearSecondaryLanguages,
 
     // Scratch-only
     SetTarget {
@@ -189,9 +176,6 @@ pub fn apply_front_matter_update(
 
         spec: bool,
         location: bool,
-        library: bool,
-        primary_language: bool,
-        secondary_languages: bool,
 
         references: bool,
         dependencies: bool,
@@ -230,20 +214,9 @@ pub fn apply_front_matter_update(
                 FrontMatterUpdateOp::SetLocation { .. } | FrontMatterUpdateOp::ClearLocation => {
                     touched.location = true;
                 }
-                FrontMatterUpdateOp::SetLibrary { .. } | FrontMatterUpdateOp::ClearLibrary => {
-                    touched.library = true;
-                }
                 FrontMatterUpdateOp::AddReference { .. }
                 | FrontMatterUpdateOp::RemoveReference { .. } => {
                     touched.references = true;
-                }
-                FrontMatterUpdateOp::SetPrimaryLanguage { .. }
-                | FrontMatterUpdateOp::ClearPrimaryLanguage => {
-                    touched.primary_language = true;
-                }
-                FrontMatterUpdateOp::SetSecondaryLanguages { .. }
-                | FrontMatterUpdateOp::ClearSecondaryLanguages => {
-                    touched.secondary_languages = true;
                 }
                 FrontMatterUpdateOp::AddDependency { .. }
                 | FrontMatterUpdateOp::RemoveDependency { .. } => {
@@ -389,19 +362,6 @@ pub fn apply_front_matter_update(
 
                 apply_key_from_typed(&mut merged, typed_mapping, "spec", touched.spec);
                 apply_key_from_typed(&mut merged, typed_mapping, "location", touched.location);
-                apply_key_from_typed(&mut merged, typed_mapping, "library", touched.library);
-                apply_key_from_typed(
-                    &mut merged,
-                    typed_mapping,
-                    "primary_language",
-                    touched.primary_language,
-                );
-                apply_key_from_typed(
-                    &mut merged,
-                    typed_mapping,
-                    "secondary_languages",
-                    touched.secondary_languages,
-                );
                 apply_key_from_typed(&mut merged, typed_mapping, "references", touched.references);
                 apply_key_from_typed(
                     &mut merged,
@@ -518,13 +478,6 @@ fn canonicalize_front_matter_ops(
             FrontMatterUpdateOp::ClearSpec => (20, String::new()),
             FrontMatterUpdateOp::SetLocation { location } => (21, location.clone()),
             FrontMatterUpdateOp::ClearLocation => (21, String::new()),
-            FrontMatterUpdateOp::SetLibrary { .. } | FrontMatterUpdateOp::ClearLibrary => {
-                (22, String::new())
-            }
-            FrontMatterUpdateOp::SetPrimaryLanguage { .. }
-            | FrontMatterUpdateOp::ClearPrimaryLanguage => (23, String::new()),
-            FrontMatterUpdateOp::SetSecondaryLanguages { .. }
-            | FrontMatterUpdateOp::ClearSecondaryLanguages => (24, String::new()),
 
             // Dependencies/references are set-like by normalized locator.
             FrontMatterUpdateOp::AddDependency { ref_, .. }
@@ -621,16 +574,10 @@ fn validate_front_matter_ops(
                     | FrontMatterUpdateOp::ClearSpec
                     | FrontMatterUpdateOp::SetLocation { .. }
                     | FrontMatterUpdateOp::ClearLocation
-                    | FrontMatterUpdateOp::SetLibrary { .. }
-                    | FrontMatterUpdateOp::ClearLibrary
                     | FrontMatterUpdateOp::AddReference { .. }
                     | FrontMatterUpdateOp::RemoveReference { .. }
                     | FrontMatterUpdateOp::AddDependency { .. }
                     | FrontMatterUpdateOp::RemoveDependency { .. }
-                    | FrontMatterUpdateOp::SetPrimaryLanguage { .. }
-                    | FrontMatterUpdateOp::ClearPrimaryLanguage
-                    | FrontMatterUpdateOp::SetSecondaryLanguages { .. }
-                    | FrontMatterUpdateOp::ClearSecondaryLanguages
             ),
             ArtifactKind::ScratchPad => matches!(
                 op,
@@ -698,17 +645,6 @@ fn validate_front_matter_ops(
             }
             FrontMatterUpdateOp::SetLocation { .. } | FrontMatterUpdateOp::ClearLocation => {
                 touch("impl.location".into())?;
-            }
-            FrontMatterUpdateOp::SetLibrary { .. } | FrontMatterUpdateOp::ClearLibrary => {
-                touch("impl.library".into())?;
-            }
-            FrontMatterUpdateOp::SetPrimaryLanguage { .. }
-            | FrontMatterUpdateOp::ClearPrimaryLanguage => {
-                touch("impl.primary_language".into())?;
-            }
-            FrontMatterUpdateOp::SetSecondaryLanguages { .. }
-            | FrontMatterUpdateOp::ClearSecondaryLanguages => {
-                touch("impl.secondary_languages".into())?;
             }
             FrontMatterUpdateOp::SetBranch { .. } | FrontMatterUpdateOp::ClearBranch => {
                 touch("scratch.branch".into())?;
@@ -890,20 +826,6 @@ fn apply_op_impl(
             front.location = None;
             changed |= changed_local;
         }
-        FrontMatterUpdateOp::SetLibrary { library } => {
-            // library is optional in the struct.
-            let changed_local = match &front.library {
-                Some(existing) => !library_eq(existing, library),
-                None => true,
-            };
-            front.library = Some(library.clone());
-            changed |= changed_local;
-        }
-        FrontMatterUpdateOp::ClearLibrary => {
-            let changed_local = front.library.is_some();
-            front.library = None;
-            changed |= changed_local;
-        }
         FrontMatterUpdateOp::AddReference {
             ref_,
             type_,
@@ -929,32 +851,6 @@ fn apply_op_impl(
                 .dependencies
                 .retain(|d| dependency_ref(d).map(|r| r != normalized).unwrap_or(true));
             changed |= before != front.dependencies.len();
-        }
-        FrontMatterUpdateOp::SetPrimaryLanguage { language } => {
-            let changed_local = match &front.primary_language {
-                Some(existing) => {
-                    serde_json::to_value(existing).ok() != serde_json::to_value(language).ok()
-                }
-                None => true,
-            };
-            front.primary_language = Some(language.clone());
-            changed |= changed_local;
-        }
-        FrontMatterUpdateOp::ClearPrimaryLanguage => {
-            let changed_local = front.primary_language.is_some();
-            front.primary_language = None;
-            changed |= changed_local;
-        }
-        FrontMatterUpdateOp::SetSecondaryLanguages { languages } => {
-            let changed_local = serde_json::to_value(&front.secondary_languages).ok()
-                != serde_json::to_value(languages).ok();
-            front.secondary_languages = languages.clone();
-            changed |= changed_local;
-        }
-        FrontMatterUpdateOp::ClearSecondaryLanguages => {
-            let changed_local = !front.secondary_languages.is_empty();
-            front.secondary_languages.clear();
-            changed |= changed_local;
         }
         _ => {
             if is_kind_specific_op(op) {
@@ -1035,14 +931,8 @@ fn is_kind_specific_op(op: &FrontMatterUpdateOp) -> bool {
             | FrontMatterUpdateOp::ClearSpec
             | FrontMatterUpdateOp::SetLocation { .. }
             | FrontMatterUpdateOp::ClearLocation
-            | FrontMatterUpdateOp::SetLibrary { .. }
-            | FrontMatterUpdateOp::ClearLibrary
             | FrontMatterUpdateOp::AddReference { .. }
             | FrontMatterUpdateOp::RemoveReference { .. }
-            | FrontMatterUpdateOp::SetPrimaryLanguage { .. }
-            | FrontMatterUpdateOp::ClearPrimaryLanguage
-            | FrontMatterUpdateOp::SetSecondaryLanguages { .. }
-            | FrontMatterUpdateOp::ClearSecondaryLanguages
             | FrontMatterUpdateOp::SetTarget { .. }
             | FrontMatterUpdateOp::ClearTarget
             | FrontMatterUpdateOp::SetBranch { .. }
@@ -1129,11 +1019,6 @@ fn upsert_reference(
         optional,
     });
     true
-}
-
-fn library_eq(a: &LibraryReference, b: &LibraryReference) -> bool {
-    // Avoid adding `PartialEq` to the public data model types.
-    serde_json::to_value(a).ok() == serde_json::to_value(b).ok()
 }
 
 fn serialize_front_matter_yaml(value: &Value) -> Result<String, SpecmanError> {

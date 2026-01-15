@@ -126,8 +126,6 @@ Beta specification.
 name: alpha-spec-rust
 version: "0.1.0"
 spec: ../../spec/alpha-spec/spec.md
-primary_language:
-    language: rust@1.0
 ---
 Implementation body.
 "#,

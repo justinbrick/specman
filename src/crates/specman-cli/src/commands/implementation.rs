@@ -26,7 +26,6 @@ pub struct ImplSummary {
     pub spec_locator: Option<String>,
     pub spec_identifier: Option<String>,
     pub version: Option<String>,
-    pub language: Option<String>,
     pub path: String,
 }
 
@@ -87,12 +86,6 @@ fn create_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         .ok_or_else(|| CliError::new("--spec is required", ExitStatus::Usage))?;
     let resolved_spec = resolve_spec_locator(session, spec_locator)?;
 
-    let language = matches
-        .get_one::<String>("language")
-        .cloned()
-        .ok_or_else(|| CliError::new("--language is required", ExitStatus::Usage))?;
-    ensure_language_segment(&name, &language)?;
-
     let location = matches
         .get_one::<String>("location")
         .cloned()
@@ -126,7 +119,6 @@ fn create_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         &session.workspace_paths,
         &name,
         &resolved_spec,
-        &language,
         &location,
     )?;
 
@@ -195,7 +187,6 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         spec_locator,
         spec_identifier,
         version: version_from_summary(&tree.root),
-        language: tree.root.metadata.get("language").cloned(),
         path: util::workspace_relative(session.workspace_paths.root(), &folder),
     };
 
@@ -226,13 +217,6 @@ fn new_command() -> Command {
                 .required(true)
                 .value_name("SPEC")
                 .help("Target specification name, workspace-relative path, or HTTPS URL"),
-        )
-        .arg(
-            Arg::new("language")
-                .long("language")
-                .required(true)
-                .value_name("IDENTIFIER@VERSION")
-                .help("Implementing language identifier (for example rust@1.91.0)"),
         )
         .arg(
             Arg::new("location")
@@ -317,10 +301,6 @@ fn read_impl_summary(root: &Path, path: &Path) -> Result<ImplSummary, CliError> 
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
     let fm: ImplementationFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    let language = fm
-        .primary_language
-        .as_ref()
-        .map(|lang| lang.language.clone());
     let spec_locator = fm.spec.clone();
     let spec_identifier = spec_locator
         .as_deref()
@@ -334,7 +314,6 @@ fn read_impl_summary(root: &Path, path: &Path) -> Result<ImplSummary, CliError> 
         spec_locator,
         spec_identifier,
         version: fm.identity.version.clone(),
-        language,
         path: util::workspace_relative(root, path),
     })
 }
@@ -349,29 +328,6 @@ fn infer_name_from_path(path: &Path) -> String {
 
 fn version_from_summary(summary: &ArtifactSummary) -> Option<String> {
     summary.version.as_ref().map(ToString::to_string)
-}
-
-fn ensure_language_segment(name: &str, language: &str) -> Result<(), CliError> {
-    let identifier = language
-        .split('@')
-        .next()
-        .map(str::trim)
-        .unwrap_or("language");
-    if identifier.is_empty() {
-        return Err(CliError::new(
-            "language identifier must not be empty",
-            ExitStatus::Usage,
-        ));
-    }
-    if !name.split('-').any(|segment| segment == identifier) {
-        return Err(CliError::new(
-            format!(
-                "implementation name '{name}' must include the language identifier '{identifier}'"
-            ),
-            ExitStatus::Usage,
-        ));
-    }
-    Ok(())
 }
 
 fn resolve_spec_locator(session: &CliSession, input: &str) -> Result<String, CliError> {

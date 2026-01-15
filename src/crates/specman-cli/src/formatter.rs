@@ -119,15 +119,14 @@ fn print_text(result: &CommandResult) {
             println!("Implementations ({}):", implementations.len());
             for imp in implementations {
                 let version = imp.version.as_deref().unwrap_or("unknown");
-                let language = imp.language.as_deref().unwrap_or("unknown");
                 let target_spec = imp
                     .spec_identifier
                     .as_deref()
                     .or(imp.spec_locator.as_deref())
                     .unwrap_or("unknown");
                 println!(
-                    "  - {} (target: {}, lang: {}, version: {version})",
-                    imp.name, target_spec, language
+                    "  - {} (target: {}, version: {version})",
+                    imp.name, target_spec
                 );
             }
         }

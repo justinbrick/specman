@@ -3,17 +3,6 @@ spec: ../../spec/specman-mcp/spec.md
 name: specman-mcp-rust
 version: "1.0.1"
 location: ../../src/crates/specman-mcp
-  name: specman-mcp-server@1.0.1
-primary_language:
-  language: rust@1.91.0
-  properties:
-    edition: "2024"
-  libraries:
-    - name: rmcp@latest
-    - name: specman-library@2.1.2
-    - name: schemars
-    - name: serde_json
-secondary_languages: []
 references:
   - ref: ../../spec/specman-core/spec.md
     type: specification
@@ -32,9 +21,13 @@ references:
 
 This adapter implements the [SpecMan MCP Server](../../spec/specman-mcp/spec.md) by projecting SpecMan Core capabilities into MCP tools over a STDIN transport. The runtime uses the `rmcp` crate for lifecycle negotiation and framing, delegates capability logic to the shared `specman-library`, and preserves data-model fidelity for every request and response. Version negotiation and tool schemas adhere to [Concept: MCP Transport Compliance](../../spec/specman-mcp/spec.md#concept-mcp-transport-compliance), while capability mapping aligns with [Concept: SpecMan Capability Parity](../../spec/specman-mcp/spec.md#concept-specman-capability-parity) and [Concept: Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance). The binary accepts an optional `--workspace <path>` argument to pin workspace discovery to a specific root; when omitted it defaults to the current working directory.
 
-## Implementing Languages
+## Implementation Stack
 
-- Primary — `rust@1.91.0` (edition 2024): selected for parity with existing SpecMan crates and to reuse the `specman-library`. `rmcp` supplies MCP server primitives, while `schemars` and `serde_json` surface JSON Schemas and serialization mandated by [SpecMan Data Model](../../spec/specman-data-model/spec.md#implementations). Secondary languages: none.
+The adapter is implemented in **Rust (2024 Edition)** (1.91.0) and reuses the `specman-library`.
+
+- **`rmcp@latest`**: MCP server primitives.
+- **`schemars`**: JSON Schema generation for tool parameters.
+- **`serde_json`**: Serialization mandated by SpecMan Data Model.
 
 ## References
 

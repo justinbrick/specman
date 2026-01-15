@@ -3,17 +3,6 @@ spec: ../../spec/specman-cli/spec.md
 name: specman-cli-rust
 version: "2.1.1"
 location: ../../src/crates/specman-cli
-primary_language:
-  language: rust@1.91.0
-  properties:
-    edition: "2024"
-    toolchain: stable
-  libraries:
-    - name: clap@4
-    - name: sysexits@0.6
-    - name: serde_json@1
-    - name: tracing@0.1
-secondary_languages: []
 references:
   - ref: ../../spec/specman-core/spec.md
     type: specification
@@ -32,14 +21,14 @@ references:
 
 The `specman-cli-rust` implementation delivers the command-line interface defined in [`spec/specman-cli/spec.md`](../../spec/specman-cli/spec.md). It packages the existing `specman` workspace services into an operator-friendly binary that honors the CLI Invocation Model, Workspace Context Resolution, Lifecycle Command Surface, Template Integration, and Observability concepts. The binary coordinates workspace discovery, dependency validation, template rendering, and scratch-pad orchestration so practitioners can create, list, or delete specifications, implementations, and scratch pads without writing code. Each command surfaces structured stdout/stderr, uses POSIX `sysexits`, and references the governing specification section in every actionable error, enabling automation and human users to triage results quickly. The CLI remains a thin wrapper over the shared `specman` library so there is a single source of truth for workspace, dependency, and template behavior.
 
-## Implementing Languages
+## Implementation Stack
 
-- **Primary — `rust@1.91.0` (edition 2024):** Rust provides memory safety, strong typing, and straightforward integration with the existing `specman` crate. Edition 2024 features (let-else, `impl Trait` return types, `clippy::future_not_send` fixes) keep the codebase modern while staying aligned with the repository MSRV. The binary uses `tokio::main`-free synchronous execution to keep startup deterministic and minimize dependencies.
-  - **`clap@4`** drives the CLI surface with declarative subcommand definitions, ensuring every command exposes `--help` and honors required flag validation per [Concept: CLI Invocation Model](../../spec/specman-cli/spec.md#concept-cli-invocation-model).
-  - **`sysexits@0.6`** maps domain errors to the mandated exit codes (for example `EX_OK`, `EX_DATAERR`, `EX_USAGE`, `EX_CANTCREAT`).
-  - **`serde_json@1`** serializes structured outputs when `--json` or `--verbose` flags are enabled, matching the Observability requirements.
-  - **`tracing@0.1`** emits contextual logs (workspace root, template locators, adapter identifiers) without coupling to a specific logging backend.
-- **Secondary languages:** none. Shell wrappers and scripts simply call the compiled binary.
+The CLI is implemented in **Rust (2024 Edition)** (1.91.0) and utilizes the `specman` library crate for all core logic.
+
+- **`clap@4`** drives the CLI surface with declarative subcommand definitions.
+- **`sysexits@0.6`** maps domain errors to the mandated exit codes.
+- **`serde_json@1`** serializes structured outputs.
+- **`tracing@0.1`** emits contextual logs.
 
 ## References
 
@@ -72,7 +61,7 @@ Every command stores its rendered artifacts inside the canonical workspace direc
 | `init` | _n/a_ | [`commands/init.rs`](../../src/crates/specman-cli/src/commands/init.rs) | Resolves an absolute workspace target (positional or `--workspace`), guards against ancestor workspaces, supports dry-run reporting, and delegates creation to `WorkspaceDiscovery::create`. |
 | `status` | _n/a_ | [`commands/status.rs`](../../src/crates/specman-cli/src/commands/status.rs) | Validates dependency graph and references (including network reachability) before exiting with `EX_OK`/`EX_DATAERR`. Supports `--local` to skip network checks. |
 | `spec` | `ls`, `new`, `delete`, `dependencies` | [`commands/spec.rs`](../../src/crates/specman-cli/src/commands/spec.rs) | Manages artifacts under `spec/`; honors `--name`, `--dependencies`, `--version`, and delete `--force`. |
-| `impl` | `ls`, `new`, `delete`, `dependencies` | [`commands/implementation.rs`](../../src/crates/specman-cli/src/commands/implementation.rs) | Mirrors the specification flows while requiring `--spec` and `--language` on creation. |
+| `impl` | `ls`, `new`, `delete`, `dependencies` | [`commands/implementation.rs`](../../src/crates/specman-cli/src/commands/implementation.rs) | Mirrors the specification flows while requiring `--spec` on creation. |
 | `scratch` | `ls`, `new`, `delete`, `dependencies` | [`commands/scratch.rs`](../../src/crates/specman-cli/src/commands/scratch.rs) | Operates on `.specman/scratchpad`, enforcing naming, `--target`, and work-type validation. |
 
 ```rust
@@ -143,7 +132,7 @@ let persisted = session
   .persist_rendered(&plan.artifact, &plan.rendered, None)?;
 ```
 
-Tokens sourced from CLI flags (for example, `--dependencies` or `--language`) feed directly into the `TokenMap`, so template errors cite the originating concept and template path.
+Tokens sourced from CLI flags (for example, `--dependencies`) feed directly into the `TokenMap`, so template errors cite the originating concept and template path.
 
 ### Concept: Observability & Error Surfacing ([spec/specman-cli/spec.md#concept-observability--error-surfacing](../../spec/specman-cli/spec.md#concept-observability--error-surfacing))
 
@@ -217,7 +206,7 @@ pub enum CreateRequest {
 }
 ```
 
-Tokens originate from CLI arguments (`--dependencies`, `--language`, scratch work-type metadata), so the resulting `CreationRequest` captures both the artifact identity and the template inputs mandated by the specification.
+Tokens originate from CLI arguments (`--dependencies`, scratch work-type metadata), so the resulting `CreationRequest` captures both the artifact identity and the template inputs mandated by the specification.
 
 ### Entity: DeletionPlan ([spec/specman-cli/spec.md#entity-deletionplan](../../spec/specman-cli/spec.md#entity-deletionplan))
 

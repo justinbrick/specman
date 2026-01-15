@@ -43,12 +43,6 @@ pub struct ImplementationFrontMatter {
     pub spec: Option<String>,
     pub location: Option<String>,
     #[serde(default)]
-    pub library: Option<LibraryReference>,
-    #[serde(default)]
-    pub primary_language: Option<ImplementingLanguage>,
-    #[serde(default)]
-    pub secondary_languages: Vec<ImplementingLanguage>,
-    #[serde(default)]
     pub references: Vec<ReferenceEntry>,
     #[serde(default)]
     pub dependencies: Vec<DependencyEntry>,
@@ -193,32 +187,6 @@ pub struct ReferenceEntry {
     pub reference_type: Option<String>,
     #[serde(default, rename = "optional")]
     pub optional: Option<bool>,
-}
-
-/// Represents either a plain string or object-form implementation library reference.
-#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
-#[serde(untagged)]
-pub enum LibraryReference {
-    Simple(String),
-    Detailed(LibraryObject),
-}
-
-/// Additional metadata associated with a named library dependency.
-#[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
-pub struct LibraryObject {
-    pub name: String,
-    #[serde(flatten)]
-    pub extras: BTreeMap<String, JsonValue>,
-}
-
-/// Implements the SpecMan Data Model definition for an implementing language entry.
-#[derive(Debug, Clone, Default, Deserialize, Serialize, JsonSchema)]
-pub struct ImplementingLanguage {
-    pub language: String,
-    #[serde(default)]
-    pub properties: BTreeMap<String, JsonValue>,
-    #[serde(default)]
-    pub libraries: Vec<LibraryReference>,
 }
 
 /// Discriminated enum capturing scratch pad work types (draft, revision, feat, ref, fix).

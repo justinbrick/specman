@@ -3,13 +3,6 @@ spec: {{target_path}}
 name: {{output_name}}
 version: "1.0.0"
 location: ../relative/path/to/source
-library:
-  name: package-name@1.0.0
-primary_language:
-  language: language-identifier@version
-  properties: {}
-  libraries: []
-secondary_languages: []
 references: []
 ---
 
@@ -26,13 +19,6 @@ Include inline links back to the specification headings this implementation cove
 ## Overview
 
 <!-- Describe the implementation goals, scope, and notable design choices. Link back to the specification concepts or entities when relevant, and capture any guarantees or constraints for those concepts directly here. -->
-
-## Implementing Languages
-
-<!--
-- Primary: `language-identifier@version` — describe why this language is used and any key properties.
-- Secondary: enumerate additional languages, or remove this list if none are used.
--->
 
 ## References
 

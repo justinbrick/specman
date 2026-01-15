@@ -24,7 +24,7 @@ Steps:
     - If it already exists: `git checkout <target_name>/feat/<scratch_pad_name>`.
 3. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following:
     - Feature requirements breakdown: goals, non-goals, acceptance criteria, edge cases, and constraints.
-    - Implementation breakdown (requested language): outline the major components/modules, data structures, APIs, and execution flow; include a staged implementation plan (milestones) that could be executed later.
+    - Implementation breakdown: outline the major components/modules, data structures, APIs, and execution flow; include a staged implementation plan (milestones) that could be executed later.
     - Documentation plan: identify which implementation document(s) must be updated, what new sections/headings should be added, and what content must be recorded there to document the feature.
     - Spec alignment: map each requirement/decision back to the governing specification headings; call out any mismatch or missing spec coverage.
     - Open questions: list any ambiguous design choices or missing information as questions to ask the user (do not guess).

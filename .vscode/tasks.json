@@ -17,6 +17,20 @@
 			"presentation": {
 				"reveal": "always"
 			}
+		},
+		{
+			"label": "cargo check (workspace)",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"check",
+				"--workspace"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build"
 		}
 	]
 }

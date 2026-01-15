@@ -415,8 +415,6 @@ dependencies: []
 spec: spec://testspec
 name: testimpl
 version: '0.1.0'
-primary_language:
-  language: rust@1.0
 ---
 
 # Impl Body

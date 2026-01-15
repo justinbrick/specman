@@ -14,8 +14,7 @@ Steps:
 
 1. Call the MCP tool `create_artifact` to create a new implementation artifact for the governing specification, following the tool-call schema exposed by the current environment (avoid hard-coding any specific field names).
 2. Open the created implementation artifact and fill it out:
-    - Confirm the requested implementation language (ask the user if not specified) and record it in the implementation metadata/intro.
-    - Break down how the implementation should work in that language: modules/components, key types, interfaces, error handling, data flow, and external integrations.
+    - Break down how the implementation should work: modules/components, key types, interfaces, error handling, data flow, and external integrations.
     - Provide a staged implementation plan (milestones) that could be executed later, including where tests/docs should be added.
     - Traceability: map the implementation sections back to the governing specification headings and constraints.
     - Open questions: if any design choice is uncertain, raise it as a concrete question to the user instead of guessing.
