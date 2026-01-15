@@ -399,21 +399,6 @@ Example:
     - {impl_name}/
       - impl.md
 
-### [Implementing Language](../../docs/founding-spec.md#implementing-language)
-
-!concept-implementations.implementing-language.model:
-
-- Each implementing language MUST be formatted as an object.
-- These objects MUST adhere to the listed fields below.
-
-- `language`: a string in the format of `language_identifier@language_version`
-- `properties`: a map of values to specify language-specific properties.
-  - this field MAY be omitted if defaults can be assumed or the language has no configurable properties
-- `libraries`: a list of strings to identify [used libraries](../../docs/founding-spec.md#libraries)
-  - this field MAY be omitted if no libraries outside of the language-specific standard library are being used.
-  - each library in this list MAY be formed as an object if additional metadata is required.
-    - if it is an object, the library reference MUST be stored under the field `name`.
-
 ### Implementation Locators
 
 !concept-implementations.locators.model:
@@ -421,7 +406,6 @@ Example:
 Implementation locators describe where implementation code lives and how it is published.
 
 - The `location` front-matter field MUST point to the root folder of the implementation’s code. It MAY be a workspace-relative path or a URL, and MUST remain inside the detected workspace when a workspace exists.
-- The `library` front-matter field SHOULD be present when the implementation is published as a library and MUST follow the library naming and versioning conventions defined in [Implementing Language](#implementing-language).
 - These locators are distinct from SpecMan locator schemes (`spec://`, `impl://`, `scratch://`); see [Locator Schemes](#locator-schemes) for scheme semantics.
 
 ### Locator Schemes
@@ -479,13 +463,6 @@ SpecMan locator schemes provide canonical handles for specifications, implementa
 - `name`: the [implementation name](../../docs/founding-spec.md#implementation-name)
   - if this field is omitted, processors MUST use the parent directory as the implementation name.
 - `location`: the location of the source code as defined in [implementation locators](#implementation-locators)
-  - this field MAY be omitted if the implementation does not have an available source.
-- `library`: the name of the library defined by this implementation, if one is available.
-  - this MUST take the shape of a string or object, as defined by the `libraries` field in [the implementing language model](#implementing-language)
-  - this field MAY be omitted if there is no library available.
-- `primary_language`: the primary [`language`](#implementing-language)
-- `secondary_languages`: a list of [`language`](#implementing-language)
-  - this field MAY be omitted if no secondary languages are present.
 
 Example:
 
@@ -495,15 +472,5 @@ spec: ../path/to/spec.md
 name: implementation-name
 version: "1.0.0"
 location: ../path/to/code
-library:
-  name: implementation-library@1.0.0
-  extra_data: 5
-primary_language:
-  language: lang
-  properties:
-    lang-property: a
-  libraries:
-    - name: library@1.0.0
-      extra_data: 5
 ---
 ```
