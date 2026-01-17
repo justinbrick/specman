@@ -1,6 +1,6 @@
 ---
 name: specman-core
-version: "0.1.0"
+version: "0.2.0"
 dependencies:
   - ref: ../specman-data-model/spec.md
     optional: false
@@ -256,6 +256,55 @@ Metadata mutation ensures YAML front matter for specifications, implementations,
 - For scratch pads, metadata mutation MUST support updating any YAML front matter fields except `target`.
   - Scratch pad `target` MUST be treated as immutable; attempts to change it MUST fail with a descriptive error.
 
+### Concept: Validation Anchors
+
+Validation anchors provide a mechanism to enforce and verify that an implementation adheres to the requirements defined in its backing specification.
+
+!concept-validation-anchors.definition:
+
+- A validation anchor MUST be a text marker embedded within the source code or related files of an implementation.
+- Validation anchors MUST reference a specific constraint group defined in the specification.
+- Implementations SHOULD use validation anchors to explicitly demonstrate compliance with specification constraints.
+
+### Concept: Validation Scanning
+
+Validation scanning defines how tooling discovers anchors within an implementation.
+
+!concept-validation-scanning.scope:
+
+- Tooling MUST resolve the implementation's source code root using the `location` field defined in the implementation metadata.
+- The scanner MUST recursively traverse the source directory to identify files for analysis.
+
+!concept-validation-scanning.filtering:
+
+- The scanner MUST respect standard `.gitignore` rules found in the implementation's source tree; ignored files MUST NOT be scanned.
+- The scanner MUST only analyze files containing text content (e.g., encoded in UTF-8 or ASCII).
+- The scanner MUST skip binary files.
+
+### Concept: Compliance Reporting
+
+Compliance reporting exposes the relationship between specification constraints and implementation anchors.
+
+!concept-compliance-reporting.interface:
+
+- Implementations MUST provide an interface or surface to generate compliance reports.
+- The reporting tool MUST resolve the target specification from the implementation's `spec` metadata.
+- The tool MUST extract all constraint groups from the resolved specification.
+- The tool MUST scan the implementation's source location for validation tags.
+
+!concept-compliance-reporting.coverage:
+
+- The report MUST calculate coverage by mapping found validation tags to specification constraint groups.
+- A constraint group MUST be considered "covered" if at least one validation tag referencing its identifier is found.
+- The report MUST identify the file paths and line numbers of all discovered validation tags.
+- The report SHOULD warn about "orphaned" tags that reference non-existent constraint groups.
+
+!concept-compliance-reporting.semantics:
+
+- The presence of a validation tag implies that the implementation logic satisfying the referenced constraint group is present at or near the tag's location.
+- If multiple tags reference the same constraint group, tooling MUST report all locations, acknowledging that verification may be distributed across multiple files (e.g., specification tests vs. unit tests).
+- Authors SHOULD place validation tags at the top of a file if that file is dedicated to testing the referenced constraint group.
+
 ## Key Entities
 
 ### Entity: DataModelAdapter
@@ -320,6 +369,27 @@ Defines the characteristics and template linkages for scratch pad variants.
 - MUST enumerate available scratch pad types alongside their required templates.
 - SHOULD expose optional configuration fields to tailor scratch pad content to team workflows.
 - MAY reuse `TemplateDescriptor` instances to avoid duplication across related profiles.
+
+### Entity: Validation Tag
+
+A validation tag is the concrete syntax used to define a validation anchor.
+
+!entity-validation-tag.syntax:
+
+- A validation tag MUST be enclosed in square brackets (`[]`).
+- A validation tag MUST start with the case-insensitive keyword `ENSURES`, followed by a colon (`:`).
+- The tag MUST contain a valid constraint group identifier (e.g., `concept-slug.category`).
+- The tag MAY contain an optional type specification, separated from the identifier by a colon (`:`).
+- Whitespace chars (spaces, tabs) defined by Unicode MAY be included around the keyword, colons, identifier, and type for readability; tooling MUST ignore this whitespace during parsing.
+
+!entity-validation-tag.types:
+
+- The validation tag type determines the nature of the verification.
+- Supported types MUST be:
+  - `TEST`: Represents an automated unit or integration test (Default).
+  - `CHECK`: Represents a logical check within the code (e.g., conditional logic, pattern matching).
+  - `MANUAL`: Represents a manual assertion or non-automated verification.
+- If the type is omitted, tooling MUST treat the tag as type `TEST`.
 
 ## Additional Notes
 
