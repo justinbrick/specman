@@ -1,6 +1,5 @@
 # TODO
 
-- rev(specman-mcp): compliance tracking function / resources(?)
 - feat(specman-mcp-rust): compliance tracking implementation
 - rev(specman-cli): compliance tracking command
 - feat(specman-cli-rust): compliance tracking implementation
