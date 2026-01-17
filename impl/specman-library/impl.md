@@ -19,6 +19,8 @@ The implementation relies on:
 - `schemars`: For ensuring JSON Schema compliance for MCP tool schemas.
 - `thiserror`: For structured error handling.
 - `markdown`: For parsing templates and emitting deterministic Markdown outputs.
+- `regex`: For parsing validation anchor syntax.
+- `ignore`: For efficient filesystem traversal that respects `.gitignore` rules.
 
 ## Concept: Reference Validation
 
@@ -43,6 +45,54 @@ pub fn validate_references(
   workspace: &WorkspacePaths,
   options: ReferenceValidationOptions,
 ) -> Result<ReferenceValidationReport, SpecmanError>;
+```
+
+## Concept: Validation Compliance
+
+The `validation` module implements the [Validation Scanning](../../spec/specman-core/spec.md#concept-validation-scanning) and [Compliance Reporting](../../spec/specman-core/spec.md#concept-compliance-reporting) concepts. It scans implementation sources for `[ENSURES: id]` anchors and correlates them against specification constraints to produce coverage reports.
+
+Key behaviors:
+
+- **Anchor Parsing**: Detects tags using the syntax `[ENSURES: <id>:<type>]` (or `[ENSURES: <id>]`) inside any text file, independent of the host language's comment syntax.
+- **Validation Scanning**: Traverses the implementation source tree using `ignore` to respect `.gitignore` and hidden file rules.
+- **Binary Skipping**: Automatically skips binary files (heuristic-based) to prevent noise and performance degradation.
+- **Compliance Reporting**: Generates a `ComplianceReport` detailing:
+  - **Coverage**: Which constraints are met by which anchors.
+  - **Missing**: Which constraints have zero anchors.
+  - **Orphans**: Anchors referencing unknown constraints.
+
+Public API:
+
+```rust
+pub struct ValidationTag {
+  pub identifier: String,
+  pub tag_type: ValidationType,
+  pub location: SourceLocation,
+}
+
+pub struct ComplianceReport {
+  pub specification: ArtifactId,
+  pub implementation: ArtifactId,
+  pub coverage: BTreeMap<String, Vec<ValidationTag>>,
+  pub missing: Vec<String>,
+  pub orphans: Vec<ValidationTag>,
+}
+
+pub fn scan_source_root(root: &Path) -> Result<Vec<ValidationTag>, SpecmanError>;
+
+pub fn generate_report(
+    spec_id: ArtifactId,
+    impl_id: ArtifactId,
+    spec_constraints: &[String],
+    tags: Vec<ValidationTag>,
+) -> ComplianceReport;
+
+pub fn validate_compliance(
+    root: &Path,
+    spec_id: ArtifactId,
+    impl_id: ArtifactId,
+    spec_constraints: &[String],
+) -> Result<ComplianceReport, SpecmanError>;
 ```
 
 ## Concept: Workspace Discovery

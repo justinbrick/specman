@@ -12,6 +12,7 @@ pub mod shared_function;
 pub mod structure;
 pub mod template;
 pub mod template_catalog;
+pub mod validation;
 pub mod workspace;
 
 pub use adapter::{DataModelAdapter, InMemoryAdapter};

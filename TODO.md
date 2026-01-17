@@ -1,7 +1,9 @@
 # TODO
 
-- feat(specman-library): add support for validation anchors, validation scanning, compliance reporting
 - rev(specman-mcp): compliance tracking function / resources(?)
+- feat(specman-mcp-rust): compliance tracking implementation
+- rev(specman-cli): compliance tracking command
+- feat(specman-cli-rust): compliance tracking implementation
 - rev(specman-core): add requirement to provide endpoint for checking workspace status
   - includes checking all of the specs + implementations:
   - ensures references are valid (references should include inline links, dependencies, references, and the location of the source code for implementations)
