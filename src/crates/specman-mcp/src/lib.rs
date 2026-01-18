@@ -4,6 +4,7 @@ mod error;
 mod prompts;
 mod resources;
 mod server;
+mod telemetry;
 mod tools;
 
 pub use crate::error::McpError;

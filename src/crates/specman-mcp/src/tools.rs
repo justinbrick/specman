@@ -27,6 +27,7 @@ use crate::resources::{
     artifact_handle, artifact_path, resolved_path_or_artifact_path, workspace_relative_path,
 };
 use crate::server::SpecmanMcpServer;
+use tracing::{debug, info, instrument};
 
 type SpecmanInstance = Specman<
     FilesystemDependencyMapper<std::sync::Arc<FilesystemWorkspaceLocator>>,
@@ -521,6 +522,7 @@ impl SpecmanMcpServer {
         peer: Peer<RoleServer>,
         Parameters(args): Parameters<CreateArtifactArgs>,
     ) -> Result<Json<CreateArtifactResult>, McpError> {
+        info!("create_artifact request received");
         self.create_artifact_internal(Some(&peer), args).await
     }
 
@@ -532,17 +534,21 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<UpdateArtifactArgs>,
     ) -> Result<Json<UpdateArtifactResult>, McpError> {
+        info!("update_artifact request received");
         self.update_artifact_internal(args).await
     }
 }
 
 impl SpecmanMcpServer {
+    #[instrument(level = "info", skip(self, args))]
     async fn update_artifact_internal(
         &self,
         args: UpdateArtifactArgs,
     ) -> Result<Json<UpdateArtifactResult>, McpError> {
         let (expected_kind, args) = args.into_parts();
         let expected_kind = expected_kind.as_artifact_kind();
+
+        debug!(?expected_kind, locator = %args.locator, ops = args.ops.len(), "update_artifact start");
 
         let locator = args.locator.trim();
         if locator.is_empty() {
@@ -577,6 +583,7 @@ impl SpecmanMcpServer {
                 ));
             }
 
+            info!(locator = %locator, "fetching https artifact for preview update");
             let raw = fetch_https_document(locator).await?;
 
             let id = ArtifactId {
@@ -595,13 +602,15 @@ impl SpecmanMcpServer {
                 apply_front_matter_update(&id, &fake_path, &workspace, &raw, &request)
                     .map_err(to_mcp_error)?;
 
-            return Ok(Json(UpdateArtifactResult {
+            let response = UpdateArtifactResult {
                 id,
                 handle: locator.to_string(),
                 path: None,
                 updated_document,
                 persisted: false,
-            }));
+            };
+            info!(locator = %locator, "update preview completed");
+            return Ok(Json(response));
         }
 
         let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
@@ -635,13 +644,15 @@ impl SpecmanMcpServer {
         }
 
         let handle = artifact_handle(&tree.root);
-        Ok(Json(UpdateArtifactResult {
+        let response = UpdateArtifactResult {
             id: result.artifact,
             handle,
             path: Some(relative),
             updated_document: result.updated_document,
             persisted: result.persisted.is_some(),
-        }))
+        };
+        info!(persisted = response.persisted, "update_artifact completed");
+        Ok(Json(response))
     }
 }
 
@@ -721,11 +732,13 @@ fn derive_name_from_https(url: &str) -> String {
 }
 
 impl SpecmanMcpServer {
+    #[instrument(level = "info", skip(self, peer, args))]
     pub(crate) async fn create_artifact_internal(
         &self,
         peer: Option<&Peer<RoleServer>>,
         args: CreateArtifactArgs,
     ) -> Result<Json<CreateArtifactResult>, McpError> {
+        debug!("create_artifact start");
         let specman = self.build_specman()?;
 
         let request = self
@@ -742,7 +755,9 @@ impl SpecmanMcpServer {
 
         self.invalidate_dependency_inventory();
 
-        Ok(Json(create_artifact_result(&persisted)))
+        let result = create_artifact_result(&persisted);
+        info!(handle = %result.handle, path = %result.path, "create_artifact completed");
+        Ok(Json(result))
     }
 
     async fn build_create_request_via_sampling_and_elicitation(
@@ -967,6 +982,7 @@ Enter an alternate name, or leave blank to accept."
         purpose: &str,
         prompt: &str,
     ) -> Result<T, McpError> {
+        debug!(%purpose, "sampling json via MCP peer");
         let peer = peer.ok_or_else(|| {
             invalid_params("sampling is required to infer missing inputs, but no peer is available")
         })?;

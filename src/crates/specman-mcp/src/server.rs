@@ -7,8 +7,11 @@ use rmcp::{service::ServiceExt, transport};
 
 use specman::{FilesystemDependencyMapper, FilesystemWorkspaceLocator, SpecmanError};
 
+use tracing::info;
+
 use crate::error::to_mcp_error;
 use crate::prompts::build_prompt_router;
+use crate::telemetry::init_tracing;
 use crate::tools::build_tool_router;
 
 #[derive(Clone)]
@@ -26,6 +29,8 @@ impl SpecmanMcpServer {
     }
 
     pub fn new_with_root(root: impl Into<PathBuf>) -> Result<Self, SpecmanError> {
+        let root = root.into();
+        info!(root = %root.display(), "initializing Specman MCP server");
         let workspace = Arc::new(FilesystemWorkspaceLocator::new(root));
         let dependency_mapper = Arc::new(FilesystemDependencyMapper::new(workspace.clone()));
 
@@ -42,10 +47,12 @@ impl SpecmanMcpServer {
         let tools = self.tool_router.clone();
         let prompts = self.prompt_router.clone();
         let router = Router::new(self).with_tools(tools).with_prompts(prompts);
+        info!("starting MCP stdio transport");
         let service = router.serve(transport::io::stdio()).await?;
 
         // Hold the service open until the peer closes the transport.
         let _ = service.waiting().await;
+        info!("stdio transport closed");
         Ok(())
     }
 }
@@ -55,6 +62,7 @@ impl SpecmanMcpServer {
 pub async fn run_stdio_server_with_root(
     workspace_root: Option<PathBuf>,
 ) -> Result<(), ServerInitializeError> {
+    init_tracing();
     let server = match workspace_root {
         Some(root) => SpecmanMcpServer::new_with_root(root),
         None => SpecmanMcpServer::new(),

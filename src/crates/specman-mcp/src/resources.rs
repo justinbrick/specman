@@ -19,6 +19,8 @@ use specman::{
     FilesystemStructureIndexer, SemVer, SpecmanError, WorkspaceLocator, WorkspacePaths,
 };
 
+use tracing::{debug, info, instrument};
+
 use crate::error::{McpError, invalid_params, to_mcp_error};
 use crate::server::SpecmanMcpServer;
 
@@ -297,6 +299,11 @@ impl std::str::FromStr for ParsedResourceRequest {
     type Err = McpError;
 
     fn from_str(uri: &str) -> Result<Self, Self::Err> {
+        if uri.contains("/constraints//") {
+            return Err(invalid_params(
+                "malformed constraints locator (double slash)",
+            ));
+        }
         let normalized = normalize_resource_uri(uri);
         let uri = normalized.as_str();
         // Dependencies
@@ -310,12 +317,6 @@ impl std::str::FromStr for ParsedResourceRequest {
         }
 
         // Constraints Logic
-        if uri.contains("/constraints//") {
-            return Err(invalid_params(
-                "malformed constraints locator (double slash)",
-            ));
-        }
-
         if let Some(base) = uri.strip_suffix("/constraints") {
             return Ok(ParsedResourceRequest::ConstraintsIndex(base.to_string()));
         }
@@ -377,6 +378,7 @@ impl ParsedResourceRequest {
 }
 
 impl SpecmanMcpServer {
+    #[instrument(level = "info", skip(self, uri, base_locator, artifact_id))]
     async fn read_constraints_index(
         &self,
         uri: &str,
@@ -532,6 +534,7 @@ impl SpecmanMcpServer {
         uri: &str,
         artifact_id: &ArtifactId,
     ) -> Result<ResourceContents, McpError> {
+        info!(uri = %uri, artifact = %artifact_id.name, "building compliance report");
         let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
         let root = workspace.root().to_path_buf();
         let impl_id = artifact_id.clone();
@@ -612,17 +615,30 @@ impl SpecmanMcpServer {
             )
             .await?;
 
-        Ok(ArtifactInventory {
+        let inventory = ArtifactInventory {
             specifications: specs,
             implementations: impls,
             scratchpads: scratches,
-        })
+        };
+        debug!(
+            specs = inventory.specifications.len(),
+            impls = inventory.implementations.len(),
+            scratches = inventory.scratchpads.len(),
+            "inventory collected"
+        );
+        Ok(inventory)
     }
 
+    #[instrument(level = "info", skip(self))]
     pub(crate) async fn read_resource_contents(
         &self,
         uri: &str,
     ) -> Result<ResourceContents, McpError> {
+        if uri.contains("/constraints//") {
+            return Err(invalid_params(
+                "malformed constraints locator (double slash)",
+            ));
+        }
         let request: ParsedResourceRequest = uri.parse()?;
 
         // Validate constraint requests are only for specifications
@@ -644,6 +660,7 @@ impl SpecmanMcpServer {
                     .map_err(to_mcp_error)?;
                 let json = serde_json::to_string(&tree)
                     .map_err(|err| to_mcp_error(SpecmanError::Serialization(err.to_string())))?;
+                debug!(handle = %handle, "served dependency tree");
                 Ok(ResourceContents::TextResourceContents {
                     uri: uri.to_string(),
                     mime_type: Some("application/json".to_string()),
@@ -669,6 +686,7 @@ impl SpecmanMcpServer {
                 let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
                 let path = artifact_path(&artifact_id, &workspace);
                 let body = read_artifact_file(&path)?;
+                debug!(artifact = %artifact_id.name, "served artifact content");
                 Ok(ResourceContents::TextResourceContents {
                     uri: uri.to_string(),
                     mime_type: Some("text/markdown".to_string()),
@@ -845,6 +863,7 @@ impl ServerHandler for SpecmanMcpServer {
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
+        debug!("list_resources requested");
         let inventory = self.inventory().await?;
         Ok(ListResourcesResult::with_all_items(
             resources_from_inventory(&inventory),
@@ -867,6 +886,7 @@ impl ServerHandler for SpecmanMcpServer {
         request: ReadResourceRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
+        info!(uri = %request.uri, "read_resource requested");
         let contents = self.read_resource_contents(&request.uri).await?;
         Ok(ReadResourceResult {
             contents: vec![contents],

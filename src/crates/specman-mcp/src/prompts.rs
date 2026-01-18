@@ -12,6 +12,7 @@ use specman::{DependencyTree, SpecmanError, WorkspaceLocator, WorkspacePaths};
 use crate::error::{McpError, to_mcp_error};
 use crate::resources::{artifact_handle, resolved_path_or_artifact_path};
 use crate::server::SpecmanMcpServer;
+use tracing::{debug, info, instrument};
 
 pub(crate) fn build_prompt_router() -> PromptRouter<SpecmanMcpServer> {
     SpecmanMcpServer::prompt_router()
@@ -176,6 +177,7 @@ impl SpecmanMcpServer {
 }
 
 impl SpecmanMcpServer {
+    #[instrument(level = "info", skip(self))]
     fn resolve_target(&self, locator: &str) -> Result<ResolvedTarget, McpError> {
         let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
         let tree = self
@@ -202,6 +204,7 @@ impl SpecmanMcpServer {
         default_scheme: &str,
     ) -> Result<Vec<PromptMessage>, McpError> {
         let locator = coerce_reference(target_reference, default_scheme);
+        info!(locator = %locator, "rendering scratch prompt");
         let resolved = self.resolve_target(&locator)?;
 
         let context = bullet_list(&dependency_lines(&resolved));
@@ -223,6 +226,7 @@ impl SpecmanMcpServer {
     /// Render the specification-creation prompt. Since a new specification has no canonical locator yet,
     /// callers may optionally provide an existing locator (`seed_target`) to prefill dependency context.
     fn render_spec_prompt(&self, template: &str) -> Result<Vec<PromptMessage>, McpError> {
+        debug!("rendering spec prompt");
         let rendered = apply_tokens(template, &[])?;
         Ok(vec![PromptMessage::new_text(
             PromptMessageRole::User,
@@ -236,6 +240,7 @@ impl SpecmanMcpServer {
         template: &str,
         spec_locator: &str,
     ) -> Result<Vec<PromptMessage>, McpError> {
+        info!(spec_locator = %spec_locator, "rendering impl prompt");
         let resolved = self.resolve_target(spec_locator)?;
 
         let context = bullet_list(&dependency_lines(&resolved));
@@ -263,6 +268,7 @@ impl SpecmanMcpServer {
     ) -> Result<Vec<PromptMessage>, McpError> {
         // Migration target may not exist yet; normalize without resolving.
         let locator = coerce_reference(target_reference, "spec");
+        info!(locator = %locator, "rendering migration prompt");
 
         let replacements = vec![("{{target_path}}", locator)];
 
@@ -281,6 +287,7 @@ impl SpecmanMcpServer {
     ) -> Result<Vec<PromptMessage>, McpError> {
         // Coerce to impl:// scheme
         let locator = coerce_reference(target_reference, "impl");
+        info!(locator = %locator, "rendering compliance prompt");
 
         let replacements = vec![("{{target_path}}", locator)];
 
