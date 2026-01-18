@@ -277,10 +277,28 @@ enum ParsedResourceRequest {
     ConstraintContent(String, String),
 }
 
+fn normalize_resource_uri(uri: &str) -> String {
+    let trimmed = uri.trim();
+    if let Some((scheme, rest)) = trimmed.split_once("://") {
+        if rest.is_empty() {
+            return trimmed.to_string();
+        }
+        let rest = rest.trim_end_matches('/');
+        if rest.is_empty() {
+            return format!("{scheme}://");
+        }
+        return format!("{scheme}://{rest}");
+    }
+
+    trimmed.trim_end_matches('/').to_string()
+}
+
 impl std::str::FromStr for ParsedResourceRequest {
     type Err = McpError;
 
     fn from_str(uri: &str) -> Result<Self, Self::Err> {
+        let normalized = normalize_resource_uri(uri);
+        let uri = normalized.as_str();
         // Dependencies
         if let Some(base) = uri.strip_suffix("/dependencies") {
             return Ok(ParsedResourceRequest::Dependencies(base.to_string()));

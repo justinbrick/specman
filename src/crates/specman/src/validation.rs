@@ -13,10 +13,9 @@ use crate::dependency_tree::{
     ArtifactId, ArtifactKind, DependencyMapping, FilesystemDependencyMapper,
 };
 use crate::error::SpecmanError;
+use crate::front_matter::{ImplementationFrontMatter, split_front_matter};
 use crate::structure::FilesystemStructureIndexer;
-use crate::workspace::{
-    FilesystemWorkspaceLocator, WorkspaceLocator, workspace_relative_path,
-};
+use crate::workspace::{FilesystemWorkspaceLocator, WorkspaceLocator, workspace_relative_path};
 
 const BINARY_CHECK_BYTES: usize = 8192;
 
@@ -164,50 +163,86 @@ pub fn validate_compliance(
         ));
     }
 
-    let locator = Arc::new(FilesystemWorkspaceLocator::new(workspace_root.to_path_buf()));
+    let locator = Arc::new(FilesystemWorkspaceLocator::new(
+        workspace_root.to_path_buf(),
+    ));
     let workspace = locator.workspace()?;
 
     let mapper = FilesystemDependencyMapper::new(locator.clone());
     let tree = mapper.dependency_tree(impl_id)?;
 
-    // 1. Find the upstream specification(s)
-    let upstream_specs: Vec<_> = tree
-        .upstream
-        .iter()
-        .filter(|edge| edge.to.id.kind == ArtifactKind::Specification)
-        .collect();
-
-    if upstream_specs.is_empty() {
-        return Err(SpecmanError::Dependency(format!(
-            "Implementation {} has no upstream specification dependency",
-            impl_id.name
-        )));
-    }
-
-    if upstream_specs.len() > 1 {
-        return Err(SpecmanError::Dependency(format!(
-            "Implementation {} has multiple upstream specification dependencies; compliance reporting requires exactly one",
-            impl_id.name
-        )));
-    }
-
-    let spec = &upstream_specs[0].to;
-    let spec_id = spec.id.clone();
-
-    // Resolve path to the spec file to look it up in the structure index.
-    let spec_fs_path = if let Some(p) = &spec.resolved_path {
+    let impl_path = if let Some(p) = &tree.root.resolved_path {
         PathBuf::from(p)
     } else {
-        workspace.spec_dir().join(&spec.id.name).join("spec.md")
+        workspace.impl_dir().join(&impl_id.name).join("impl.md")
     };
 
+    let impl_root = impl_path.parent().ok_or_else(|| {
+        SpecmanError::Workspace(format!(
+            "invalid implementation path: {}",
+            impl_path.display()
+        ))
+    })?;
+
+    let impl_body = fs::read_to_string(&impl_path)?;
+    let split = split_front_matter(&impl_body)?;
+    let front: ImplementationFrontMatter = serde_yaml::from_str(split.yaml)
+        .map_err(|err| SpecmanError::Serialization(err.to_string()))?;
+
+    let spec_ref = front.spec.ok_or_else(|| {
+        SpecmanError::Dependency(format!(
+            "Implementation {} has no spec metadata for compliance reporting",
+            impl_id.name
+        ))
+    })?;
+
+    let spec_path = if let Some(rest) = spec_ref.strip_prefix("spec://") {
+        if rest.trim().is_empty() {
+            return Err(SpecmanError::Dependency(
+                "spec locator must not be empty".into(),
+            ));
+        }
+        workspace.spec_dir().join(rest).join("spec.md")
+    } else if spec_ref.starts_with("https://") {
+        return Err(SpecmanError::Dependency(
+            "compliance reporting does not support remote specifications".into(),
+        ));
+    } else if spec_ref.contains("://") {
+        return Err(SpecmanError::Dependency(format!(
+            "unsupported spec locator scheme: {spec_ref}"
+        )));
+    } else {
+        let candidate = Path::new(&spec_ref);
+        if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            let from_impl = impl_root.join(candidate);
+            if from_impl.is_file() {
+                from_impl
+            } else {
+                workspace.root().join(candidate)
+            }
+        }
+    };
+
+    if !spec_path.is_file() {
+        return Err(SpecmanError::Dependency(format!(
+            "spec locator does not resolve to a file: {}",
+            spec_ref
+        )));
+    }
+
+    let canonical_spec = fs::canonicalize(&spec_path).unwrap_or(spec_path.clone());
     let workspace_path =
-        workspace_relative_path(workspace.root(), &spec_fs_path).ok_or_else(|| {
+        workspace_relative_path(workspace.root(), &canonical_spec).ok_or_else(|| {
             SpecmanError::Workspace(format!(
                 "failed to resolve workspace-relative path for '{}'",
-                spec_fs_path.display()
+                canonical_spec.display()
             ))
         })?;
+
+    let spec_tree = mapper.dependency_tree_from_path(&canonical_spec)?;
+    let spec_id = spec_tree.root.id.clone();
 
     // 2. Load spec constraints from the structure index
     let indexer = FilesystemStructureIndexer::new(locator);
@@ -224,16 +259,6 @@ pub fn validate_compliance(
     spec_constraints.sort();
 
     // 3. Scan implementation
-    let impl_path = if let Some(p) = &tree.root.resolved_path {
-        PathBuf::from(p)
-    } else {
-        workspace.impl_dir().join(&impl_id.name).join("impl.md")
-    };
-
-    let impl_root = impl_path.parent().ok_or_else(|| {
-        SpecmanError::Workspace(format!("invalid implementation path: {}", impl_path.display()))
-    })?;
-
     let tags = scan_source_root(impl_root)?;
     Ok(generate_report(
         spec_id,
