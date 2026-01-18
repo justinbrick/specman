@@ -15,7 +15,9 @@ use crate::dependency_tree::{
 use crate::error::SpecmanError;
 use crate::front_matter::{ImplementationFrontMatter, split_front_matter};
 use crate::structure::build_workspace_index_for_artifacts;
-use crate::workspace::{FilesystemWorkspaceLocator, WorkspaceLocator, normalize_workspace_path, workspace_relative_path};
+use crate::workspace::{
+    FilesystemWorkspaceLocator, WorkspaceLocator, normalize_workspace_path, workspace_relative_path,
+};
 
 const BINARY_CHECK_BYTES: usize = 8192;
 
@@ -250,16 +252,18 @@ pub fn validate_compliance(
 
     for summary in spec_summaries {
         let mut path = if let Some(resolved) = &summary.resolved_path {
+            let resolved = resolved.trim();
+            if resolved.contains("://") {
+                // TODO: Support remote specification dependencies in compliance reports.
+                continue;
+            }
             let mut path = PathBuf::from(resolved);
             if path.is_relative() {
                 path = workspace.root().join(path);
             }
             path
         } else {
-            workspace
-                .spec_dir()
-                .join(&summary.id.name)
-                .join("spec.md")
+            workspace.spec_dir().join(&summary.id.name).join("spec.md")
         };
 
         if !path.is_file() {
