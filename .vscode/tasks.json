@@ -30,6 +30,9 @@
 			"problemMatcher": [
 				"$rustc"
 			],
+			"options": {
+				"cwd": "${workspaceFolder}/src"
+			},
 			"group": "build"
 		}
 	]

@@ -70,6 +70,16 @@ fn validate_constraint_id(constraint_id: &str) -> Result<(), McpError> {
     Ok(())
 }
 
+fn read_artifact_file(path: &Path) -> Result<String, McpError> {
+    fs::read_to_string(path).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            invalid_params(format!("Artifact not found: {}", path.display()))
+        } else {
+            to_mcp_error(err.into())
+        }
+    })
+}
+
 #[derive(Clone, Debug)]
 struct FenceState {
     ch: char,
@@ -258,18 +268,108 @@ fn artifact_record(summary: &ArtifactSummary, workspace: &WorkspacePaths) -> Art
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum ParsedResourceRequest {
+    ArtifactContent(String),
+    Dependencies(String),
+    ComplianceReport(String),
+    ConstraintsIndex(String),
+    ConstraintContent(String, String),
+}
+
+impl std::str::FromStr for ParsedResourceRequest {
+    type Err = McpError;
+
+    fn from_str(uri: &str) -> Result<Self, Self::Err> {
+        // Dependencies
+        if let Some(base) = uri.strip_suffix("/dependencies") {
+            return Ok(ParsedResourceRequest::Dependencies(base.to_string()));
+        }
+
+        // Compliance
+        if let Some(base) = uri.strip_suffix("/compliance") {
+            return Ok(ParsedResourceRequest::ComplianceReport(base.to_string()));
+        }
+
+        // Constraints Logic
+        if uri.contains("/constraints//") {
+            return Err(invalid_params(
+                "malformed constraints locator (double slash)",
+            ));
+        }
+
+        if let Some(base) = uri.strip_suffix("/constraints") {
+            return Ok(ParsedResourceRequest::ConstraintsIndex(base.to_string()));
+        }
+        if let Some(base) = uri.strip_suffix("/constraints/") {
+            return Ok(ParsedResourceRequest::ConstraintsIndex(base.to_string()));
+        }
+        if let Some((base, params)) = uri.split_once("/constraints/") {
+            if params.is_empty() {
+                return Ok(ParsedResourceRequest::ConstraintsIndex(base.to_string()));
+            }
+            return Ok(ParsedResourceRequest::ConstraintContent(
+                base.to_string(),
+                params.to_string(),
+            ));
+        }
+
+        // Default to Artifact Content
+        Ok(ParsedResourceRequest::ArtifactContent(uri.to_string()))
+    }
+}
+
+impl ParsedResourceRequest {
+    fn artifact_handle(&self) -> &str {
+        match self {
+            ParsedResourceRequest::ArtifactContent(h) => h,
+            ParsedResourceRequest::Dependencies(h) => h,
+            ParsedResourceRequest::ComplianceReport(h) => h,
+            ParsedResourceRequest::ConstraintsIndex(h) => h,
+            ParsedResourceRequest::ConstraintContent(h, _) => h,
+        }
+    }
+
+    fn resolve_artifact_id(&self) -> Result<ArtifactId, McpError> {
+        let handle = self.artifact_handle();
+
+        let (kind, slug) = if let Some(rest) = handle.strip_prefix("spec://") {
+            (ArtifactKind::Specification, rest)
+        } else if let Some(rest) = handle.strip_prefix("impl://") {
+            (ArtifactKind::Implementation, rest)
+        } else if let Some(rest) = handle.strip_prefix("scratch://") {
+            (ArtifactKind::ScratchPad, rest)
+        } else {
+            return Err(invalid_params(format!(
+                "Artifact handle '{handle}' must use spec://, impl://, or scratch:// scheme"
+            )));
+        };
+
+        if slug.contains('/') || slug.contains('\\') || slug.trim().is_empty() {
+            return Err(invalid_params(format!(
+                "Invalid artifact name in handle: '{handle}'"
+            )));
+        }
+
+        Ok(ArtifactId {
+            kind,
+            name: slug.to_string(),
+        })
+    }
+}
+
 impl SpecmanMcpServer {
     async fn read_constraints_index(
         &self,
         uri: &str,
         base_locator: &str,
         artifact_id: &ArtifactId,
-        workspace: &WorkspacePaths,
     ) -> Result<ResourceContents, McpError> {
         ensure_specification_artifact(artifact_id.kind)?;
+        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
 
-        let path = artifact_path(artifact_id, workspace);
-        let body = fs::read_to_string(&path).map_err(|err| to_mcp_error(err.into()))?;
+        let path = artifact_path(artifact_id, &workspace);
+        let body = read_artifact_file(&path)?;
         let body = specman::front_matter::split_front_matter(&body).map_err(to_mcp_error)?;
         let lines: Vec<&str> = body.body.lines().collect();
 
@@ -303,7 +403,7 @@ impl SpecmanMcpServer {
 
         let indexer = FilesystemStructureIndexer::new(self.workspace.clone());
         let index = indexer
-            .build_once_with_workspace(workspace)
+            .build_once_with_workspace(&workspace)
             .map_err(to_mcp_error)?;
 
         let mut entries: Vec<(usize, String, ConstraintIndexEntry)> = index
@@ -360,13 +460,13 @@ impl SpecmanMcpServer {
         base_locator: &str,
         artifact_id: &ArtifactId,
         constraint_id: &str,
-        workspace: &WorkspacePaths,
     ) -> Result<ResourceContents, McpError> {
         ensure_specification_artifact(artifact_id.kind)?;
         validate_constraint_id(constraint_id)?;
+        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
 
         // Validate the constraint exists via the structure index for exact matching.
-        let path = artifact_path(artifact_id, workspace);
+        let path = artifact_path(artifact_id, &workspace);
         let workspace_path = workspace_relative_path(workspace.root(), &path).ok_or_else(|| {
             to_mcp_error(SpecmanError::Workspace(format!(
                 "failed to resolve workspace-relative path for '{}'",
@@ -376,7 +476,7 @@ impl SpecmanMcpServer {
 
         let indexer = FilesystemStructureIndexer::new(self.workspace.clone());
         let index = indexer
-            .build_once_with_workspace(workspace)
+            .build_once_with_workspace(&workspace)
             .map_err(to_mcp_error)?;
 
         let key = ConstraintIdentifier {
@@ -392,7 +492,7 @@ impl SpecmanMcpServer {
                 "Constraint '{constraint_id}' not found in specification {base_locator}"
             )));
         }
-        let body = fs::read_to_string(&path).map_err(|err| to_mcp_error(err.into()))?;
+        let body = read_artifact_file(&path)?;
         let body = specman::front_matter::split_front_matter(&body).map_err(to_mcp_error)?;
 
         let text = extract_constraint_block(body.body, constraint_id).ok_or_else(|| {
@@ -413,8 +513,8 @@ impl SpecmanMcpServer {
         &self,
         uri: &str,
         artifact_id: &ArtifactId,
-        workspace: &WorkspacePaths,
     ) -> Result<ResourceContents, McpError> {
+        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
         let root = workspace.root().to_path_buf();
         let impl_id = artifact_id.clone();
 
@@ -505,101 +605,60 @@ impl SpecmanMcpServer {
         &self,
         uri: &str,
     ) -> Result<ResourceContents, McpError> {
-        // Dependency resources use the same locator minus the /dependencies suffix for tree construction.
-        let (is_dependencies, locator) = uri
-            .strip_suffix("/dependencies")
-            .map(|base| (true, base))
-            .unwrap_or((false, uri));
+        let request: ParsedResourceRequest = uri.parse()?;
 
-        let (is_compliance, locator) = locator
-            .strip_suffix("/compliance")
-            .map(|base| (true, base))
-            .unwrap_or((false, locator));
-
-        if locator.contains("/constraints//") {
-            return Err(invalid_params(
-                "malformed constraints locator (double slash)",
-            ));
-        }
-
-        // Normalize `.../constraints/` to `.../constraints`.
-        let locator = if locator.ends_with("/constraints/") {
-            locator.trim_end_matches('/')
-        } else {
-            locator
-        };
-
-        // Parse constraints routing:
-        // - `{base}/constraints` => index
-        // - `{base}/constraints/{constraint_id}` => content
-        let (constraints_mode, base_locator, constraint_id) =
-            if let Some(base) = locator.strip_suffix("/constraints") {
-                (Some("index"), base, None)
-            } else if let Some((base, rest)) = locator.split_once("/constraints/") {
-                if rest.is_empty() {
-                    (Some("index"), base, None)
-                } else {
-                    (Some("content"), base, Some(rest))
-                }
-            } else {
-                (None, locator, None)
-            };
-
-        // Spec-only: reject non-spec schemes early.
-        if constraints_mode.is_some() && !base_locator.starts_with("spec://") {
-            return Err(invalid_params(
-                "'/constraints' resources are only available for spec:// artifacts",
-            ));
-        }
-
-        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
-        let tree = self
-            .dependency_mapper
-            .dependency_tree_from_locator(base_locator)
-            .map_err(to_mcp_error)?;
-
-        if is_dependencies {
-            let json_tree = serde_json::to_string(&tree)
-                .map_err(|err| to_mcp_error(SpecmanError::Serialization(err.to_string())))?;
-            return Ok(ResourceContents::TextResourceContents {
-                uri: uri.to_string(),
-                mime_type: Some("application/json".to_string()),
-                text: json_tree,
-                meta: None,
-            });
-        }
-
-        if is_compliance {
-            return self
-                .read_compliance_report(uri, &tree.root.id, &workspace)
-                .await;
-        }
-
-        if let Some(mode) = constraints_mode {
-            match mode {
-                "index" => {
-                    return self
-                        .read_constraints_index(uri, base_locator, &tree.root.id, &workspace)
-                        .await;
-                }
-                "content" => {
-                    let id = constraint_id.unwrap_or("");
-                    return self
-                        .read_constraint_content(uri, base_locator, &tree.root.id, id, &workspace)
-                        .await;
-                }
-                _ => {}
+        // Validate constraint requests are only for specifications
+        if let ParsedResourceRequest::ConstraintsIndex(base)
+        | ParsedResourceRequest::ConstraintContent(base, _) = &request
+        {
+            if !base.starts_with("spec://") {
+                return Err(invalid_params(
+                    "'/constraints' resources are only available for spec:// artifacts",
+                ));
             }
         }
 
-        let path = artifact_path(&tree.root.id, &workspace);
-        let body = fs::read_to_string(&path).map_err(|err| to_mcp_error(err.into()))?;
-        Ok(ResourceContents::TextResourceContents {
-            uri: uri.to_string(),
-            mime_type: Some("text/markdown".to_string()),
-            text: body,
-            meta: None,
-        })
+        match &request {
+            ParsedResourceRequest::Dependencies(handle) => {
+                let tree = self
+                    .dependency_mapper
+                    .dependency_tree_from_locator(handle)
+                    .map_err(to_mcp_error)?;
+                let json = serde_json::to_string(&tree)
+                    .map_err(|err| to_mcp_error(SpecmanError::Serialization(err.to_string())))?;
+                Ok(ResourceContents::TextResourceContents {
+                    uri: uri.to_string(),
+                    mime_type: Some("application/json".to_string()),
+                    text: json,
+                    meta: None,
+                })
+            }
+            ParsedResourceRequest::ComplianceReport(_) => {
+                let artifact_id = request.resolve_artifact_id()?;
+                self.read_compliance_report(uri, &artifact_id).await
+            }
+            ParsedResourceRequest::ConstraintsIndex(base) => {
+                let artifact_id = request.resolve_artifact_id()?;
+                self.read_constraints_index(uri, base, &artifact_id).await
+            }
+            ParsedResourceRequest::ConstraintContent(base, id) => {
+                let artifact_id = request.resolve_artifact_id()?;
+                self.read_constraint_content(uri, base, &artifact_id, id)
+                    .await
+            }
+            ParsedResourceRequest::ArtifactContent(_) => {
+                let artifact_id = request.resolve_artifact_id()?;
+                let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
+                let path = artifact_path(&artifact_id, &workspace);
+                let body = read_artifact_file(&path)?;
+                Ok(ResourceContents::TextResourceContents {
+                    uri: uri.to_string(),
+                    mime_type: Some("text/markdown".to_string()),
+                    text: body,
+                    meta: None,
+                })
+            }
+        }
     }
 }
 
