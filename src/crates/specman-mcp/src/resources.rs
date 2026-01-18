@@ -409,6 +409,38 @@ impl SpecmanMcpServer {
         })
     }
 
+    async fn read_compliance_report(
+        &self,
+        uri: &str,
+        artifact_id: &ArtifactId,
+        workspace: &WorkspacePaths,
+    ) -> Result<ResourceContents, McpError> {
+        let root = workspace.root().to_path_buf();
+        let impl_id = artifact_id.clone();
+
+        let report = tokio::task::spawn_blocking(move || {
+            specman::validation::validate_compliance(&root, &impl_id)
+        })
+        .await
+        .map_err(|e| {
+            to_mcp_error(SpecmanError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e,
+            )))
+        })?
+        .map_err(to_mcp_error)?;
+
+        let json = serde_json::to_string(&report)
+            .map_err(|err| to_mcp_error(SpecmanError::Serialization(err.to_string())))?;
+
+        Ok(ResourceContents::TextResourceContents {
+            uri: uri.to_string(),
+            mime_type: Some("application/json".to_string()),
+            text: json,
+            meta: None,
+        })
+    }
+
     async fn collect_artifacts(
         &self,
         kind: ArtifactKind,
@@ -479,6 +511,11 @@ impl SpecmanMcpServer {
             .map(|base| (true, base))
             .unwrap_or((false, uri));
 
+        let (is_compliance, locator) = locator
+            .strip_suffix("/compliance")
+            .map(|base| (true, base))
+            .unwrap_or((false, locator));
+
         if locator.contains("/constraints//") {
             return Err(invalid_params(
                 "malformed constraints locator (double slash)",
@@ -530,6 +567,12 @@ impl SpecmanMcpServer {
                 text: json_tree,
                 meta: None,
             });
+        }
+
+        if is_compliance {
+            return self
+                .read_compliance_report(uri, &tree.root.id, &workspace)
+                .await;
         }
 
         if let Some(mode) = constraints_mode {
@@ -698,6 +741,18 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                 description: Some(
                     "Return dependency tree JSON for a scratch pad (if dependencies are tracked)"
                         .to_string(),
+                ),
+                mime_type: Some("application/json".to_string()),
+            },
+            annotations: None,
+        },
+        ResourceTemplate {
+            raw: RawResourceTemplate {
+                uri_template: "impl://{artifact}/compliance".to_string(),
+                name: "impl-compliance".to_string(),
+                title: Some("Implementation compliance report".to_string()),
+                description: Some(
+                    "Return compliance coverage JSON for an implementation".to_string(),
                 ),
                 mime_type: Some("application/json".to_string()),
             },

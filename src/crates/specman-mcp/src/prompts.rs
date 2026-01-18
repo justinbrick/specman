@@ -24,6 +24,7 @@ const SCRATCH_REVISION_TEMPLATE: &str = include_str!("templates/scratch-revision
 const SPEC_TEMPLATE: &str = include_str!("templates/spec.md");
 const IMPL_TEMPLATE: &str = include_str!("templates/impl.md");
 const MIGRATION_TEMPLATE: &str = include_str!("templates/migration.md");
+const COMPLIANCE_TEMPLATE: &str = include_str!("templates/compliance.md");
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ScratchImplPromptArgs {
@@ -31,6 +32,14 @@ pub struct ScratchImplPromptArgs {
         description = "Implementation target. A bare name (e.g. 'specman-mcp-rust') is interpreted as 'impl://specman-mcp-rust'. You may also pass an explicit locator (impl://..., spec://..., scratch://...) or a workspace-relative path."
     )]
     pub target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct CompliancePromptArgs {
+    #[schemars(
+        description = "Implementation target artifact. A bare name (e.g. 'specman-mcp-rust') is interpreted as 'impl://specman-mcp-rust'."
+    )]
+    pub implementation: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
@@ -128,6 +137,17 @@ impl SpecmanMcpServer {
         Parameters(args): Parameters<MigrationPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
         self.render_migration_prompt(MIGRATION_TEMPLATE, &args.target)
+    }
+
+    #[prompt(
+        name = "compliance",
+        description = "Generate instructions for verifying implementation compliance against specification constraints"
+    )]
+    pub async fn compliance_prompt(
+        &self,
+        Parameters(args): Parameters<CompliancePromptArgs>,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        self.render_compliance_prompt(COMPLIANCE_TEMPLATE, &args.implementation)
     }
 
     #[prompt(
@@ -243,6 +263,24 @@ impl SpecmanMcpServer {
     ) -> Result<Vec<PromptMessage>, McpError> {
         // Migration target may not exist yet; normalize without resolving.
         let locator = coerce_reference(target_reference, "spec");
+
+        let replacements = vec![("{{target_path}}", locator)];
+
+        let rendered = apply_tokens(template, &replacements)?;
+        Ok(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            rendered,
+        )])
+    }
+
+    /// Render the compliance prompt.
+    fn render_compliance_prompt(
+        &self,
+        template: &str,
+        target_reference: &str,
+    ) -> Result<Vec<PromptMessage>, McpError> {
+        // Coerce to impl:// scheme
+        let locator = coerce_reference(target_reference, "impl");
 
         let replacements = vec![("{{target_path}}", locator)];
 

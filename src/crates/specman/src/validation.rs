@@ -2,15 +2,21 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use ignore::WalkBuilder;
 use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::dependency_tree::ArtifactId;
+use crate::dependency_tree::{
+    ArtifactId, ArtifactKind, DependencyMapping, FilesystemDependencyMapper,
+};
 use crate::error::SpecmanError;
+use crate::structure::FilesystemStructureIndexer;
+use crate::workspace::{
+    FilesystemWorkspaceLocator, WorkspaceLocator, workspace_relative_path,
+};
 
 const BINARY_CHECK_BYTES: usize = 8192;
 
@@ -149,13 +155,92 @@ pub fn generate_report(
 }
 
 pub fn validate_compliance(
-    root: &Path,
-    spec_id: ArtifactId,
-    impl_id: ArtifactId,
-    spec_constraints: &[String],
+    workspace_root: &Path,
+    impl_id: &ArtifactId,
 ) -> Result<ComplianceReport, SpecmanError> {
-    let tags = scan_source_root(root)?;
-    Ok(generate_report(spec_id, impl_id, spec_constraints, tags))
+    if impl_id.kind != ArtifactKind::Implementation {
+        return Err(SpecmanError::Workspace(
+            "Compliance reporting is only available for implementation artifacts".into(),
+        ));
+    }
+
+    let locator = Arc::new(FilesystemWorkspaceLocator::new(workspace_root.to_path_buf()));
+    let workspace = locator.workspace()?;
+
+    let mapper = FilesystemDependencyMapper::new(locator.clone());
+    let tree = mapper.dependency_tree(impl_id)?;
+
+    // 1. Find the upstream specification(s)
+    let upstream_specs: Vec<_> = tree
+        .upstream
+        .iter()
+        .filter(|edge| edge.to.id.kind == ArtifactKind::Specification)
+        .collect();
+
+    if upstream_specs.is_empty() {
+        return Err(SpecmanError::Dependency(format!(
+            "Implementation {} has no upstream specification dependency",
+            impl_id.name
+        )));
+    }
+
+    if upstream_specs.len() > 1 {
+        return Err(SpecmanError::Dependency(format!(
+            "Implementation {} has multiple upstream specification dependencies; compliance reporting requires exactly one",
+            impl_id.name
+        )));
+    }
+
+    let spec = &upstream_specs[0].to;
+    let spec_id = spec.id.clone();
+
+    // Resolve path to the spec file to look it up in the structure index.
+    let spec_fs_path = if let Some(p) = &spec.resolved_path {
+        PathBuf::from(p)
+    } else {
+        workspace.spec_dir().join(&spec.id.name).join("spec.md")
+    };
+
+    let workspace_path =
+        workspace_relative_path(workspace.root(), &spec_fs_path).ok_or_else(|| {
+            SpecmanError::Workspace(format!(
+                "failed to resolve workspace-relative path for '{}'",
+                spec_fs_path.display()
+            ))
+        })?;
+
+    // 2. Load spec constraints from the structure index
+    let indexer = FilesystemStructureIndexer::new(locator);
+    let index = indexer.build_once_with_workspace(&workspace)?;
+
+    let mut spec_constraints = Vec::new();
+    for (key, _) in &index.constraints {
+        if key.artifact.kind == ArtifactKind::Specification
+            && key.artifact.workspace_path == workspace_path
+        {
+            spec_constraints.push(key.group.clone());
+        }
+    }
+    spec_constraints.sort();
+
+    // 3. Scan implementation
+    let impl_path = if let Some(p) = &tree.root.resolved_path {
+        PathBuf::from(p)
+    } else {
+        workspace.impl_dir().join(&impl_id.name).join("impl.md")
+    };
+
+    let impl_root = impl_path.parent().ok_or_else(|| {
+        SpecmanError::Workspace(format!("invalid implementation path: {}", impl_path.display()))
+    })?;
+
+    let tags = scan_source_root(impl_root)?;
+    Ok(generate_report(
+        spec_id,
+        impl_id.clone(),
+        &spec_constraints,
+        tags,
+    ))
 }
 
 pub fn scan_source_root(root: &Path) -> Result<Vec<ValidationTag>, SpecmanError> {

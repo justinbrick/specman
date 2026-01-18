@@ -1,6 +1,5 @@
 # TODO
 
-- feat(specman-mcp-rust): compliance tracking implementation
 - rev(specman-cli): compliance tracking command
 - feat(specman-cli-rust): compliance tracking implementation
 - rev(specman-core): add requirement to provide endpoint for checking workspace status

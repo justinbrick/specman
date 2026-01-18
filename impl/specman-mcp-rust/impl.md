@@ -88,8 +88,17 @@ The adapter exposes a focused subset of SpecMan functionality as MCP tools/promp
 ```
 
 - Current tool surface: `create_artifact`, `update_artifact`.
-- Current prompt surface: `feat`, `ref`, `revision`, `fix`, `spec`, `impl`, `migration`.
+- Current prompt surface: `feat`, `ref`, `revision`, `fix`, `spec`, `impl`, `migration`, `compliance`.
   - `migration` renders deterministic guidance to create the target specification via lifecycle automation, then create a revision scratch pad for that spec before running the four mandated migration phases (enumerate sources, extract findings, draft/update specification, generate implementation documentation).
+  - `compliance` instructs the agent to retrieve `impl://{artifact}/compliance` and handle any missing constraints.
+
+### Concept: [Compliance Resources](../../spec/specman-mcp/spec.md#concept-compliance-resources)
+
+The adapter exposes compliance reports for implementations, leveraging `specman-library` validation.
+
+- Resource: `impl://{artifact}/compliance`
+- Content: JSON-serialized `ComplianceReport` struct (coverage, missing requirements, orphans).
+- Error handling: Returns specific errors if the implementation has no upstream specification or multiple (ambiguous) specifications.
 
 ### Concept: [Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance)
 
