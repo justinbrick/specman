@@ -1,5 +1,7 @@
 # TODO
 
+- fix(specman-mcp): resources not reading properly
+- ref(specman-mcp): use specman-library for constraint content reading
 - rev(specman-cli): compliance tracking command
 - feat(specman-cli-rust): compliance tracking implementation
 - rev(specman-core): add requirement to provide endpoint for checking workspace status
