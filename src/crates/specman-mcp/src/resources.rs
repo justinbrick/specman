@@ -55,6 +55,8 @@ fn ensure_specification_artifact(kind: ArtifactKind) -> Result<(), McpError> {
 }
 
 fn validate_constraint_id(constraint_id: &str) -> Result<(), McpError> {
+    // [ENSURES: concept-constraint-resources.identifiers.constraint-id:CHECK]
+    // [ENSURES: concept-constraints.identifiers.formatting:CHECK]
     if constraint_id.is_empty() {
         return Err(invalid_params("constraint_id must not be empty"));
     }
@@ -126,6 +128,7 @@ fn is_atx_heading_line(line: &str) -> bool {
 }
 
 fn is_constraint_identifier_line(trimmed: &str) -> bool {
+    // [ENSURES: concept-constraints.groups.formatting:CHECK]
     if !trimmed.starts_with('!') || !trimmed.ends_with(':') {
         return false;
     }
@@ -138,6 +141,7 @@ fn is_constraint_identifier_line(trimmed: &str) -> bool {
 }
 
 fn extract_constraint_block(body: &str, constraint_id: &str) -> Option<String> {
+    // [ENSURES: concept-constraints.content:CHECK]
     let lines: Vec<&str> = body.lines().collect();
 
     let mut fence: Option<FenceState> = None;
@@ -451,6 +455,8 @@ impl SpecmanMcpServer {
             })
             .collect();
 
+        // [ENSURES: concept-constraint-resources.responses.index:CHECK]
+        // [ENSURES: concept-constraints.groups.ordering:CHECK]
         // Deterministic: document order first, then stable group id.
         entries.sort_by(|(a_line, a_id, _), (b_line, b_id, _)| {
             a_line.cmp(b_line).then_with(|| a_id.cmp(b_id))
@@ -521,6 +527,7 @@ impl SpecmanMcpServer {
             )))
         })?;
 
+        // [ENSURES: concept-constraint-resources.responses.read:CHECK]
         Ok(ResourceContents::TextResourceContents {
             uri: uri.to_string(),
             mime_type: Some("text/markdown".to_string()),
@@ -645,6 +652,7 @@ impl SpecmanMcpServer {
         if let ParsedResourceRequest::ConstraintsIndex(base)
         | ParsedResourceRequest::ConstraintContent(base, _) = &request
         {
+            // [ENSURES: concept-constraint-resources.scope.schemes:CHECK]
             if !base.starts_with("spec://") {
                 return Err(invalid_params(
                     "'/constraints' resources are only available for spec:// artifacts",
@@ -798,6 +806,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
             },
             annotations: None,
         },
+        // [ENSURES: concept-constraint-resources.resources.templates:CHECK]
         ResourceTemplate {
             raw: RawResourceTemplate {
                 uri_template: "spec://{artifact}/constraints".to_string(),

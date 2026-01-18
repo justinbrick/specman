@@ -1101,6 +1101,7 @@ mod tests {
             ))
             .await?;
 
+        // [ENSURES: concept-metadata-mutation.requirements]
         assert!(!result.0.persisted);
         assert_eq!(body_of(&before), body_of(&result.0.updated_document));
 
@@ -1132,6 +1133,7 @@ mod tests {
             ))
             .await?;
 
+        // [ENSURES: concept-metadata-mutation.requirements]
         assert!(result.0.persisted);
         assert_eq!(body_of(&before), body_of(&result.0.updated_document));
 
@@ -1189,6 +1191,7 @@ mod tests {
             Err(err) => err,
         };
 
+        // [ENSURES: concept-metadata-mutation.scope.supported-fields]
         assert!(
             err.message.contains("immutable"),
             "unexpected error: {err:?}"
@@ -1217,6 +1220,7 @@ mod tests {
             Err(err) => err,
         };
 
+        // [ENSURES: concept-metadata-mutation.requirements]
         assert!(err.message.contains("persist is not supported"), "{err:?}");
         Ok(())
     }

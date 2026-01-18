@@ -3,6 +3,8 @@ spec: ../../spec/specman-core/spec.md
 name: specman-library
 version: "2.1.2"
 location: ../../src/crates/specman
+references:
+  - ref: ../../spec/specman-data-model/spec.md
 ---
 
 # Implementation — SpecMan Library Rust Crate

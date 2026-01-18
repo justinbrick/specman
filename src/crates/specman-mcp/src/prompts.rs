@@ -15,6 +15,7 @@ use crate::server::SpecmanMcpServer;
 use tracing::{debug, info, instrument};
 
 pub(crate) fn build_prompt_router() -> PromptRouter<SpecmanMcpServer> {
+    // [ENSURES: concept-prompt-catalog.scope:CHECK]
     SpecmanMcpServer::prompt_router()
 }
 
@@ -137,6 +138,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<MigrationPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
+        // [ENSURES: concept-prompt-catalog.migration-prompts]
         self.render_migration_prompt(MIGRATION_TEMPLATE, &args.target)
     }
 
@@ -148,6 +150,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<CompliancePromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
+        // [ENSURES: concept-prompt-catalog.compliance-prompts]
         self.render_compliance_prompt(COMPLIANCE_TEMPLATE, &args.implementation)
     }
 
@@ -228,6 +231,7 @@ impl SpecmanMcpServer {
     fn render_spec_prompt(&self, template: &str) -> Result<Vec<PromptMessage>, McpError> {
         debug!("rendering spec prompt");
         let rendered = apply_tokens(template, &[])?;
+        // [ENSURES: concept-prompt-catalog.responses:CHECK]
         Ok(vec![PromptMessage::new_text(
             PromptMessageRole::User,
             rendered,

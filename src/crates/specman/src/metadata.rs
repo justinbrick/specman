@@ -1086,6 +1086,8 @@ mod tests {
 
         let err = apply_front_matter_update(&artifact, &scratch_path, &workspace, raw, &request)
             .expect_err("scratch target updates must fail");
+        // [ENSURES: concept-scratch-pads.target-artifact]
+        // [ENSURES: concept-scratch-pads.metadata]
         assert!(matches!(err, SpecmanError::Template(_)));
         assert!(err.to_string().contains("immutable"));
     }
@@ -1113,6 +1115,8 @@ mod tests {
 
         let err = apply_front_matter_update(&artifact, &scratch_path, &workspace, raw, &request)
             .expect_err("scratch target updates must fail");
+        // [ENSURES: concept-scratch-pads.target-artifact]
+        // [ENSURES: concept-scratch-pads.metadata]
         assert!(matches!(err, SpecmanError::Template(_)));
         assert!(err.to_string().contains("immutable"));
     }
@@ -1361,6 +1365,8 @@ mod tests {
             apply_front_matter_update(&artifact, &spec_path, &workspace, &raw, &request)
                 .expect("update succeeds");
 
+        // [ENSURES: concept-specifications.metadata.frontmatter]
+        // [ENSURES: concept-specifications.dependencies]
         assert!(mutated);
         if request.persist {
             fs::write(&spec_path, &updated_document).unwrap();
@@ -1406,6 +1412,7 @@ mod tests {
             apply_front_matter_update(&artifact, &spec_path, &workspace, &raw, &request)
                 .expect("handle dependency accepted");
 
+        // [ENSURES: concept-specifications.dependencies]
         assert!(mutated);
         assert!(!updated_document.contains("spec://data-model"));
         assert!(updated_document.contains("../data-model/spec.md"));
@@ -1459,6 +1466,8 @@ mod tests {
             apply_front_matter_update(&artifact, &impl_path, &workspace, &raw, &request)
                 .expect("first mutation");
 
+        // [ENSURES: concept-implementations.metadata.frontmatter]
+        // [ENSURES: concept-implementations.references.model]
         assert!(mutated);
         if request.persist {
             fs::write(&impl_path, &updated_document).unwrap();

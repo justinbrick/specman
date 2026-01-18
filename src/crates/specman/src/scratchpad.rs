@@ -17,6 +17,7 @@ pub enum ScratchPadProfileKind {
 impl ScratchPadProfileKind {
     /// Returns the canonical slug used for workspace directories and provenance.
     pub fn slug(&self) -> &'static str {
+        // [ENSURES: concept-scratch-pads.work-type:CHECK]
         match self {
             Self::Ref => "ref",
             Self::Feat => "feat",
@@ -35,6 +36,7 @@ impl Default for ScratchPadProfileKind {
 /// Profiles describe scratch pad templates and optional configuration.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ScratchPadProfile {
+    // [ENSURES: entity-scratchpadprofile.requirements:CHECK]
     pub kind: ScratchPadProfileKind,
     /// Caller-provided scratch pad slug; falls back to the canonical kind slug when empty.
     #[serde(default)]
@@ -49,6 +51,7 @@ pub struct ScratchPadProfile {
 impl ScratchPadProfile {
     /// Returns the canonical slug for this profile.
     pub fn slug(&self) -> &str {
+        // [ENSURES: concept-scratch-pads.naming:CHECK]
         if self.name.is_empty() {
             self.kind.slug()
         } else {

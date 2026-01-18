@@ -134,15 +134,18 @@ fn main() {}
 async fn compliance_report_success() -> Result<(), Box<dyn std::error::Error>> {
     let ws = TestWorkspace::create().await?;
 
+    // [ENSURES: concept-compliance-resources.resources.location]
     let (mime, text) = ws.read_text_resource("impl://testimpl/compliance").await?;
     assert_eq!(mime, "application/json");
 
     let report: serde_json::Value = serde_json::from_str(&text)?;
 
+    // [ENSURES: concept-compliance-reporting.interface]
     assert_eq!(report["implementation"]["name"], "testimpl");
     assert_eq!(report["specification"]["name"], "testspec");
 
     // Check coverage
+    // [ENSURES: concept-compliance-reporting.coverage]
     let coverage = &report["coverage"];
     assert!(
         coverage.get("concept-test.group").is_some(),
@@ -150,6 +153,7 @@ async fn compliance_report_success() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Check missing
+    // [ENSURES: concept-compliance-reporting.semantics]
     let missing = report["missing"]
         .as_array()
         .expect("missing should be array");
@@ -165,6 +169,7 @@ async fn compliance_report_success() -> Result<(), Box<dyn std::error::Error>> {
 async fn compliance_report_wrong_scheme() -> Result<(), Box<dyn std::error::Error>> {
     let ws = TestWorkspace::create().await?;
 
+    // [ENSURES: concept-compliance-resources.scope.schemes]
     let err = ws.read_text_resource("spec://testspec/compliance").await;
     assert!(err.is_err());
 

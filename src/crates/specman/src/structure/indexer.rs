@@ -125,6 +125,7 @@ pub fn build_workspace_index_for_artifacts(
     workspace: &WorkspacePaths,
     artifacts: &[(ArtifactKind, PathBuf)],
 ) -> Result<WorkspaceIndex, SpecmanError> {
+    // [ENSURES: concept-specman-structure.indexing.collection:CHECK]
     let mut normalized: Vec<(ArtifactKind, PathBuf)> = Vec::with_capacity(artifacts.len());
     let normalized_root = normalize_workspace_path(workspace.root());
 
@@ -142,6 +143,7 @@ pub fn build_workspace_index_for_artifacts(
         normalized.push((*kind, normalized_path));
     }
 
+    // [ENSURES: concept-deterministic-execution.requirements:CHECK]
     normalized.sort_by(|a, b| a.1.cmp(&b.1));
     Ok(build_workspace_index_from_artifacts_with_unresolved(workspace, &normalized)?.0)
 }
@@ -177,8 +179,11 @@ fn index_add_artifacts(
         artifact_by_path.insert(key.workspace_path.clone(), key.clone());
     }
 
+    // [ENSURES: concept-specman-structure.indexing.headings:CHECK]
     let mut pending_heading_refs: Vec<PendingHeadingRef> = Vec::new();
+    // [ENSURES: concept-specman-structure.indexing.constraints:CHECK]
     let mut pending_constraint_refs: Vec<PendingConstraintRef> = Vec::new();
+    // [ENSURES: concept-specman-structure.indexing.relationships:CHECK]
     let mut relationships: Vec<RelationshipEdge> = index.relationships.clone();
 
     for (kind, path) in artifacts {
@@ -221,6 +226,7 @@ fn index_add_artifacts(
                         to: heading_ref_string(&to),
                     });
                 } else if pending.from.artifact.kind != ArtifactKind::ScratchPad {
+                    // [ENSURES: concept-specman-structure.referencing.validation:CHECK]
                     unresolved.push(UnresolvedHeadingRef {
                         from: pending.from,
                         target: UnresolvedTarget::IntraDoc { slug },
@@ -255,6 +261,7 @@ fn index_add_artifacts(
                         to: heading_ref_string(&to),
                     });
                 } else if pending.from.artifact.kind != ArtifactKind::ScratchPad {
+                    // [ENSURES: concept-specman-structure.referencing.validation:CHECK]
                     unresolved.push(UnresolvedHeadingRef {
                         from: pending.from,
                         target: UnresolvedTarget::InterDoc {
@@ -424,6 +431,7 @@ fn enumerate_canonical_artifact_files(
 
 fn read_dir_sorted(dir: &Path) -> Result<Vec<fs::DirEntry>, SpecmanError> {
     let mut entries: Vec<_> = fs::read_dir(dir)?.filter_map(Result::ok).collect();
+    // [ENSURES: concept-deterministic-execution.requirements:CHECK]
     entries.sort_by_key(|entry| entry.file_name());
     Ok(entries)
 }

@@ -18,6 +18,7 @@ pub trait StructureQuery {
 impl StructureQuery for WorkspaceIndex {
     fn list_heading_slugs(&self) -> Vec<HeadingIdentifier> {
         let mut ids: Vec<_> = self.headings.keys().cloned().collect();
+        // [ENSURES: concept-deterministic-execution.requirements:CHECK]
         ids.sort_by(|a, b| {
             let ao = self.headings.get(a).map(|h| h.order).unwrap_or(usize::MAX);
             let bo = self.headings.get(b).map(|h| h.order).unwrap_or(usize::MAX);
@@ -69,6 +70,7 @@ impl StructureQuery for WorkspaceIndex {
         &self,
         group: &ConstraintIdentifier,
     ) -> Result<String, SpecmanError> {
+        // [ENSURES: concept-specman-structure.discovery.rendering:CHECK]
         let record = self.constraints.get(group).ok_or_else(|| {
             SpecmanError::Workspace(format!(
                 "constraint group '{}' not found in {}",
@@ -129,6 +131,7 @@ impl WorkspaceIndex {
         heading: &HeadingIdentifier,
         include_references: bool,
     ) -> Result<String, SpecmanError> {
+        // [ENSURES: concept-specman-structure.discovery.rendering:CHECK]
         let mut rendered = String::new();
 
         let mut visited: HashSet<HeadingIdentifier> = HashSet::new();
@@ -165,6 +168,7 @@ impl WorkspaceIndex {
     }
 
     fn render_heading_section(&self, heading: &HeadingIdentifier) -> Result<String, SpecmanError> {
+        // [ENSURES: concept-specman-structure.discovery.rendering:CHECK]
         let record = self.headings.get(heading).ok_or_else(|| {
             SpecmanError::Workspace(format!(
                 "heading '{}' not found in {}",

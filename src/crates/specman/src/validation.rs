@@ -40,6 +40,7 @@ fn is_binary(path: &Path) -> bool {
 /// Represents a discovered validation anchor.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub struct ValidationTag {
+    // [ENSURES: entity-validation-tag.types:CHECK]
     pub identifier: String, // e.g., "concept-slug.category"
     pub tag_type: ValidationType,
     pub location: SourceLocation,
@@ -59,6 +60,7 @@ pub struct SourceLocation {
 }
 
 /// The result of a compliance check.
+// [ENSURES: concept-compliance-reporting.interface:CHECK]
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ComplianceReport {
     pub specification: ArtifactId,
@@ -73,6 +75,7 @@ pub struct ComplianceReport {
 
 pub fn parse_tags(line: &str, line_idx: usize, file_path: &Path) -> Vec<ValidationTag> {
     // Regex: \[ENSURES:\s*([a-zA-Z0-9.-]+)(?::(TEST|CHECK|MANUAL))?\s*\]
+    // [ENSURES: entity-validation-tag.syntax:CHECK]
     // Case insensitive matching for ENSURES
     static TAG_REGEX: OnceLock<Regex> = OnceLock::new();
     let re = TAG_REGEX.get_or_init(|| {
@@ -121,6 +124,7 @@ pub fn generate_report(
     // or sort later in outputs.
     tags.sort();
 
+    // [ENSURES: concept-compliance-reporting.coverage:CHECK]
     let mut coverage: BTreeMap<String, Vec<ValidationTag>> = BTreeMap::new();
     let mut orphans: Vec<ValidationTag> = Vec::new();
 
@@ -137,6 +141,7 @@ pub fn generate_report(
         }
     }
 
+    // [ENSURES: concept-compliance-reporting.semantics:CHECK]
     let mut missing = Vec::new();
     for constraint in spec_constraints {
         if !coverage.contains_key(constraint) {
@@ -159,6 +164,7 @@ pub fn validate_compliance(
     workspace_root: &Path,
     impl_id: &ArtifactId,
 ) -> Result<ComplianceReport, SpecmanError> {
+    // [ENSURES: concept-compliance-resources.scope.schemes:CHECK]
     if impl_id.kind != ArtifactKind::Implementation {
         return Err(SpecmanError::Workspace(
             "Compliance reporting is only available for implementation artifacts".into(),
@@ -394,6 +400,8 @@ mod tests {
 
         // Should find 2 tags
         // Note: order might vary depending on WalkBuilder, so we check existence
+        // [ENSURES: concept-validation-scanning.scope]
+        // [ENSURES: concept-validation-scanning.filtering]
         assert_eq!(tags.len(), 2);
 
         let tag_ids: Vec<String> = tags.iter().map(|t| t.identifier.clone()).collect();
@@ -467,6 +475,7 @@ mod tests {
         let path = Path::new("src/main.rs");
         let tags = parse_tags(line, 10, path);
 
+        // [ENSURES: concept-validation-anchors.definition]
         assert_eq!(tags.len(), 1);
         assert_eq!(tags[0].identifier, "my-concept.req");
         assert_eq!(tags[0].tag_type, ValidationType::Test);

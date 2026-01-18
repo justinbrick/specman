@@ -19,11 +19,13 @@ mod tests {
     #[test]
     fn slugify_nfkd_filters_combining_marks() {
         // "café" (U+00E9) -> NFKD: 'e' + combining acute; combining mark is removed by filtering.
+        // [ENSURES: concept-markdown-slugs.formatting]
         assert_eq!(slugify_heading("café"), Some("cafe".to_string()));
     }
 
     #[test]
     fn slugify_removes_punctuation_and_hyphenates_spaces() {
+        // [ENSURES: concept-markdown-slugs.formatting]
         assert_eq!(
             slugify_heading("Hello, world!"),
             Some("hello-world".to_string())
@@ -32,6 +34,7 @@ mod tests {
 
     #[test]
     fn slugify_collapses_hyphens_and_trims() {
+        // [ENSURES: concept-markdown-slugs.formatting]
         assert_eq!(slugify_heading("-- A  --  B --"), Some("a-b".to_string()));
     }
 
@@ -41,6 +44,7 @@ mod tests {
         let root = markdown::to_mdast(md, &markdown::ParseOptions::default()).unwrap();
         let mut issues = Vec::new();
         let slugs = collect_heading_slugs(&root, &mut issues, "doc");
+        // [ENSURES: concept-markdown-slugs.formatting]
         assert!(issues.is_empty());
         assert!(slugs.contains("overview"));
         assert!(slugs.contains("overview-1"));
@@ -53,6 +57,7 @@ mod tests {
         let root = markdown::to_mdast(md, &markdown::ParseOptions::default()).unwrap();
         let mut issues = Vec::new();
         let slugs = collect_heading_slugs(&root, &mut issues, "doc");
+        // [ENSURES: concept-markdown-slugs.formatting]
         assert!(issues.is_empty());
         assert!(slugs.contains("hello-world"));
     }
@@ -165,6 +170,7 @@ pub enum ReferenceValidationStatus {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReferenceValidationReport {
+    // [ENSURES: concept-reference-validation.results.contract:CHECK]
     pub status: ReferenceValidationStatus,
     /// Normalized reference records for the run (mirrors `discovered`).
     pub records: Vec<ReferenceRecord>,
@@ -406,6 +412,7 @@ pub fn validate_references(
     workspace: &WorkspacePaths,
     options: ReferenceValidationOptions,
 ) -> Result<ReferenceValidationReport, SpecmanError> {
+    // [ENSURES: concept-reference-validation.requirements:CHECK]
     validate_references_internal(locator, workspace, options, true)
 }
 
@@ -545,6 +552,7 @@ fn resolve_input_locator(locator: &str, workspace: &WorkspacePaths) -> ResolvedD
     let path = if let Some(rest) = locator.strip_prefix("spec://") {
         resolve_handle_path(workspace.spec_dir(), rest, "spec.md")
     } else if let Some(rest) = locator.strip_prefix("impl://") {
+        // [ENSURES: concept-implementations.locator-schemes.resolution:CHECK]
         resolve_handle_path(workspace.impl_dir(), rest, "impl.md")
     } else if let Some(rest) = locator.strip_prefix("scratch://") {
         resolve_handle_path(workspace.scratchpad_dir(), rest, "scratch.md")

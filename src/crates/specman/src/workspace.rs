@@ -573,12 +573,16 @@ mod tests {
         fs::create_dir_all(nested.join(".specman")).unwrap();
         fs::create_dir_all(nested.join("deep")).unwrap();
 
+        // [ENSURES: concept-workspace-discovery.requirements]
         let ctx = WorkspaceDiscovery::initialize(nested.join("deep")).unwrap();
 
         let nested_normalized = normalize_workspace_path(&nested);
 
         assert_eq!(ctx.paths().root(), nested_normalized.as_path());
-        assert_eq!(ctx.paths().dot_specman(), nested_normalized.join(".specman").as_path());
+        assert_eq!(
+            ctx.paths().dot_specman(),
+            nested_normalized.join(".specman").as_path()
+        );
     }
 
     #[test]
@@ -587,6 +591,7 @@ mod tests {
         let root = temp.path().join("orphaned");
         fs::create_dir_all(root.join("child")).unwrap();
 
+        // [ENSURES: concept-specman-workspace.dot-folder]
         let err = WorkspaceDiscovery::initialize(root.join("child"))
             .expect_err("expected workspace error");
         assert!(matches!(err, WorkspaceError::NotFound { .. }));
@@ -598,6 +603,7 @@ mod tests {
         let root = temp.path().join("explicit");
         fs::create_dir_all(&root).unwrap();
 
+        // [ENSURES: concept-workspace-discovery.initialization]
         let err = WorkspaceDiscovery::from_explicit(&root).expect_err("missing .specman");
         assert!(matches!(err, WorkspaceError::DotSpecmanMissing { .. }));
     }
@@ -680,7 +686,9 @@ mod tests {
         let temp = tempdir().unwrap();
         let root = temp.path().join("new-workspace");
 
+        // [ENSURES: concept-workspace-discovery.initialization]
         let first = WorkspaceDiscovery::create(&root).expect("create succeeds");
+        // [ENSURES: concept-specman-workspace.dot-folder]
         assert!(first.paths().dot_specman().is_dir());
         assert!(first.paths().scratchpad_dir().is_dir());
         assert!(first.paths().dot_specman().join("cache").is_dir());

@@ -13,6 +13,7 @@ pub const WORKSPACE_INDEX_SCHEMA_VERSION: u32 = 2;
 /// For this parsing-only iteration, the key is workspace-relative path + kind.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ArtifactKey {
+    // [ENSURES: concept-specman-structure.discovery.identifiers:CHECK]
     pub kind: ArtifactKind,
     /// Workspace-relative path using forward slashes.
     pub workspace_path: String,
@@ -29,6 +30,7 @@ pub struct ArtifactRecord {
 /// Artifact-qualified heading identifier.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HeadingIdentifier {
+    // [ENSURES: concept-specman-structure.discovery.identifiers:CHECK]
     pub artifact: ArtifactKey,
     pub slug: String,
 }
@@ -54,6 +56,7 @@ pub struct HeadingRecord {
 pub struct ConstraintIdentifier {
     pub artifact: ArtifactKey,
     /// Group set without leading `!` or trailing `:`.
+    // [ENSURES: concept-constraints.identifiers.formatting:CHECK]
     pub group: String,
 }
 

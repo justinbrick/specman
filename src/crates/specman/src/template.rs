@@ -64,6 +64,7 @@ impl Default for TemplateLocator {
 /// Rich descriptor for a template plus its required tokens.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct TemplateDescriptor {
+    // [ENSURES: entity-templatedescriptor.requirements:CHECK]
     pub locator: TemplateLocator,
     pub scenario: TemplateScenario,
     pub required_tokens: Vec<String>,

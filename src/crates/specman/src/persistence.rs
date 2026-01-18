@@ -236,8 +236,11 @@ fn resolve_target_path(
     workspace: &WorkspacePaths,
 ) -> Result<PathBuf, SpecmanError> {
     let (base_dir, file_name) = match artifact.kind {
+        // [ENSURES: concept-specifications.layout.filesystem:CHECK]
         ArtifactKind::Specification => (workspace.spec_dir(), "spec.md"),
+        // [ENSURES: concept-implementations.layout.filesystem:CHECK]
         ArtifactKind::Implementation => (workspace.impl_dir(), "impl.md"),
+        // [ENSURES: concept-scratch-pads.location:CHECK]
         ArtifactKind::ScratchPad => (workspace.scratchpad_dir(), "scratch.md"),
     };
 
@@ -299,6 +302,7 @@ fn inject_provenance(body: &str, provenance: &TemplateProvenance) -> Result<Stri
 }
 
 fn ensure_rendered_tokens_resolved(body: &str) -> Result<(), SpecmanError> {
+    // [ENSURES: concept-template-orchestration.token-contract:CHECK]
     if body.contains("{{") {
         return Err(SpecmanError::Template(
             "rendered output still contains template tokens".into(),
@@ -430,6 +434,7 @@ mod tests {
         assert!(result.path.exists());
         let contents = fs::read_to_string(&result.path).unwrap();
         assert_eq!(contents, rendered.body);
+        // [ENSURES: concept-specifications.layout.filesystem]
         assert!(
             result
                 .path
@@ -444,6 +449,7 @@ mod tests {
         let rendered = rendered("scratch content");
 
         let result = persistence.persist(&target, &rendered).unwrap();
+        // [ENSURES: concept-scratch-pads.location]
         assert!(result.path.ends_with(std::path::Path::new(
             ".specman/scratchpad/workspace-template-persist/scratch.md"
         )));
@@ -456,6 +462,7 @@ mod tests {
         let rendered = rendered("value: {{missing}}");
 
         let err = persistence.persist(&target, &rendered).unwrap_err();
+        // [ENSURES: concept-template-orchestration.token-contract]
         assert!(matches!(err, SpecmanError::Template(_)));
     }
 
@@ -501,6 +508,7 @@ mod tests {
         let target = artifact(ArtifactKind::ScratchPad, "demo-scratch");
         let removed = persistence.remove(&target).expect("remove scratchpad");
 
+        // [ENSURES: concept-scratch-pads.location]
         assert_eq!(removed.directory, folder_canonical);
         assert!(!folder.exists());
     }

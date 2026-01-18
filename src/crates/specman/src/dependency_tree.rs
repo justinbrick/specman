@@ -139,6 +139,7 @@ pub enum DependencyRelation {
 /// Aggregated dependency data across upstream, downstream, and combined views.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct DependencyTree {
+    // [ENSURES: entity-dependencytree.requirements:CHECK]
     pub root: ArtifactSummary,
     pub upstream: Vec<DependencyEdge>,
     pub downstream: Vec<DependencyEdge>,
@@ -289,6 +290,7 @@ impl<L: WorkspaceLocator> DependencyGraphServices<L> {
         &self,
         path: impl AsRef<Path>,
     ) -> Result<DependencyTree, SpecmanError> {
+        // [ENSURES: concept-dependency-mapping-services.requirements:CHECK]
         let workspace = self.workspace_paths()?;
         let locator = ArtifactLocator::from_path(path.as_ref(), &workspace, None)?;
         self.build_tree_with_workspace(
@@ -524,6 +526,7 @@ impl DependencyResolutionMode {
 /// are lowered into filesystem paths before becoming `ArtifactLocator::File` variants.
 #[derive(Clone, Debug)]
 enum ArtifactLocator {
+    // [ENSURES: concept-implementations.locators.model:CHECK]
     File(PathBuf),
     Url(Url),
 }
@@ -1858,6 +1861,7 @@ dependencies:
         let scratch = ResourceHandle::parse("scratch://Pad_One").expect("parse");
         let scratch = scratch.expect("handle detected");
         assert_eq!(scratch.kind, ArtifactKind::ScratchPad);
+        // [ENSURES: concept-scratch-pads.naming]
         assert_eq!(scratch.slug, "pad_one");
     }
 
@@ -2312,11 +2316,14 @@ work_type:
             .expect("scratch dependency tree");
 
         assert_eq!(tree.root.id.name, "deletion-lifecycle-apis");
+        // [ENSURES: concept-scratch-pads.target-artifact]
+        // [ENSURES: concept-scratch-pads.work-type]
         let upstream: BTreeSet<_> = tree
             .upstream
             .iter()
             .map(|edge| edge.to.id.name.clone())
             .collect();
+        // [ENSURES: concept-scratch-pads.dependencies]
         assert!(upstream.contains("specman-library"));
     }
 
@@ -2406,6 +2413,7 @@ work_type:
             .iter()
             .map(|edge| edge.to.id.name.clone())
             .collect();
+        // [ENSURES: concept-scratch-pads.dependencies]
         assert!(upstream.contains("slug-upstream"));
         assert!(upstream.contains("path-upstream"));
     }
@@ -2471,6 +2479,7 @@ work_type:
             .iter()
             .map(|edge| edge.from.id.name.clone())
             .collect();
+        // [ENSURES: concept-scratch-pads.dependency-graph-integrity.requirements]
         assert!(downstream.contains("slug-dependent"));
         assert!(downstream.contains("path-dependent"));
         assert!(tree.has_blocking_dependents());

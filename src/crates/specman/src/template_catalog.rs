@@ -496,6 +496,7 @@ fn workspace_relative(root: &Path, path: &Path) -> String {
 }
 
 struct TemplateCache {
+    // [ENSURES: entity-templatecache.requirements:CHECK]
     root: PathBuf,
 }
 
@@ -856,6 +857,7 @@ mod tests {
         let err = catalog
             .resolve(TemplateScenario::ScratchPad)
             .expect_err("scratch scenario rejected");
+        // [ENSURES: concept-scratch-pads.work-type]
         match err {
             SpecmanError::Template(msg) => assert!(msg.contains("work type")),
             other => panic!("expected template error, got {other:?}"),
@@ -864,11 +866,13 @@ mod tests {
         let err = catalog
             .resolve(TemplateScenario::WorkType("draft".to_string()))
             .expect_err("draft should be rejected");
+        // [ENSURES: concept-scratch-pads.work-type]
         assert!(matches!(err, SpecmanError::UnknownWorkType(_)));
 
         let err = catalog
             .resolve(TemplateScenario::WorkType("weird".to_string()))
             .expect_err("unknown should be rejected");
+        // [ENSURES: concept-scratch-pads.work-type]
         assert!(matches!(err, SpecmanError::UnknownWorkType(_)));
     }
 

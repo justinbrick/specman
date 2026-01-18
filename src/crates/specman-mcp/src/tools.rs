@@ -534,6 +534,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<UpdateArtifactArgs>,
     ) -> Result<Json<UpdateArtifactResult>, McpError> {
+        // [ENSURES: concept-specman-capability-parity.tooling.update-artifact:CHECK]
         info!("update_artifact request received");
         self.update_artifact_internal(args).await
     }

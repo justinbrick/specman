@@ -4,12 +4,6 @@ name: specman-mcp-rust
 version: "1.0.1"
 location: ../../src/crates/specman-mcp
 references:
-  - ref: ../../spec/specman-core/spec.md
-    type: specification
-    optional: false
-  - ref: ../../spec/specman-data-model/spec.md
-    type: specification
-    optional: false
   - ref: ../specman-library/impl.md
     type: implementation
     optional: false

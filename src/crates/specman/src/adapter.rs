@@ -7,6 +7,7 @@ use crate::dependency_tree::{ArtifactId, DependencyTree};
 use crate::error::SpecmanError;
 
 pub trait DataModelAdapter: Send + Sync {
+    // [ENSURES: entity-datamodeladapter.requirements:CHECK]
     fn save_dependency_tree(&self, tree: DependencyTree) -> Result<(), SpecmanError>;
     fn load_dependency_tree(
         &self,

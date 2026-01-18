@@ -37,6 +37,7 @@ pub struct ScratchPadPlan {
 
 pub trait LifecycleController: Send + Sync {
     fn plan_creation(&self, request: CreationRequest) -> Result<CreationPlan, SpecmanError>;
+    // [ENSURES: entity-lifecyclecontroller.requirements:CHECK]
     fn plan_deletion(&self, target: ArtifactId) -> Result<DeletionPlan, SpecmanError>;
     fn plan_scratchpad(&self, profile: ScratchPadProfile) -> Result<ScratchPadPlan, SpecmanError>;
     /// Executes a deletion by validating (or recomputing) the plan, ensuring the artifact is
@@ -319,10 +320,12 @@ mod tests {
         let persisted = persistence
             .persist(&artifact, &plan.rendered)
             .expect("persist scratchpad");
+        // [ENSURES: concept-scratch-pads.location]
         assert!(persisted.path.ends_with(std::path::Path::new(
             ".specman/scratchpad/workspace-template-persist/scratch.md"
         )));
         let contents = fs::read_to_string(persisted.path).unwrap();
+        // [ENSURES: concept-scratch-pads.work-type]
         assert!(contents.contains("scenario"));
     }
 
@@ -484,6 +487,7 @@ mod tests {
         let plan = controller
             .plan_deletion(root_artifact.clone())
             .expect("plan deletion");
+        // [ENSURES: concept-scratch-pads.dependency-graph-integrity.requirements]
         assert!(!plan.blocked, "scratch pad should ignore target edge");
     }
 
@@ -520,6 +524,7 @@ mod tests {
         let plan = controller
             .plan_deletion(root_artifact.clone())
             .expect("plan deletion");
+        // [ENSURES: concept-scratch-pads.dependency-graph-integrity.requirements]
         assert!(plan.blocked, "dependent scratch pad should block deletion");
     }
 
