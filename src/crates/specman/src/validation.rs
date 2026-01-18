@@ -14,8 +14,8 @@ use crate::dependency_tree::{
 };
 use crate::error::SpecmanError;
 use crate::front_matter::{ImplementationFrontMatter, split_front_matter};
-use crate::structure::FilesystemStructureIndexer;
-use crate::workspace::{FilesystemWorkspaceLocator, WorkspaceLocator, workspace_relative_path};
+use crate::structure::build_workspace_index_for_artifacts;
+use crate::workspace::{FilesystemWorkspaceLocator, WorkspaceLocator, normalize_workspace_path, workspace_relative_path};
 
 const BINARY_CHECK_BYTES: usize = 8192;
 
@@ -233,25 +233,61 @@ pub fn validate_compliance(
     }
 
     let canonical_spec = fs::canonicalize(&spec_path).unwrap_or(spec_path.clone());
-    let workspace_path =
-        workspace_relative_path(workspace.root(), &canonical_spec).ok_or_else(|| {
-            SpecmanError::Workspace(format!(
-                "failed to resolve workspace-relative path for '{}'",
-                canonical_spec.display()
-            ))
-        })?;
 
     let spec_tree = mapper.dependency_tree_from_path(&canonical_spec)?;
     let spec_id = spec_tree.root.id.clone();
 
-    // 2. Load spec constraints from the structure index
-    let indexer = FilesystemStructureIndexer::new(locator);
-    let index = indexer.build_once_with_workspace(&workspace)?;
+    let mut spec_summaries = Vec::new();
+    spec_summaries.push(spec_tree.root.clone());
+    for edge in &spec_tree.upstream {
+        if edge.to.id.kind == ArtifactKind::Specification {
+            spec_summaries.push(edge.to.clone());
+        }
+    }
+
+    let mut spec_artifacts: Vec<(ArtifactKind, PathBuf)> = Vec::new();
+    let mut spec_workspace_paths: HashSet<String> = HashSet::new();
+
+    for summary in spec_summaries {
+        let mut path = if let Some(resolved) = &summary.resolved_path {
+            let mut path = PathBuf::from(resolved);
+            if path.is_relative() {
+                path = workspace.root().join(path);
+            }
+            path
+        } else {
+            workspace
+                .spec_dir()
+                .join(&summary.id.name)
+                .join("spec.md")
+        };
+
+        if !path.is_file() {
+            return Err(SpecmanError::Dependency(format!(
+                "spec locator does not resolve to a file: {}",
+                path.display()
+            )));
+        }
+
+        path = normalize_workspace_path(&path);
+        let workspace_path = workspace_relative_path(workspace.root(), &path).ok_or_else(|| {
+            SpecmanError::Workspace(format!(
+                "failed to resolve workspace-relative path for '{}'",
+                path.display()
+            ))
+        })?;
+
+        spec_workspace_paths.insert(workspace_path);
+        spec_artifacts.push((ArtifactKind::Specification, path));
+    }
+
+    // 2. Load spec constraints from the structure index (scoped to spec + dependencies only)
+    let index = build_workspace_index_for_artifacts(&workspace, &spec_artifacts)?;
 
     let mut spec_constraints = Vec::new();
     for (key, _) in &index.constraints {
         if key.artifact.kind == ArtifactKind::Specification
-            && key.artifact.workspace_path == workspace_path
+            && spec_workspace_paths.contains(&key.artifact.workspace_path)
         {
             spec_constraints.push(key.group.clone());
         }

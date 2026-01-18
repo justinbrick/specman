@@ -189,6 +189,7 @@ To make sure that entities can be easily searched, implementations MUST index do
 
 - Implementations MUST index all markdown documents
 - HTML documents MAY optionally be indexed.
+- Scratch pad markdown artifacts MUST be included in structure indexing and validation outputs.
 
 !concept-specman-structure.indexing.headings:
 
@@ -289,8 +290,9 @@ Compliance reporting exposes the relationship between specification constraints 
 
 - Implementations MUST provide an interface or surface to generate compliance reports.
 - The reporting tool MUST resolve the target specification from the implementation's `spec` metadata.
-- The tool MUST extract all constraint groups from the resolved specification.
+- The tool MUST extract all constraint groups from the resolved specification and its transitive specification dependencies.
 - The tool MUST scan the implementation's source location for validation tags.
+- The reporting tool MUST scope structural indexing to the implementation, its governing specification, and those specification dependencies; unrelated workspace artifacts (including scratch pads) MUST be ignored and MUST NOT cause compliance report failures.
 
 !concept-compliance-reporting.coverage:
 

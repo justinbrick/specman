@@ -120,6 +120,32 @@ pub fn build_workspace_index(workspace: &WorkspacePaths) -> Result<WorkspaceInde
     Ok(build_workspace_index_with_unresolved(workspace)?.0)
 }
 
+/// Build a structure index for a specific set of artifacts, ignoring unrelated workspace files.
+pub fn build_workspace_index_for_artifacts(
+    workspace: &WorkspacePaths,
+    artifacts: &[(ArtifactKind, PathBuf)],
+) -> Result<WorkspaceIndex, SpecmanError> {
+    let mut normalized: Vec<(ArtifactKind, PathBuf)> = Vec::with_capacity(artifacts.len());
+    let normalized_root = normalize_workspace_path(workspace.root());
+
+    for (kind, path) in artifacts {
+        let normalized_path = normalize_workspace_path(path);
+        if !normalized_path.starts_with(workspace.root())
+            && !normalized_path.starts_with(&normalized_root)
+        {
+            return Err(SpecmanError::Workspace(format!(
+                "indexed artifact {} escapes workspace {}",
+                normalized_path.display(),
+                workspace.root().display()
+            )));
+        }
+        normalized.push((*kind, normalized_path));
+    }
+
+    normalized.sort_by(|a, b| a.1.cmp(&b.1));
+    Ok(build_workspace_index_from_artifacts_with_unresolved(workspace, &normalized)?.0)
+}
+
 fn build_workspace_index_with_unresolved(
     workspace: &WorkspacePaths,
 ) -> Result<(WorkspaceIndex, Vec<UnresolvedHeadingRef>), SpecmanError> {
