@@ -16,7 +16,8 @@ use serde::{Deserialize, Serialize};
 
 use specman::{
     ArtifactId, ArtifactKey, ArtifactKind, ArtifactSummary, ConstraintIdentifier,
-    FilesystemStructureIndexer, SemVer, SpecmanError, WorkspaceLocator, WorkspacePaths,
+    FilesystemStructureIndexer, SemVer, SpecmanError, StructureQuery, WorkspaceLocator,
+    WorkspacePaths,
 };
 
 use tracing::{debug, info, instrument};
@@ -82,118 +83,6 @@ fn read_artifact_file(path: &Path) -> Result<String, McpError> {
             to_mcp_error(err.into())
         }
     })
-}
-
-#[derive(Clone, Debug)]
-struct FenceState {
-    ch: char,
-    len: usize,
-}
-
-fn fence_update(current: Option<&FenceState>, line: &str) -> Option<Option<FenceState>> {
-    let trimmed = line.strip_prefix("   ").unwrap_or(line);
-    let (ch, run) = if trimmed.starts_with("```") {
-        ('`', trimmed.chars().take_while(|c| *c == '`').count())
-    } else if trimmed.starts_with("~~~") {
-        ('~', trimmed.chars().take_while(|c| *c == '~').count())
-    } else {
-        return None;
-    };
-
-    if current.is_none() {
-        return Some(Some(FenceState {
-            ch,
-            len: run.max(3),
-        }));
-    }
-
-    let cur = current.unwrap();
-    if cur.ch == ch && trimmed.chars().take_while(|c| *c == ch).count() >= cur.len {
-        return Some(None);
-    }
-
-    Some(Some(cur.clone()))
-}
-
-fn is_atx_heading_line(line: &str) -> bool {
-    let trimmed = line.strip_prefix("   ").unwrap_or(line);
-    let hashes = trimmed.chars().take_while(|c| *c == '#').count();
-    if !(1..=6).contains(&hashes) {
-        return false;
-    }
-    let Some(after) = trimmed.get(hashes..) else {
-        return false;
-    };
-    after.starts_with(' ')
-}
-
-fn is_constraint_identifier_line(trimmed: &str) -> bool {
-    // [ENSURES: concept-constraints.groups.formatting:CHECK]
-    if !trimmed.starts_with('!') || !trimmed.ends_with(':') {
-        return false;
-    }
-    if trimmed.contains(' ') || trimmed.contains('\t') {
-        return false;
-    }
-    let core = trimmed.trim_start_matches('!').trim_end_matches(':');
-    let groups: Vec<_> = core.split('.').filter(|s| !s.is_empty()).collect();
-    groups.len() >= 2
-}
-
-fn extract_constraint_block(body: &str, constraint_id: &str) -> Option<String> {
-    // [ENSURES: concept-constraints.content:CHECK]
-    let lines: Vec<&str> = body.lines().collect();
-
-    let mut fence: Option<FenceState> = None;
-    let mut start: Option<usize> = None;
-
-    for (idx, raw) in lines.iter().enumerate() {
-        if let Some(updated) = fence_update(fence.as_ref(), raw) {
-            fence = updated;
-        }
-
-        if fence.is_some() {
-            continue;
-        }
-
-        let trimmed = raw.trim();
-        if !is_constraint_identifier_line(trimmed) {
-            continue;
-        }
-
-        let group = trimmed.trim_start_matches('!').trim_end_matches(':');
-
-        if group == constraint_id {
-            start = Some(idx);
-            break;
-        }
-    }
-
-    let start = start?;
-
-    // Scan forward until the next constraint identifier or next heading.
-    let mut fence: Option<FenceState> = None;
-    let mut end = lines.len();
-    for raw in lines.iter().skip(start + 1).enumerate() {
-        let (offset, line) = raw;
-        if let Some(updated) = fence_update(fence.as_ref(), line) {
-            fence = updated;
-        }
-        if fence.is_some() {
-            continue;
-        }
-        let trimmed = line.trim();
-        if is_atx_heading_line(line) || is_constraint_identifier_line(trimmed) {
-            end = start + 1 + offset;
-            break;
-        }
-    }
-
-    let mut out = lines[start..end].join("\n");
-    if !out.ends_with('\n') {
-        out.push('\n');
-    }
-    Some(out)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -393,31 +282,6 @@ impl SpecmanMcpServer {
         let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
 
         let path = artifact_path(artifact_id, &workspace);
-        let body = read_artifact_file(&path)?;
-        let body = specman::front_matter::split_front_matter(&body).map_err(to_mcp_error)?;
-        let lines: Vec<&str> = body.body.lines().collect();
-
-        // Map constraint group -> (document-order line number, literal line)
-        // by scanning the artifact body. This ensures `identifier_line` is truly literal.
-        let mut identifier_lines: BTreeMap<String, (usize, String)> = BTreeMap::new();
-        for (idx, raw) in lines.iter().enumerate() {
-            let trimmed = raw.trim();
-            if !trimmed.starts_with('!') || !trimmed.ends_with(':') {
-                continue;
-            }
-            if trimmed.contains(' ') || trimmed.contains('\t') {
-                continue;
-            }
-
-            let group = trimmed
-                .trim_start_matches('!')
-                .trim_end_matches(':')
-                .to_string();
-            identifier_lines
-                .entry(group)
-                .or_insert((idx + 1, (*raw).to_string()));
-        }
-
         let workspace_path = workspace_relative_path(workspace.root(), &path).ok_or_else(|| {
             to_mcp_error(SpecmanError::Workspace(format!(
                 "failed to resolve workspace-relative path for '{}'",
@@ -430,6 +294,16 @@ impl SpecmanMcpServer {
             .build_once_with_workspace(&workspace)
             .map_err(to_mcp_error)?;
 
+        if !index.artifacts.contains_key(&ArtifactKey {
+            kind: ArtifactKind::Specification,
+            workspace_path: workspace_path.clone(),
+        }) {
+            return Err(invalid_params(format!(
+                "Artifact not found: {}",
+                path.display()
+            )));
+        }
+
         let mut entries: Vec<(usize, String, ConstraintIndexEntry)> = index
             .constraints
             .values()
@@ -438,17 +312,12 @@ impl SpecmanMcpServer {
                     && record.id.artifact.workspace_path == workspace_path
             })
             .map(|record| {
-                let (doc_line, identifier_line) = identifier_lines
-                    .get(&record.id.group)
-                    .cloned()
-                    .unwrap_or_else(|| (usize::MAX, format!("!{}:", record.id.group)));
-
                 (
-                    doc_line,
+                    record.line,
                     record.id.group.clone(),
                     ConstraintIndexEntry {
                         constraint_id: record.id.group.clone(),
-                        identifier_line,
+                        identifier_line: format!("!{}:", record.id.group),
                         uri: format!("{}/constraints/{}", base_locator, record.id.group),
                     },
                 )
@@ -483,7 +352,7 @@ impl SpecmanMcpServer {
     async fn read_constraint_content(
         &self,
         uri: &str,
-        base_locator: &str,
+        _base_locator: &str,
         artifact_id: &ArtifactId,
         constraint_id: &str,
     ) -> Result<ResourceContents, McpError> {
@@ -513,25 +382,13 @@ impl SpecmanMcpServer {
             group: constraint_id.to_string(),
         };
 
-        if !index.constraints.contains_key(&key) {
-            return Err(invalid_params(format!(
-                "Constraint '{constraint_id}' not found in specification {base_locator}"
-            )));
-        }
-        let body = read_artifact_file(&path)?;
-        let body = specman::front_matter::split_front_matter(&body).map_err(to_mcp_error)?;
-
-        let text = extract_constraint_block(body.body, constraint_id).ok_or_else(|| {
-            to_mcp_error(SpecmanError::Workspace(format!(
-                "failed to extract constraint '{constraint_id}' from {base_locator}"
-            )))
-        })?;
+        let body = index.render_constraint_group(&key).map_err(to_mcp_error)?;
 
         // [ENSURES: concept-constraint-resources.responses.read:CHECK]
         Ok(ResourceContents::TextResourceContents {
             uri: uri.to_string(),
             mime_type: Some("text/markdown".to_string()),
-            text,
+            text: body,
             meta: None,
         })
     }

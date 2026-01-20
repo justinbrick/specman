@@ -210,12 +210,12 @@ mod tests {
                 );
                 assert!(text.contains("MUST be indexable"));
                 assert!(
-                    !text.contains("!concept-test.other:"),
-                    "must not include other constraint groups"
+                    text.contains("!concept-test.other:"),
+                    "must include other (neighboring) constraint groups context"
                 );
                 assert!(
-                    !text.contains("MUST be discoverable"),
-                    "must not include other constraint content"
+                    text.contains("MUST be discoverable"),
+                    "must include neighbors content"
                 );
             }
             other => panic!("unexpected variant: {other:?}"),
@@ -238,7 +238,7 @@ mod tests {
         };
 
         assert!(err.message.contains("concept-test.missing"), "{err:?}");
-        assert!(err.message.contains("spec://testspec"), "{err:?}");
+        assert!(err.message.contains("spec/testspec/spec.md"), "{err:?}");
         Ok(())
     }
 

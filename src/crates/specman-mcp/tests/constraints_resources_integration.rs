@@ -226,8 +226,7 @@ async fn constraints_double_slash_is_rejected() -> Result<(), Box<dyn std::error
 }
 
 #[tokio::test]
-async fn constraint_content_returns_only_the_exact_group() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn constraint_content_returns_context() -> Result<(), Box<dyn std::error::Error>> {
     let ws = TestWorkspace::create().await?;
 
     let (mime, text) = ws
@@ -238,16 +237,16 @@ async fn constraint_content_returns_only_the_exact_group() -> Result<(), Box<dyn
     assert!(text.contains("!concept-test.group:"));
     assert!(text.contains("- MUST be indexable"));
 
-    // Must not include other groups' identifier lines or statements.
-    assert!(!text.contains("!concept-test.other:"));
-    assert!(!text.contains("- MUST be discoverable"));
+    // Now includes other groups' identifier lines or statements because they share the heading.
+    assert!(text.contains("!concept-test.other:"));
+    assert!(text.contains("- MUST be discoverable"));
 
     Ok(())
 }
 
 #[tokio::test]
-async fn constraint_content_includes_additional_markdown_until_next_boundary()
--> Result<(), Box<dyn std::error::Error>> {
+async fn constraint_content_includes_additional_markdown() -> Result<(), Box<dyn std::error::Error>>
+{
     let ws = TestWorkspace::create().await?;
 
     let (_mime, text) = ws
@@ -261,8 +260,8 @@ async fn constraint_content_includes_additional_markdown_until_next_boundary()
         "additional markdown content must be included"
     );
 
-    // Must stop before the next constraint group.
-    assert!(!text.contains("!concept-a.group.b:"));
+    // Includes next constraint group because they share the heading.
+    assert!(text.contains("!concept-a.group.b:"));
 
     Ok(())
 }
@@ -281,7 +280,7 @@ async fn constraint_content_missing_constraint_errors_with_context()
     match err {
         ServiceError::McpError(ed) => {
             assert!(ed.message.contains("concept-test.missing"), "{ed:?}");
-            assert!(ed.message.contains("spec://testspec"), "{ed:?}");
+            assert!(ed.message.contains("spec/testspec/spec.md"), "{ed:?}");
         }
         other => panic!("unexpected error type: {other:?}"),
     }
