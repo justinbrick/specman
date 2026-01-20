@@ -1,6 +1,5 @@
 # TODO
 
-- fix(specman-mcp): resources not reading properly
 - ref(specman-mcp): use specman-library for constraint content reading
 - rev(specman-cli): compliance tracking command
 - feat(specman-cli-rust): compliance tracking implementation
