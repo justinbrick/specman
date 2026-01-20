@@ -1,9 +1,9 @@
 ---
 name: specman-cli
-version: "1.0.0"
+version: 1.1.0
 dependencies:
-  - ../specman-core/spec.md
-  - ../specman-data-model/spec.md
+- ../specman-core/spec.md
+- ../specman-data-model/spec.md
 ---
 
 # Specification — SpecMan CLI

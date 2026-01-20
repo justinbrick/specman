@@ -1,12 +1,12 @@
 ---
 spec: ../../spec/specman-mcp/spec.md
 name: specman-mcp-rust
-version: "1.0.1"
+version: 1.2.0
 location: ../../src/crates/specman-mcp
 references:
-  - ref: ../specman-library/impl.md
-    type: implementation
-    optional: false
+- ref: ../specman-library/impl.md
+  type: implementation
+  optional: false
 ---
 
 # Implementation — SpecMan MCP Rust Adapter

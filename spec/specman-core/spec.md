@@ -1,6 +1,6 @@
 ---
 name: specman-core
-version: "0.2.0"
+version: "2.2.0"
 dependencies:
   - ref: ../specman-data-model/spec.md
     optional: false

@@ -1,13 +1,13 @@
 ---
 name: specman-mcp
-version: "1.0.0"
+version: 1.1.0
 dependencies:
-  - ref: ../specman-data-model/spec.md
-    optional: false
-  - ref: ../specman-core/spec.md
-    optional: false
-  - ref: https://modelcontextprotocol.io/docs/learn/architecture
-    optional: false
+- ref: ../specman-data-model/spec.md
+  optional: false
+- ref: ../specman-core/spec.md
+  optional: false
+- ref: https://modelcontextprotocol.io/docs/learn/architecture
+  optional: false
 ---
 
 # Specification — SpecMan MCP Server

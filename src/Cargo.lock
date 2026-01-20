@@ -1736,7 +1736,7 @@ dependencies = [
 
 [[package]]
 name = "specman"
-version = "2.1.3"
+version = "2.2.0"
 dependencies = [
  "getrandom 0.2.16",
  "handlebars",
@@ -1760,7 +1760,7 @@ dependencies = [
 
 [[package]]
 name = "specman-cli"
-version = "2.1.2"
+version = "2.2.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1778,7 +1778,7 @@ dependencies = [
 
 [[package]]
 name = "specman-mcp"
-version = "1.1.4"
+version = "1.2.0"
 dependencies = [
  "futures",
  "reqwest",

@@ -1,18 +1,18 @@
 ---
 spec: ../../spec/specman-cli/spec.md
 name: specman-cli-rust
-version: "2.1.1"
+version: 2.2.0
 location: ../../src/crates/specman-cli
 references:
-  - ref: ../../spec/specman-core/spec.md
-    type: specification
-    optional: false
-  - ref: ../../spec/specman-data-model/spec.md
-    type: specification
-    optional: false
-  - ref: ../specman-library/impl.md
-    type: implementation
-    optional: false
+- ref: ../../spec/specman-core/spec.md
+  type: specification
+  optional: false
+- ref: ../../spec/specman-data-model/spec.md
+  type: specification
+  optional: false
+- ref: ../specman-library/impl.md
+  type: implementation
+  optional: false
 ---
 
 # Implementation — SpecMan CLI Rust Binary
