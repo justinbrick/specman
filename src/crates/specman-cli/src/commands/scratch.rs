@@ -3,19 +3,17 @@ use std::path::Path;
 
 use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum, builder::EnumValueParser};
 use serde::Serialize;
-use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyMapping, DependencyTree};
-use specman::front_matter::{self, ScratchFrontMatter};
+use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyTree};
 use specman::front_matter::{
-    ScratchRefactorMetadata, ScratchRevisionMetadata, ScratchWorkType, ScratchWorkloadExtras,
+    self, ScratchFrontMatter, ScratchRefactorMetadata,
+    ScratchRevisionMetadata, ScratchWorkType, ScratchWorkloadExtras,
 };
-use specman::{CreateRequest, ScratchPadCreateContext};
-use specman::{DeletePolicy, DeleteRequest};
+use specman::ops::{self, CreateResult, CreateScratchOptions, DeleteOptions, DeleteResult};
 
 use crate::commands::CommandResult;
 use crate::commands::dependencies::{self, DependencyScope};
 use crate::context::CliSession;
 use crate::error::{CliError, ExitStatus};
-use crate::frontmatter::update_scratch_document;
 use crate::util;
 
 #[derive(Clone, Debug, Serialize)]
@@ -110,68 +108,45 @@ fn create_scratchpad(
         .ok_or_else(|| CliError::new("--target is required", ExitStatus::Usage))?;
     util::validate_locator(&target, "scratch target")?;
 
-    let work_type = matches
+    let work_type_enum = matches
         .get_one::<ScratchType>("type")
         .expect("clap ensures required option");
-    let work_key = work_type.as_key();
+    let work_key = work_type_enum.as_key();
 
     let branch = matches
         .get_one::<String>("branch")
         .cloned()
         .unwrap_or_else(|| default_branch(&target, work_key, &name));
 
-    let artifact = ArtifactId {
-        kind: ArtifactKind::ScratchPad,
-        name: name.clone(),
-    };
-
-    let work_type = match work_type {
+    let work_type = match work_type_enum {
         ScratchType::Feat => ScratchWorkType::Feat(ScratchWorkloadExtras::default()),
         ScratchType::Ref => ScratchWorkType::Refactor(ScratchRefactorMetadata::default()),
         ScratchType::Revision => ScratchWorkType::Revision(ScratchRevisionMetadata::default()),
     };
 
-    let work_type_for_update = work_type.clone();
-
-    let plan = session
-        .specman
-        .plan_create(CreateRequest::ScratchPad {
-            context: ScratchPadCreateContext {
-                name: name.clone(),
-                target: target.clone(),
-                work_type,
-            },
+    let result = ops::create_scratch_pad(
+        &session.env,
+        CreateScratchOptions {
+            name: name.clone(),
+            target,
+            branch: Some(branch),
+            work_type,
+            dry_run: false,
             front_matter: None,
-        })
-        .map_err(CliError::from)?;
+        },
+    )
+    .map_err(CliError::from)?;
 
-    let mut rendered = plan.rendered;
-    let artifact_path = session
-        .workspace_paths
-        .scratchpad_dir()
-        .join(&name)
-        .join("scratch.md");
-    rendered.body = update_scratch_document(
-        &rendered.body,
-        &artifact,
-        &artifact_path,
-        &session.workspace_paths,
-        &branch,
-        &work_type_for_update,
-    )?;
+    let path = match result {
+        CreateResult::Persisted(p) => p.path,
+        CreateResult::DryRun(_) => unreachable!(),
+    };
 
-    let persisted = session
-        .specman
-        .persist_rendered(&artifact, &rendered, None)
-        .map_err(CliError::from)?;
-    session
-        .record_dependency_tree(&artifact)
-        .map_err(CliError::from)?;
-    let summary = read_scratch_summary(session.workspace_paths.root(), &persisted.path)?;
+    let summary = read_scratch_summary(session.workspace_paths.root(), &path)?;
 
     Ok(CommandResult::ScratchCreated {
         summary,
-        path: persisted.path.display().to_string(),
+        path: util::workspace_relative(session.workspace_paths.root(), &path),
     })
 }
 
@@ -196,20 +171,6 @@ fn delete_scratchpad(
         ));
     }
 
-    // Planning through the lifecycle controller keeps scratch deletions consistent with
-    // the shared dependency guard rails and force semantics.
-    let plan = session
-        .specman
-        .plan_delete(artifact.clone())
-        .map_err(CliError::from)?;
-    if plan.blocked && !forced {
-        return Err(CliError::new(
-            format!("refusing to delete {name}; downstream artifacts detected (use --force)"),
-            ExitStatus::Data,
-        ));
-    }
-    let tree = plan.dependencies.clone();
-
     let scratch_file = folder.join("scratch.md");
     let summary = if scratch_file.is_file() {
         read_scratch_summary(session.workspace_paths.root(), &scratch_file)?
@@ -223,21 +184,39 @@ fn delete_scratchpad(
         }
     };
 
-    let removed = session
-        .specman
-        .delete(DeleteRequest {
-            target: artifact.clone(),
-            plan: Some(plan),
-            policy: DeletePolicy { force: forced },
-        })
+    let impact = specman::analysis::check_deletion_impact(&session.env, &artifact)
         .map_err(CliError::from)?;
-    let removed_path = util::workspace_relative(session.workspace_paths.root(), &removed.directory);
+
+    if impact.blocked && !forced {
+        return Err(CliError::new(
+            format!("refusing to delete {name}; downstream artifacts detected (use --force)"),
+            ExitStatus::Data,
+        ));
+    }
+
+    let result = ops::delete_artifact(
+        &session.env,
+        &artifact,
+        DeleteOptions {
+            force: forced,
+            dry_run: false,
+        },
+    )
+    .map_err(CliError::from)?;
+
+    let _removed = match result {
+        DeleteResult::Removed(r) => r,
+        DeleteResult::DryRun(_) => unreachable!(),
+    };
 
     Ok(CommandResult::ScratchDeleted {
         summary,
         forced,
-        tree,
-        removed_path,
+        tree: impact.dependencies,
+        removed_path: util::workspace_relative(
+            session.workspace_paths.root(),
+            &session.workspace_paths.scratchpad_dir().join(&name),
+        ),
     })
 }
 
@@ -336,7 +315,8 @@ fn scratch_dependencies(
         name,
     };
     let tree = session
-        .dependency_mapper
+        .env
+        .mapping
         .dependency_tree(&artifact)
         .map_err(CliError::from)?;
 

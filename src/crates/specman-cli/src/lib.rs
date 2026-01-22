@@ -3,7 +3,6 @@ mod commands;
 mod context;
 mod error;
 mod formatter;
-mod frontmatter;
 mod templates;
 mod util;
 

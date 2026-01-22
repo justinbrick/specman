@@ -3,19 +3,16 @@ use std::path::{Path, PathBuf};
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
-use specman::CreateRequest;
 use specman::dependency_tree::{
-    ArtifactId, ArtifactKind, ArtifactSummary, DependencyMapping, DependencyTree,
+    ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree,
 };
-use specman::front_matter::{self, ImplementationFrontMatter, SpecificationFrontMatter};
-use specman::template::ImplContext;
-use specman::{DeletePolicy, DeleteRequest};
+use specman::front_matter::{self, ImplementationFrontMatter, SpecificationFrontMatter, ArtifactIdentityFields, ReferenceEntry};
+use specman::ops::{self, CreateImplOptions, CreateResult, DeleteOptions, DeleteResult};
 
 use crate::commands::CommandResult;
 use crate::commands::dependencies::{self, DependencyScope};
 use crate::context::CliSession;
 use crate::error::{CliError, ExitStatus};
-use crate::frontmatter::update_impl_document;
 use crate::util;
 
 pub type DeletionTree = DependencyTree;
@@ -99,41 +96,43 @@ fn create_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ));
     }
 
-    let plan = session
-        .specman
-        .plan_create(CreateRequest::Implementation {
-            context: ImplContext {
-                name: name.clone(),
-                target: resolved_spec.clone(),
-            },
-            front_matter: None,
-        })
-        .map_err(CliError::from)?;
+    let mut references = Vec::new();
+    // Add implicit reference to spec (legacy behavior preserved)
+    references.push(ReferenceEntry {
+        reference: resolved_spec.clone(),
+        reference_type: Some("specification".to_string()),
+        optional: Some(false),
+    });
 
-    let mut rendered = plan.rendered;
-    let artifact_path = folder.join("impl.md");
-    rendered.body = update_impl_document(
-        &rendered.body,
-        &plan.artifact,
-        &artifact_path,
-        &session.workspace_paths,
-        &name,
-        &resolved_spec,
-        &location,
-    )?;
+    let front_matter = ImplementationFrontMatter {
+        identity: ArtifactIdentityFields::default(),
+        spec: Some(resolved_spec.clone()),
+        location: Some(location),
+        references,
+        ..Default::default()
+    };
 
-    let persisted = session
-        .specman
-        .persist_rendered(&plan.artifact, &rendered, None)
-        .map_err(CliError::from)?;
-    session
-        .record_dependency_tree(&plan.artifact)
-        .map_err(CliError::from)?;
-    let summary = read_impl_summary(session.workspace_paths.root(), &persisted.path)?;
+    let result = ops::create_implementation(
+        &session.env,
+        CreateImplOptions {
+            name: name.clone(),
+            target: resolved_spec.clone(),
+            dry_run: false,
+            front_matter: Some(front_matter),
+        },
+    )
+    .map_err(CliError::from)?;
+
+    let path = match result {
+        CreateResult::Persisted(p) => p.path,
+        CreateResult::DryRun(_) => unreachable!(),
+    };
+
+    let summary = read_impl_summary(session.workspace_paths.root(), &path)?;
 
     Ok(CommandResult::ImplCreated {
         summary,
-        path: persisted.path.display().to_string(),
+        path: path.display().to_string(),
     })
 }
 
@@ -155,30 +154,34 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ));
     }
 
-    // Reuse the shared lifecycle controller so dependency and deletion rules stay centralized.
-    let plan = session
-        .specman
-        .plan_delete(artifact.clone())
+    let impact = specman::analysis::check_deletion_impact(&session.env, &artifact)
         .map_err(CliError::from)?;
-    if plan.blocked && !forced {
+
+    if impact.blocked && !forced {
         return Err(CliError::new(
             format!("refusing to delete {name}; downstream artifacts detected (use --force)"),
             ExitStatus::Data,
         ));
     }
-    let tree = plan.dependencies.clone();
-
-    let removed = session
-        .specman
-        .delete(DeleteRequest {
-            target: artifact.clone(),
-            plan: Some(plan),
-            policy: DeletePolicy { force: forced },
-        })
-        .map_err(CliError::from)?;
+    
+    let result = ops::delete_artifact(
+        &session.env,
+        &artifact,
+        DeleteOptions {
+            force: forced,
+            dry_run: false,
+        },
+    )
+    .map_err(CliError::from)?;
+    
+    let removed = match result {
+        DeleteResult::Removed(r) => r,
+        DeleteResult::DryRun(_) => unreachable!(),
+    };
+    
     let removed_path = util::workspace_relative(session.workspace_paths.root(), &removed.directory);
 
-    let spec_locator = tree.root.metadata.get("spec").cloned();
+    let spec_locator = impact.dependencies.root.metadata.get("spec").cloned();
     let spec_identifier = spec_locator
         .as_deref()
         .and_then(|locator| spec_identifier_from_locator(session.workspace_paths.root(), locator));
@@ -186,14 +189,14 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         name,
         spec_locator,
         spec_identifier,
-        version: version_from_summary(&tree.root),
+        version: version_from_summary(&impact.dependencies.root),
         path: util::workspace_relative(session.workspace_paths.root(), &folder),
     };
 
     Ok(CommandResult::ImplDeleted {
         summary,
         forced,
-        tree,
+        tree: impact.dependencies,
         removed_path,
     })
 }
@@ -284,7 +287,8 @@ fn impl_dependencies(
         name,
     };
     let tree = session
-        .dependency_mapper
+        .env
+        .mapping
         .dependency_tree(&artifact)
         .map_err(CliError::from)?;
 

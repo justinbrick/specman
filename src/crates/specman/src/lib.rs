@@ -1,13 +1,14 @@
 pub mod adapter;
+pub mod analysis;
 pub mod dependency_tree;
+pub mod env;
 pub mod error;
 pub mod front_matter;
-pub mod lifecycle;
 pub mod metadata;
+pub mod ops;
 pub mod persistence;
 pub mod reference_validation;
 pub mod scratchpad;
-pub mod service;
 pub mod shared_function;
 pub mod structure;
 pub mod template;
@@ -16,16 +17,14 @@ pub mod validation;
 pub mod workspace;
 
 pub use adapter::{DataModelAdapter, InMemoryAdapter};
+pub use analysis::{DeletionImpact, check_deletion_impact};
 pub use dependency_tree::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyEdge, DependencyGraphServices,
     DependencyMapping, DependencyRelation, DependencyTree, FilesystemDependencyMapper,
     InventoryDependent, WorkspaceInventorySnapshot,
 };
+pub use env::SpecmanEnv;
 pub use error::SpecmanError;
-pub use lifecycle::{
-    CreationPlan, CreationRequest, DefaultLifecycleController, DeletionPlan, LifecycleController,
-    ScratchPadPlan,
-};
 pub use metadata::{
     FrontMatterUpdateOp, FrontMatterUpdateRequest, FrontMatterUpdateResult,
     apply_front_matter_update,
@@ -41,10 +40,6 @@ pub use reference_validation::{
     SourceRange, TransitiveOptions, ValidationMode, validate_references,
 };
 pub use scratchpad::ScratchPadProfile;
-pub use service::{
-    CreatePlan, CreateRequest, DefaultSpecman, DeletePlan, DeletePolicy, DeleteRequest,
-    ScratchPadCreateContext, Specman,
-};
 pub use shared_function::{EntityKind, SchemaRef, SemVer};
 pub use structure::{
     ArtifactKey, ArtifactRecord, ConstraintIdentifier, ConstraintRecord,

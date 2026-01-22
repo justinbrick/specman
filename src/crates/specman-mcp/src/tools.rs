@@ -17,9 +17,9 @@ use rmcp::{tool, tool_router};
 use serde::{Deserialize, Serialize};
 
 use specman::{
-    ArtifactId, ArtifactKind, CreateRequest, DefaultLifecycleController,
-    FilesystemDependencyMapper, FilesystemWorkspaceLocator, MarkdownTemplateEngine,
-    PersistedArtifact, Specman, TemplateCatalog, WorkspaceLocator, WorkspacePersistence,
+    ArtifactId, ArtifactKind, SpecmanEnv,
+    PersistedArtifact, WorkspaceLocator,
+    ops,
 };
 
 use crate::error::{McpError, invalid_params, to_mcp_error};
@@ -29,11 +29,7 @@ use crate::resources::{
 use crate::server::SpecmanMcpServer;
 use tracing::{debug, info, instrument};
 
-type SpecmanInstance = Specman<
-    FilesystemDependencyMapper<std::sync::Arc<FilesystemWorkspaceLocator>>,
-    MarkdownTemplateEngine,
-    std::sync::Arc<FilesystemWorkspaceLocator>,
->;
+// Removed SpecmanInstance type alias
 
 // NOTE: The MCP tool schema is derived from `CreateArtifactArgs` below.
 
@@ -630,27 +626,49 @@ impl SpecmanMcpServer {
 
         let relative = self.workspace_relative_artifact_path(&tree.root, &workspace)?;
 
-        let specman = self.build_specman()?;
+        let env = self.build_env()?;
         let request = FrontMatterUpdateRequest {
             persist: matches!(args.mode, UpdateMode::Persist),
             ops: args.ops,
         };
 
-        let result = specman
-            .update(tree.root.id.clone(), request)
-            .map_err(to_mcp_error)?;
+        let artifact_path = artifact_path(&tree.root.id, &workspace);
+        let content = std::fs::read_to_string(&artifact_path)
+            .map_err(|err| to_mcp_error(specman::SpecmanError::Workspace(err.to_string())))?;
 
-        if result.persisted.is_some() {
+        let (updated_document, _mutated) = specman::metadata::apply_front_matter_update(
+            &tree.root.id,
+            &artifact_path,
+            &workspace,
+            &content,
+            &request,
+        )
+        .map_err(to_mcp_error)?;
+
+        let mut persisted_result = false;
+        if request.persist {
+            let rendered = specman::template::RenderedTemplate {
+                body: updated_document.clone(),
+                provenance: None,
+                metadata: specman::template::TemplateDescriptor::default(),
+            };
+            env.persistence
+                .persist(&tree.root.id, &rendered)
+                .map_err(to_mcp_error)?;
+            persisted_result = true;
+        }
+
+        if persisted_result {
             self.invalidate_dependency_inventory();
         }
 
         let handle = artifact_handle(&tree.root);
         let response = UpdateArtifactResult {
-            id: result.artifact,
+            id: tree.root.id.clone(),
             handle,
             path: Some(relative),
-            updated_document: result.updated_document,
-            persisted: result.persisted.is_some(),
+            updated_document,
+            persisted: persisted_result,
         };
         info!(persisted = response.persisted, "update_artifact completed");
         Ok(Json(response))
@@ -740,33 +758,9 @@ impl SpecmanMcpServer {
         args: CreateArtifactArgs,
     ) -> Result<Json<CreateArtifactResult>, McpError> {
         debug!("create_artifact start");
-        let specman = self.build_specman()?;
+        let env = self.build_env()?;
 
-        let request = self
-            .build_create_request_via_sampling_and_elicitation(peer, &args)
-            .await?;
-        let normalized = self.normalize_create_request(request)?;
-
-        let persisted = match &normalized {
-            CreateRequest::ScratchPad { context, .. } => {
-                self.create_scratchpad_with_front_matter(&specman, context)?
-            }
-            _ => specman.create(normalized).map_err(to_mcp_error)?,
-        };
-
-        self.invalidate_dependency_inventory();
-
-        let result = create_artifact_result(&persisted);
-        info!(handle = %result.handle, path = %result.path, "create_artifact completed");
-        Ok(Json(result))
-    }
-
-    async fn build_create_request_via_sampling_and_elicitation(
-        &self,
-        peer: Option<&Peer<RoleServer>>,
-        args: &CreateArtifactArgs,
-    ) -> Result<CreateRequest, McpError> {
-        match args {
+        let persisted = match args {
             CreateArtifactArgs::Specification {
                 name,
                 title,
@@ -800,13 +794,21 @@ Constraints:\n\
                     .await?;
                 validate_slug(&name, "specification")?;
 
-                Ok(CreateRequest::Specification {
-                    context: specman::SpecContext {
-                        name,
+                let result = ops::create_specification(
+                    &env,
+                    ops::CreateSpecOptions {
+                        name: name.clone(),
                         title: suggestion.title,
+                        dry_run: false,
+                        front_matter: None,
                     },
-                    front_matter: None,
-                })
+                )
+                .map_err(to_mcp_error)?;
+
+                match result {
+                    ops::CreateResult::Persisted(p) => p,
+                    ops::CreateResult::DryRun(_) => unreachable!(),
+                }
             }
             CreateArtifactArgs::Implementation {
                 target,
@@ -814,6 +816,13 @@ Constraints:\n\
                 name,
             } => {
                 let target = target.clone();
+                let target_summary = self.normalize_locator_to_handle(&target)?;
+                if target_summary.id.kind != ArtifactKind::Specification {
+                    return Err(invalid_params(
+                        "implementation targets must resolve to a specification (spec://... or a spec path)",
+                    ));
+                }
+                let target_handle = artifact_handle(&target_summary);
 
                 let suggested = match name.as_ref() {
                     Some(name) => NameSuggestion { name: name.clone() },
@@ -840,10 +849,21 @@ Constraints: name must be a slug (lowercase, digits, hyphens).\n",
                     .await?;
                 validate_slug(&name, "implementation")?;
 
-                Ok(CreateRequest::Implementation {
-                    context: specman::ImplContext { name, target },
-                    front_matter: None,
-                })
+                let result = ops::create_implementation(
+                    &env,
+                    ops::CreateImplOptions {
+                        name: name.clone(),
+                        target: target_handle,
+                        dry_run: false,
+                        front_matter: None,
+                    },
+                )
+                .map_err(to_mcp_error)?;
+
+                match result {
+                    ops::CreateResult::Persisted(p) => p,
+                    ops::CreateResult::DryRun(_) => unreachable!(),
+                }
             }
             CreateArtifactArgs::ScratchPad {
                 target,
@@ -860,6 +880,7 @@ Constraints: name must be a slug (lowercase, digits, hyphens).\n",
                         "workspace target locators must not be URLs; use spec://, impl://, scratch://, or a workspace-relative path",
                     ));
                 }
+                let resolved_target = self.normalize_locator_to_workspace_path(&target)?;
 
                 let intent = intent.trim().to_string();
                 if intent.is_empty() {
@@ -901,17 +922,37 @@ Constraints:\n\
                 validate_slug_max_words(&name, "scratch pad", 4)?;
 
                 let work_type = self.build_scratch_work_type(&kind);
+                let branch = default_branch_from_target(
+                    &target,
+                    scratch_work_type_key(&work_type),
+                    &name,
+                );
 
-                Ok(CreateRequest::ScratchPad {
-                    context: specman::ScratchPadCreateContext {
-                        name,
-                        target,
+                let result = ops::create_scratch_pad(
+                    &env,
+                    ops::CreateScratchOptions {
+                        name: name.clone(),
+                        target: resolved_target,
                         work_type,
+                        branch: Some(branch),
+                        dry_run: false,
+                        front_matter: None,
                     },
-                    front_matter: None,
-                })
+                )
+                .map_err(to_mcp_error)?;
+
+                match result {
+                    ops::CreateResult::Persisted(p) => p,
+                    ops::CreateResult::DryRun(_) => unreachable!(),
+                }
             }
-        }
+        };
+
+        self.invalidate_dependency_inventory();
+
+        let result = create_artifact_result(&persisted);
+        info!(handle = %result.handle, path = %result.path, "create_artifact completed");
+        Ok(Json(result))
     }
 
     async fn confirm_name(
@@ -1046,38 +1087,6 @@ Enter an alternate name, or leave blank to accept."
 
         out.trim().to_string()
     }
-    fn create_scratchpad_with_front_matter(
-        &self,
-        specman: &SpecmanInstance,
-        context: &specman::ScratchPadCreateContext,
-    ) -> Result<PersistedArtifact, McpError> {
-        let persisted = specman
-            .create(CreateRequest::ScratchPad {
-                context: context.clone(),
-                front_matter: None,
-            })
-            .map_err(to_mcp_error)?;
-
-        let branch = default_branch_from_target(
-            &context.target,
-            scratch_work_type_key(&context.work_type),
-            &context.name,
-        );
-
-        // Use the declarative metadata mutation API to set branch/work_type,
-        // while preserving the immutable scratchpad target.
-        let update = FrontMatterUpdateRequest::new()
-            .persist(true)
-            .with_op(FrontMatterUpdateOp::SetBranch { branch })
-            .with_op(FrontMatterUpdateOp::SetWorkType {
-                work_type: context.work_type.clone(),
-            });
-        specman
-            .update(persisted.artifact.clone(), update)
-            .map_err(to_mcp_error)?;
-
-        Ok(persisted)
-    }
 }
 
 fn schema_json_for<T: JsonSchema>() -> String {
@@ -1197,18 +1206,8 @@ fn create_artifact_result(persisted: &PersistedArtifact) -> CreateArtifactResult
 }
 
 impl SpecmanMcpServer {
-    fn build_specman(&self) -> Result<SpecmanInstance, McpError> {
-        let locator = self.workspace.clone();
-        let workspace = locator.workspace().map_err(to_mcp_error)?;
-
-        let mapper = FilesystemDependencyMapper::new(locator.clone());
-        let inventory = mapper.inventory_handle();
-        let templates = MarkdownTemplateEngine::new();
-        let controller = DefaultLifecycleController::new(mapper, templates);
-        let catalog = TemplateCatalog::new(workspace);
-        let persistence = WorkspacePersistence::with_inventory(locator, inventory);
-
-        Ok(Specman::new(controller, catalog, persistence))
+    fn build_env(&self) -> Result<SpecmanEnv, McpError> {
+        SpecmanEnv::new(self.workspace.clone(), None).map_err(to_mcp_error)
     }
 
     fn invalidate_dependency_inventory(&self) {
@@ -1277,47 +1276,5 @@ impl SpecmanMcpServer {
             .dependency_tree_from_locator(trimmed)
             .map_err(to_mcp_error)?;
         Ok(tree.root)
-    }
-
-    fn normalize_create_request(&self, request: CreateRequest) -> Result<CreateRequest, McpError> {
-        match request {
-            CreateRequest::Custom { .. } => Err(invalid_params(
-                "CreateRequest::Custom is not supported via MCP; use Specification, Implementation, or ScratchPad",
-            )),
-            CreateRequest::Implementation { context, .. } => {
-                let target_summary = self.normalize_locator_to_handle(&context.target)?;
-                if target_summary.id.kind != ArtifactKind::Specification {
-                    return Err(invalid_params(
-                        "implementation targets must resolve to a specification (spec://... or a spec path)",
-                    ));
-                }
-                let target = artifact_handle(&target_summary);
-                Ok(CreateRequest::Implementation {
-                    context: specman::ImplContext {
-                        name: context.name.trim().to_string(),
-                        target,
-                    },
-                    front_matter: None,
-                })
-            }
-            CreateRequest::ScratchPad { context, .. } => {
-                let target = self.normalize_locator_to_workspace_path(&context.target)?;
-                Ok(CreateRequest::ScratchPad {
-                    context: specman::ScratchPadCreateContext {
-                        name: context.name.trim().to_string(),
-                        target,
-                        work_type: context.work_type,
-                    },
-                    front_matter: None,
-                })
-            }
-            CreateRequest::Specification { context, .. } => Ok(CreateRequest::Specification {
-                context: specman::SpecContext {
-                    name: context.name.trim().to_string(),
-                    title: context.title.trim().to_string(),
-                },
-                front_matter: None,
-            }),
-        }
     }
 }

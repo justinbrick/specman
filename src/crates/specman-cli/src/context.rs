@@ -1,12 +1,8 @@
 use std::path::PathBuf;
 
-use specman::TemplateCatalog as LibraryTemplateCatalog;
-use specman::dependency_tree::{ArtifactId, DependencyMapping, FilesystemDependencyMapper};
-use specman::lifecycle::DefaultLifecycleController;
-use specman::persistence::WorkspacePersistence;
-use specman::template::MarkdownTemplateEngine;
+use specman::SpecmanEnv;
 use specman::workspace::{FilesystemWorkspaceLocator, WorkspaceLocator, WorkspacePaths};
-use specman::{DataModelAdapter, InMemoryAdapter, Specman, SpecmanError};
+use specman::{DataModelAdapter, InMemoryAdapter};
 use std::sync::Arc;
 
 use crate::error::CliError;
@@ -20,13 +16,8 @@ use crate::util::Verbosity;
 /// spec/specman-cli/spec.md#concept-workspace-context-resolution).
 pub struct CliSession {
     pub workspace_paths: WorkspacePaths,
-    pub dependency_mapper: Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
     pub templates: CliTemplateCatalog,
-    pub specman: Specman<
-        Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
-        Arc<MarkdownTemplateEngine>,
-        Arc<FilesystemWorkspaceLocator>,
-    >,
+    pub env: Arc<SpecmanEnv>,
     pub verbosity: Verbosity,
 }
 
@@ -50,39 +41,17 @@ impl CliSession {
 
         let workspace_locator = Arc::new(locator);
         let workspace_paths = workspace_locator.workspace()?;
-        let dependency_mapper =
-            Arc::new(FilesystemDependencyMapper::new(workspace_locator.clone()));
+        
         let data_adapter: Arc<dyn DataModelAdapter> = Arc::new(InMemoryAdapter::new());
-        let persistence = WorkspacePersistence::with_inventory_and_adapter(
-            workspace_locator.clone(),
-            dependency_mapper.inventory_handle(),
-            data_adapter.clone(),
-        );
-        let template_engine = Arc::new(MarkdownTemplateEngine::default());
+        let env = SpecmanEnv::new(workspace_locator, Some(data_adapter))?;
+        
         let templates = CliTemplateCatalog::new(workspace_paths.clone());
-        let lifecycle =
-            DefaultLifecycleController::new(dependency_mapper.clone(), template_engine.clone());
-
-        // The CLI keeps its own template pointer helpers (`templates`) but uses the
-        // library catalog for lifecycle operations via the façade.
-        let catalog = LibraryTemplateCatalog::new(workspace_paths.clone());
-        let specman = Specman::new(lifecycle, catalog, persistence);
 
         Ok(Self {
             workspace_paths,
-            dependency_mapper,
             templates,
-            specman,
+            env: Arc::new(env),
             verbosity,
         })
-    }
-
-    /// Recomputes and persists the dependency tree for the provided artifact.
-    pub fn record_dependency_tree(&self, artifact: &ArtifactId) -> Result<(), SpecmanError> {
-        let tree = self.dependency_mapper.dependency_tree(artifact)?;
-        self.specman
-            .persistence()
-            .save_dependency_tree(artifact, &tree)?;
-        Ok(())
     }
 }

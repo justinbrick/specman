@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use clap::Command;
 use serde::Serialize;
-use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyMapping};
+use specman::dependency_tree::{ArtifactId, ArtifactKind};
 use specman::reference_validation::{
     HttpsMethod, HttpsValidationMode, HttpsValidationOptions, IssueSeverity,
     ReferenceValidationOptions, ReferenceValidationStatus, TransitiveOptions,
@@ -69,7 +69,7 @@ pub fn run(session: &CliSession, matches: &clap::ArgMatches) -> Result<CommandRe
         let path = artifact_path(&session.workspace_paths, &artifact);
         let mut errors = Vec::new();
 
-        match session.dependency_mapper.dependency_tree(&artifact) {
+        match session.env.mapping.dependency_tree(&artifact) {
             Ok(_) => {}
             Err(err) => {
                 errors.push(StatusError {
