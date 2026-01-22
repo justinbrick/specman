@@ -1,6 +1,6 @@
 [package]
 name = "specman-cli"
-version = "2.2.0"
+version = "2.3.0"
 edition = "2024"
 authors.workspace = true
 license = "MIT"
@@ -20,7 +20,7 @@ thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 walkdir = "2"
-specman = { version = "2.2.0", path = "../specman" }
+specman = { version = "3.0.0", path = "../specman" }
 
 [dev-dependencies]
 assert_cmd = "2"
