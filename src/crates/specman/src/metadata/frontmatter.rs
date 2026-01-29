@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use serde_yaml::{Mapping, Value as YamlValue};
 
+use crate::dependency_tree::ArtifactId;
 use crate::error::SpecmanError;
+use crate::persistence::PersistedArtifact;
 
 /// Shared identity fields repeated across specification, implementation, and scratch metadata
 /// per the SpecMan Data Model requirements.
@@ -543,5 +545,25 @@ work_type:
                 "Concept: SpecMan Capability Parity".to_string()
             ]
         );
+    }
+}
+
+/// Result of applying a front matter update.
+#[derive(Clone, Debug)]
+pub struct FrontMatterUpdateResult {
+    pub artifact: ArtifactId,
+    pub updated_document: String,
+    pub persisted: Option<PersistedArtifact>,
+}
+impl Serialize for ArtifactFrontMatter {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            ArtifactFrontMatter::Specification(inner) => inner.serialize(serializer),
+            ArtifactFrontMatter::Implementation(inner) => inner.serialize(serializer),
+            ArtifactFrontMatter::Scratch(inner) => inner.serialize(serializer),
+        }
     }
 }

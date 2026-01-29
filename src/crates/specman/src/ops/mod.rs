@@ -6,3 +6,4 @@ pub use create::{
     create_implementation, create_scratch_pad, create_specification,
 };
 pub use delete::{DeleteOptions, DeleteResult, delete_artifact};
+pub mod update;

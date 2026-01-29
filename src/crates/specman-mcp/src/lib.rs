@@ -38,6 +38,29 @@ mod tests {
     };
     use crate::tools::{UpdateArtifactArgs, UpdateMode};
 
+    fn empty_update_args(
+        locator: &str,
+        mode: UpdateMode,
+    ) -> crate::tools::UpdateArtifactVariantArgs {
+        crate::tools::UpdateArtifactVariantArgs {
+            locator: locator.to_string(),
+            mode,
+            name: None,
+            title: None,
+            description: None,
+            version: None,
+            tags: None,
+            requires_implementation: None,
+            spec: None,
+            location: None,
+            target: None,
+            branch: None,
+            work_type: None,
+            dependencies: None,
+            references: None,
+        }
+    }
+
     #[tokio::test]
     async fn list_resources_includes_handles() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
@@ -1054,7 +1077,7 @@ mod tests {
     }
 
     fn body_of(doc: &str) -> &str {
-        specman::front_matter::split_front_matter(doc)
+        specman::metadata::frontmatter::split_front_matter(doc)
             .expect("front matter split")
             .body
     }
@@ -1092,11 +1115,8 @@ mod tests {
             .server
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
                 UpdateArtifactArgs::Spec(crate::tools::UpdateArtifactVariantArgs {
-                    locator: "spec://testspec".to_string(),
-                    mode: UpdateMode::Preview,
-                    ops: vec![specman::FrontMatterUpdateOp::SetVersion {
-                        version: "0.2.0".to_string(),
-                    }],
+                    version: Some("0.2.0".to_string()),
+                    ..empty_update_args("spec://testspec", UpdateMode::Preview)
                 }),
             ))
             .await?;
@@ -1124,11 +1144,8 @@ mod tests {
             .server
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
                 UpdateArtifactArgs::Impl(crate::tools::UpdateArtifactVariantArgs {
-                    locator: "impl://testimpl".to_string(),
-                    mode: UpdateMode::Persist,
-                    ops: vec![specman::FrontMatterUpdateOp::AddTag {
-                        tag: "mcp".to_string(),
-                    }],
+                    tags: Some(vec!["mcp".to_string()]),
+                    ..empty_update_args("impl://testimpl", UpdateMode::Persist)
                 }),
             ))
             .await?;
@@ -1152,11 +1169,8 @@ mod tests {
             .server
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
                 UpdateArtifactArgs::Impl(crate::tools::UpdateArtifactVariantArgs {
-                    locator: "spec://testspec".to_string(),
-                    mode: UpdateMode::Preview,
-                    ops: vec![specman::FrontMatterUpdateOp::SetVersion {
-                        version: "0.2.0".to_string(),
-                    }],
+                    version: Some("0.2.0".to_string()),
+                    ..empty_update_args("spec://testspec", UpdateMode::Preview)
                 }),
             ))
             .await
@@ -1178,11 +1192,8 @@ mod tests {
             .server
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
                 UpdateArtifactArgs::Scratch(crate::tools::UpdateArtifactVariantArgs {
-                    locator: "scratch://testscratch".to_string(),
-                    mode: UpdateMode::Preview,
-                    ops: vec![specman::FrontMatterUpdateOp::SetTarget {
-                        target: "spec://testspec".to_string(),
-                    }],
+                    target: Some("spec://testspec".to_string()),
+                    ..empty_update_args("scratch://testscratch", UpdateMode::Preview)
                 }),
             ))
             .await
@@ -1207,11 +1218,8 @@ mod tests {
             .server
             .update_artifact(rmcp::handler::server::wrapper::Parameters(
                 UpdateArtifactArgs::Spec(crate::tools::UpdateArtifactVariantArgs {
-                    locator: "https://example.com/spec.md".to_string(),
-                    mode: UpdateMode::Persist,
-                    ops: vec![specman::FrontMatterUpdateOp::SetVersion {
-                        version: "0.2.0".to_string(),
-                    }],
+                    version: Some("0.2.0".to_string()),
+                    ..empty_update_args("https://example.com/spec.md", UpdateMode::Persist)
                 }),
             ))
             .await

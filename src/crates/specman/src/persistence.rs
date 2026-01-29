@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::adapter::DataModelAdapter;
 use crate::dependency_tree::{ArtifactId, ArtifactKind, DependencyInventory, DependencyTree};
 use crate::error::SpecmanError;
-use crate::front_matter::split_front_matter;
+use crate::metadata::frontmatter::split_front_matter;
 use crate::template::{RenderedTemplate, TemplateProvenance};
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
 

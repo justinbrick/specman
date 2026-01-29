@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dependency_tree::ArtifactKind;
 use crate::error::SpecmanError;
-use crate::front_matter::{
+use crate::metadata::frontmatter::{
     ArtifactFrontMatter, ImplementationFrontMatter, ScratchFrontMatter, SpecificationFrontMatter,
 };
 use crate::workspace::{normalize_workspace_path, WorkspacePaths};

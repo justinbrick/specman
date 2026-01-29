@@ -241,13 +241,18 @@ Metadata mutation ensures YAML front matter for specifications, implementations,
 
 !concept-metadata-mutation.requirements:
 
-- Implementations MUST expose metadata mutation helpers that accept a filesystem path or HTTPS URL to a specification or implementation (and a filesystem path to a scratch pad), merge updated values into the YAML front matter, and leave the Markdown body unchanged.
-- Callers MUST be able to choose whether metadata mutation helpers immediately persist the updated artifact to disk or return the full document content; when returning content, the helpers MUST emit the complete file with differences limited to the front matter block.
+- Implementations MUST expose metadata mutation interfaces that accept a structured update object corresponding to the artifact type (specification, implementation, or scratch pad).
+- The update object MUST strictly define the fields eligible for mutation on that artifact type; it MUST NOT allow arbitrary key-value insertion into the front matter.
+- Mutation operations MUST apply updates by merging the provided structure into the existing front matter (Partial Update semantics):
+  - If a field is omitted from the update object, the existing value in the front matter MUST remain unchanged.
+  - Scalar fields (strings, numbers, booleans) present in the update object MUST replace the existing values.
+- For list-valued fields (such as dependencies or references), the update object MUST provide dedicated properties to add or remove items without requiring the caller to provide the full list:
+  - The interface MUST support `add_{field}` properties (e.g., `add_dependencies`) to append unique items to the list.
+  - The interface MUST support `remove_{field}` properties (e.g., `remove_dependencies`) to remove items from the list.
+  - The interface MAY support the base field name (e.g., `dependencies`) to perform a full replacement (set) of the list.
+- Implementations MUST NOT require callers to construct a list of abstract "operation" commands (e.g., `{"op": "add", ...}`). Instead, the API surface MUST be a strongly-typed or schema-validated structure.
 - Metadata mutation helpers MUST reuse the locator normalization, workspace-boundary enforcement, and supported-scheme validation rules defined for dependency traversal before applying edits.
-- Metadata mutation operations MUST reuse the dependency traversal validation flow (workspace boundary enforcement, supported locator schemes, YAML parsing guarantees) before applying edits to any artifact.
 - Metadata mutation operations MUST rewrite only the YAML front matter block and MUST either persist the updated artifact to its canonical path or return the full document with body content unchanged.
-- Metadata mutation helpers MUST support adding dependencies or references by artifact locator and MUST be idempotent when the supplied locator already exists in the corresponding list.
-- Metadata mutation helpers MUST support list-valued field updates via an explicit ops-based mutation surface (for example add/remove operations), and MUST be idempotent where applicable.
 
 !concept-metadata-mutation.scope.supported-fields:
 

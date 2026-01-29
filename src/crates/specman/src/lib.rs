@@ -3,7 +3,6 @@ pub mod analysis;
 pub mod dependency_tree;
 pub mod env;
 pub mod error;
-pub mod front_matter;
 pub mod metadata;
 pub mod ops;
 pub mod persistence;
@@ -26,9 +25,10 @@ pub use dependency_tree::{
 pub use env::SpecmanEnv;
 pub use error::SpecmanError;
 pub use metadata::{
-    FrontMatterUpdateOp, FrontMatterUpdateRequest, FrontMatterUpdateResult,
-    apply_front_matter_update,
+    FrontMatterUpdate, FrontMatterUpdateResult, IdentityUpdate, ImplementationUpdate,
+    ScratchUpdate, SpecificationUpdate,
 };
+pub use ops::update::apply_front_matter_update;
 pub use persistence::{
     ArtifactRemovalStore, PersistedArtifact, RemovedArtifact, WorkspacePersistence,
 };

@@ -6,7 +6,7 @@ use serde::Serialize;
 use specman::dependency_tree::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree,
 };
-use specman::front_matter::{self, ImplementationFrontMatter, SpecificationFrontMatter, ArtifactIdentityFields, ReferenceEntry};
+use specman::metadata::frontmatter::{self, ImplementationFrontMatter, SpecificationFrontMatter, ArtifactIdentityFields, ReferenceEntry};
 use specman::ops::{self, CreateImplOptions, CreateResult, DeleteOptions, DeleteResult};
 
 use crate::commands::CommandResult;
@@ -301,7 +301,7 @@ fn impl_dependencies(
 
 fn read_impl_summary(root: &Path, path: &Path) -> Result<ImplSummary, CliError> {
     let content = fs::read_to_string(path)?;
-    let split = front_matter::split_front_matter(&content)
+    let split = frontmatter::split_front_matter(&content)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
     let fm: ImplementationFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
@@ -376,7 +376,7 @@ fn spec_identifier_from_locator(root: &Path, locator: &str) -> Option<String> {
         return Some(locator.to_string());
     }
     let content = fs::read_to_string(&resolved).ok()?;
-    let split = front_matter::split_front_matter(&content).ok()?;
+    let split = frontmatter::split_front_matter(&content).ok()?;
     let fm: SpecificationFrontMatter = serde_yaml::from_str(split.yaml).ok()?;
     match (fm.identity.name, fm.identity.version) {
         (Some(name), Some(version)) => Some(format!("{name}@{version}")),

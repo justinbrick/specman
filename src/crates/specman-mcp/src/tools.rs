@@ -6,7 +6,7 @@ use rmcp::model::{
     Content, ContextInclusion, CreateMessageRequestParam, Role as SamplingRole, SamplingMessage,
 };
 use rmcp::service::Peer;
-use specman::{FrontMatterUpdateOp, FrontMatterUpdateRequest, apply_front_matter_update};
+use specman::apply_front_matter_update;
 
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
@@ -17,9 +17,8 @@ use rmcp::{tool, tool_router};
 use serde::{Deserialize, Serialize};
 
 use specman::{
-    ArtifactId, ArtifactKind, SpecmanEnv,
-    PersistedArtifact, WorkspaceLocator,
-    ops,
+    ArtifactId, ArtifactKind, FrontMatterUpdate, IdentityUpdate, ImplementationUpdate,
+    PersistedArtifact, ScratchUpdate, SpecificationUpdate, SpecmanEnv, WorkspaceLocator, ops,
 };
 
 use crate::error::{McpError, invalid_params, to_mcp_error};
@@ -328,7 +327,29 @@ pub(crate) enum UpdateArtifactArgs {
 pub(crate) struct UpdateArtifactVariantArgs {
     pub locator: String,
     pub mode: UpdateMode,
-    pub ops: Vec<FrontMatterUpdateOp>,
+
+    // Optional update fields
+    pub name: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub version: Option<String>,
+    pub tags: Option<Vec<String>>,
+
+    // Spec specific
+    pub requires_implementation: Option<bool>,
+
+    // Impl specific
+    pub spec: Option<String>,
+    pub location: Option<String>,
+
+    // Scratch specific
+    pub target: Option<String>,
+    pub branch: Option<String>,
+    pub work_type: Option<specman::metadata::ScratchWorkType>,
+
+    // Collections
+    pub dependencies: Option<Vec<specman::metadata::DependencyEntry>>,
+    pub references: Option<Vec<specman::metadata::ReferenceEntry>>,
 }
 
 impl UpdateArtifactArgs {
@@ -347,8 +368,7 @@ impl JsonSchema for UpdateArtifactArgs {
     }
 
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        // Keep this schema deliberately simple (draft-07-ish) and inline.
-        // Validation of detailed op shapes happens server-side.
+        // Validation happens server-side.
         let variant_schema = schemars::json_schema!({
             "type": "object",
             "additionalProperties": false,
@@ -362,73 +382,21 @@ impl JsonSchema for UpdateArtifactArgs {
                     "description": "Persistence mode: 'persist' writes to disk; 'preview' returns updated content without writing.",
                     "enum": ["persist", "preview"]
                 },
-                "ops": {
-                    "type": "array",
-                    "description": "Ops-based front matter mutation list. MUST contain at least one op.",
-                    "minItems": 1,
-                    "items": {
-                        "type": "object",
-                        "description": "Front matter update operation. The server validates required fields for each op.",
-                        "additionalProperties": true,
-                        "properties": {
-                            "op": {
-                                "type": "string",
-                                "description": "Operation discriminator.",
-                                "enum": [
-                                    "set_name",
-                                    "clear_name",
-                                    "set_title",
-                                    "clear_title",
-                                    "set_description",
-                                    "clear_description",
-                                    "set_version",
-                                    "clear_version",
-                                    "add_tag",
-                                    "remove_tag",
-                                    "add_dependency",
-                                    "remove_dependency",
-                                    "set_requires_implementation",
-                                    "clear_requires_implementation",
-                                    "set_spec",
-                                    "clear_spec",
-                                    "set_location",
-                                    "clear_location",
-                                    "add_reference",
-                                    "remove_reference",
-                                    "set_target",
-                                    "clear_target",
-                                    "set_branch",
-                                    "clear_branch",
-                                    "set_work_type",
-                                    "clear_work_type"
-                                ]
-                            },
-                            "name": { "type": "string" },
-                            "title": { "type": "string" },
-                            "description": { "type": "string" },
-                            "version": { "type": "string" },
-                            "tag": { "type": "string" },
-                            "ref": { "type": "string" },
-                            "optional": { "type": "boolean" },
-                            "requires": { "type": "boolean" },
-                            "location": { "type": "string" },
-                            "type": {
-                                "description": "Optional reference type hint.",
-                                "type": "string"
-                            },
-                            "target": { "type": "string" },
-                            "branch": { "type": "string" },
-                            "work_type": {
-                                "description": "Scratch work type object (server validates exact shape).",
-                                "type": "object",
-                                "additionalProperties": true
-                            }
-                        },
-                        "required": ["op"]
-                    }
-                }
+                "name": { "type": "string" },
+                "title": { "type": "string" },
+                "description": { "type": "string" },
+                "version": { "type": "string" },
+                "tags": { "type": "array", "items": { "type": "string" } },
+                "requires_implementation": { "type": "boolean" },
+                "spec": { "type": "string" },
+                "location": { "type": "string" },
+                "target": { "type": "string" },
+                "branch": { "type": "string" },
+                "work_type": { "type": "object", "additionalProperties": true },
+                "dependencies": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+                "references": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
             },
-            "required": ["locator", "mode", "ops"]
+            "required": ["locator", "mode"]
         });
 
         schemars::json_schema!({
@@ -543,9 +511,9 @@ impl SpecmanMcpServer {
         args: UpdateArtifactArgs,
     ) -> Result<Json<UpdateArtifactResult>, McpError> {
         let (expected_kind, args) = args.into_parts();
-        let expected_kind = expected_kind.as_artifact_kind();
+        let expected_kind_enum = expected_kind.as_artifact_kind();
 
-        debug!(?expected_kind, locator = %args.locator, ops = args.ops.len(), "update_artifact start");
+        debug!(?expected_kind_enum, locator = %args.locator, "update_artifact start");
 
         let locator = args.locator.trim();
         if locator.is_empty() {
@@ -563,18 +531,18 @@ impl SpecmanMcpServer {
             ));
         }
 
-        if args.ops.is_empty() {
-            return Err(invalid_params("update requires at least one op"));
-        }
-
         if locator.starts_with("http://") {
             return Err(invalid_params(
                 "unsupported url scheme in locator; use https",
             ));
         }
 
+        let update_model =
+            map_args_to_update(expected_kind_enum.clone(), &args).map_err(|e| invalid_params(e))?;
+        let persist = matches!(args.mode, UpdateMode::Persist);
+
         if locator.starts_with("https://") {
-            if matches!(args.mode, UpdateMode::Persist) {
+            if persist {
                 return Err(invalid_params(
                     "persist is not supported for HTTPS locators; use mode=preview",
                 ));
@@ -584,19 +552,15 @@ impl SpecmanMcpServer {
             let raw = fetch_https_document(locator).await?;
 
             let id = ArtifactId {
-                kind: expected_kind,
+                kind: expected_kind_enum,
                 name: derive_name_from_https(locator),
             };
 
             let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
             let fake_path = workspace.root().join("remote.md");
-            let request = FrontMatterUpdateRequest {
-                persist: false,
-                ops: args.ops,
-            };
 
             let (updated_document, _mutated) =
-                apply_front_matter_update(&id, &fake_path, &workspace, &raw, &request)
+                apply_front_matter_update(&id, &fake_path, &workspace, &raw, &update_model, false)
                     .map_err(to_mcp_error)?;
 
             let response = UpdateArtifactResult {
@@ -616,49 +580,30 @@ impl SpecmanMcpServer {
             .dependency_tree_from_locator(locator)
             .map_err(to_mcp_error)?;
 
-        let expected = expected_kind;
-        if tree.root.id.kind != expected {
+        if tree.root.id.kind != expected_kind_enum {
             return Err(invalid_params(format!(
                 "artifact kind mismatch: expected {:?} but locator resolved to {:?}",
-                expected, tree.root.id.kind
+                expected_kind_enum, tree.root.id.kind
             )));
         }
 
         let relative = self.workspace_relative_artifact_path(&tree.root, &workspace)?;
 
-        let env = self.build_env()?;
-        let request = FrontMatterUpdateRequest {
-            persist: matches!(args.mode, UpdateMode::Persist),
-            ops: args.ops,
-        };
-
         let artifact_path = artifact_path(&tree.root.id, &workspace);
         let content = std::fs::read_to_string(&artifact_path)
             .map_err(|err| to_mcp_error(specman::SpecmanError::Workspace(err.to_string())))?;
 
-        let (updated_document, _mutated) = specman::metadata::apply_front_matter_update(
+        let (updated_document, _mutated) = specman::apply_front_matter_update(
             &tree.root.id,
             &artifact_path,
             &workspace,
             &content,
-            &request,
+            &update_model,
+            persist,
         )
         .map_err(to_mcp_error)?;
 
-        let mut persisted_result = false;
-        if request.persist {
-            let rendered = specman::template::RenderedTemplate {
-                body: updated_document.clone(),
-                provenance: None,
-                metadata: specman::template::TemplateDescriptor::default(),
-            };
-            env.persistence
-                .persist(&tree.root.id, &rendered)
-                .map_err(to_mcp_error)?;
-            persisted_result = true;
-        }
-
-        if persisted_result {
+        if persist {
             self.invalidate_dependency_inventory();
         }
 
@@ -668,10 +613,51 @@ impl SpecmanMcpServer {
             handle,
             path: Some(relative),
             updated_document,
-            persisted: persisted_result,
+            persisted: persist,
         };
         info!(persisted = response.persisted, "update_artifact completed");
         Ok(Json(response))
+    }
+}
+
+fn map_args_to_update(
+    kind: ArtifactKind,
+    args: &UpdateArtifactVariantArgs,
+) -> Result<FrontMatterUpdate, String> {
+    let identity = IdentityUpdate {
+        name: args.name.clone(),
+        title: args.title.clone(),
+        description: args.description.clone(),
+        version: args.version.clone(),
+        tags: args.tags.clone(),
+    };
+
+    match kind {
+        ArtifactKind::Specification => Ok(FrontMatterUpdate::Specification(SpecificationUpdate {
+            identity,
+            requires_implementation: args.requires_implementation,
+            dependencies: args.dependencies.clone(),
+        })),
+        ArtifactKind::Implementation => {
+            Ok(FrontMatterUpdate::Implementation(ImplementationUpdate {
+                identity,
+                spec: args.spec.clone(),
+                location: args.location.clone(),
+                references: args.references.clone(),
+                dependencies: args.dependencies.clone(),
+            }))
+        }
+        ArtifactKind::ScratchPad => {
+            if args.target.is_some() {
+                return Err("scratch pad target is immutable".to_string());
+            }
+            Ok(FrontMatterUpdate::Scratch(ScratchUpdate {
+                identity,
+                branch: args.branch.clone(),
+                work_type: args.work_type.clone(),
+                dependencies: args.dependencies.clone(),
+            }))
+        }
     }
 }
 
@@ -922,11 +908,8 @@ Constraints:\n\
                 validate_slug_max_words(&name, "scratch pad", 4)?;
 
                 let work_type = self.build_scratch_work_type(&kind);
-                let branch = default_branch_from_target(
-                    &target,
-                    scratch_work_type_key(&work_type),
-                    &name,
-                );
+                let branch =
+                    default_branch_from_target(&target, scratch_work_type_key(&work_type), &name);
 
                 let result = ops::create_scratch_pad(
                     &env,
@@ -994,8 +977,8 @@ Enter an alternate name, or leave blank to accept."
     fn build_scratch_work_type(
         &self,
         kind: &ScratchKind,
-    ) -> specman::front_matter::ScratchWorkType {
-        use specman::front_matter::{
+    ) -> specman::metadata::frontmatter::ScratchWorkType {
+        use specman::metadata::frontmatter::{
             ScratchFixMetadata, ScratchRefactorMetadata, ScratchRevisionMetadata, ScratchWorkType,
             ScratchWorkloadExtras,
         };
@@ -1179,8 +1162,10 @@ fn default_branch_from_target(target: &str, work_type: &str, scratch_name: &str)
     format!("{target_slug}/{work_type}/{scratch_name}")
 }
 
-fn scratch_work_type_key(work_type: &specman::front_matter::ScratchWorkType) -> &'static str {
-    use specman::front_matter::ScratchWorkType;
+fn scratch_work_type_key(
+    work_type: &specman::metadata::frontmatter::ScratchWorkType,
+) -> &'static str {
+    use specman::metadata::frontmatter::ScratchWorkType;
     match work_type {
         ScratchWorkType::Draft(_) => "draft",
         ScratchWorkType::Revision(_) => "revision",

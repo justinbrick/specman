@@ -10,7 +10,7 @@ use url::Url;
 
 use crate::error::SpecmanError;
 
-use crate::front_matter::{self, ArtifactFrontMatter, DependencyEntry, FrontMatterKind};
+use crate::metadata::frontmatter::{self, ArtifactFrontMatter, DependencyEntry, FrontMatterKind};
 use crate::shared_function::SemVer;
 use crate::workspace::{normalize_workspace_path, WorkspaceLocator, WorkspacePaths};
 use std::fmt;
@@ -922,7 +922,7 @@ impl ArtifactDocument {
         metadata.insert("locator".into(), locator.describe());
         metadata.insert("resolution".into(), format!("{resolution:?}"));
 
-        let (frontmatter, status) = front_matter::optional_front_matter(&raw);
+        let (frontmatter, status) = frontmatter::optional_front_matter(&raw);
         if let Some(status) = status {
             metadata.insert("metadata_status".into(), status);
         }
@@ -2197,7 +2197,7 @@ version: "0.1.0"
     #[test]
     fn parse_front_matter_handles_bom_and_crlf() {
         let doc = "\u{feff}---\r\nname: alpha\r\nversion: \"1.0.0\"\r\n---\r\n# Body";
-        let (front, status) = front_matter::optional_front_matter(doc);
+        let (front, status) = frontmatter::optional_front_matter(doc);
         assert!(status.is_none(), "unexpected status: {status:?}");
         let normalized = front.unwrap().replace('\r', "");
         assert_eq!(normalized, "name: alpha\nversion: \"1.0.0\"");
@@ -2206,7 +2206,7 @@ version: "0.1.0"
     #[test]
     fn parse_front_matter_reports_missing_when_absent() {
         let doc = "# Heading only\ncontent";
-        let (front, status) = front_matter::optional_front_matter(doc);
+        let (front, status) = frontmatter::optional_front_matter(doc);
         assert!(front.is_none());
         assert_eq!(status.as_deref(), Some("missing"));
     }

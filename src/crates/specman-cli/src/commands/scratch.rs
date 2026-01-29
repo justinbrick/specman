@@ -4,7 +4,7 @@ use std::path::Path;
 use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum, builder::EnumValueParser};
 use serde::Serialize;
 use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyTree};
-use specman::front_matter::{
+use specman::metadata::frontmatter::{
     self, ScratchFrontMatter, ScratchRefactorMetadata,
     ScratchRevisionMetadata, ScratchWorkType, ScratchWorkloadExtras,
 };
@@ -329,7 +329,7 @@ fn scratch_dependencies(
 
 fn read_scratch_summary(root: &Path, path: &Path) -> Result<ScratchSummary, CliError> {
     let content = fs::read_to_string(path)?;
-    let split = front_matter::split_front_matter(&content)
+    let split = frontmatter::split_front_matter(&content)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
     let fm: ScratchFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;

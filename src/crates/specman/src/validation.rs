@@ -13,7 +13,7 @@ use crate::dependency_tree::{
     ArtifactId, ArtifactKind, DependencyMapping, FilesystemDependencyMapper,
 };
 use crate::error::SpecmanError;
-use crate::front_matter::{ImplementationFrontMatter, split_front_matter};
+use crate::metadata::frontmatter::{ImplementationFrontMatter, split_front_matter};
 use crate::structure::build_workspace_index_for_artifacts;
 use crate::workspace::{
     FilesystemWorkspaceLocator, WorkspaceLocator, normalize_workspace_path, workspace_relative_path,

@@ -7,7 +7,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::dependency_tree::ArtifactKind;
 use crate::error::SpecmanError;
-use crate::front_matter::{ArtifactFrontMatter, optional_front_matter};
+use crate::metadata::frontmatter::{ArtifactFrontMatter, optional_front_matter};
 use crate::workspace::{
     WorkspaceLocator, WorkspacePaths, normalize_workspace_path, workspace_relative_path,
 };
@@ -592,7 +592,7 @@ fn parse_artifact(
 
 fn body_after_front_matter<'a>(full: &'a str) -> Option<&'a str> {
     // Re-use the splitter but tolerate missing.
-    match crate::front_matter::split_front_matter(full) {
+    match crate::metadata::frontmatter::split_front_matter(full) {
         Ok(split) => Some(split.body),
         Err(_) => None,
     }

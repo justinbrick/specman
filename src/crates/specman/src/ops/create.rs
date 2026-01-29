@@ -4,7 +4,7 @@ use crate::dependency_tree::{
 };
 use crate::env::SpecmanEnv;
 use crate::error::SpecmanError;
-use crate::front_matter::{
+use crate::metadata::frontmatter::{
     ArtifactFrontMatter, ImplementationFrontMatter, ScratchFrontMatter, ScratchWorkType,
     SpecificationFrontMatter, split_front_matter,
 };
@@ -347,10 +347,10 @@ fn normalize_create_front_matter_mapping(
         ArtifactFrontMatter::Specification(mut fm) => {
             for dep in fm.dependencies.iter_mut() {
                 match dep {
-                    crate::front_matter::DependencyEntry::Simple(s) => {
+                    crate::metadata::frontmatter::DependencyEntry::Simple(s) => {
                         *s = normalize_persisted_reference_for_create(s, parent, workspace)?;
                     }
-                    crate::front_matter::DependencyEntry::Detailed(obj) => {
+                    crate::metadata::frontmatter::DependencyEntry::Detailed(obj) => {
                         obj.reference = normalize_persisted_reference_for_create(
                             &obj.reference,
                             parent,
@@ -374,10 +374,10 @@ fn normalize_create_front_matter_mapping(
             }
             for dep in fm.dependencies.iter_mut() {
                 match dep {
-                    crate::front_matter::DependencyEntry::Simple(s) => {
+                    crate::metadata::frontmatter::DependencyEntry::Simple(s) => {
                         *s = normalize_persisted_reference_for_create(s, parent, workspace)?;
                     }
-                    crate::front_matter::DependencyEntry::Detailed(obj) => {
+                    crate::metadata::frontmatter::DependencyEntry::Detailed(obj) => {
                         obj.reference = normalize_persisted_reference_for_create(
                             &obj.reference,
                             parent,
@@ -407,14 +407,14 @@ fn normalize_create_front_matter_mapping(
             }
             for dep in fm.dependencies.iter_mut() {
                 match dep {
-                    crate::front_matter::DependencyEntry::Simple(s) => {
+                    crate::metadata::frontmatter::DependencyEntry::Simple(s) => {
                         *s = normalize_persisted_reference_for_create(
                             s,
                             workspace.root(),
                             workspace,
                         )?;
                     }
-                    crate::front_matter::DependencyEntry::Detailed(obj) => {
+                    crate::metadata::frontmatter::DependencyEntry::Detailed(obj) => {
                         obj.reference = normalize_persisted_reference_for_create(
                             &obj.reference,
                             workspace.root(),

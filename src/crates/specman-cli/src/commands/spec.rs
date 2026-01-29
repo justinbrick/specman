@@ -6,7 +6,7 @@ use serde::Serialize;
 use specman::dependency_tree::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree,
 };
-use specman::front_matter::{self, DependencyEntry, ArtifactIdentityFields, SpecificationFrontMatter};
+use specman::metadata::frontmatter::{self, DependencyEntry, ArtifactIdentityFields, SpecificationFrontMatter};
 use specman::ops::{self, CreateSpecOptions, CreateResult, DeleteOptions, DeleteResult};
 
 use crate::commands::CommandResult;
@@ -299,7 +299,7 @@ fn parse_dependencies(raw: Option<&String>) -> Result<Vec<String>, CliError> {
 
 fn read_spec_summary(path: &Path) -> Result<SpecSummary, CliError> {
     let content = fs::read_to_string(path)?;
-    let split = front_matter::split_front_matter(&content)
+    let split = frontmatter::split_front_matter(&content)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
     let fm: SpecificationFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
