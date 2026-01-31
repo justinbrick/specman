@@ -1,6 +1,6 @@
-use crate::dependency_tree::{ArtifactId, DependencyTree};
-use crate::env::SpecmanEnv;
-use crate::error::SpecmanError;
+use crate::graph::tree::{ArtifactId, DependencyTree};
+use crate::core::env::SpecmanEnv;
+use crate::core::error::SpecmanError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

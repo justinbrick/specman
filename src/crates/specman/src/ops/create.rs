@@ -1,15 +1,15 @@
-use crate::dependency_tree::{
+use crate::graph::tree::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree,
     normalize_persisted_reference_for_create,
 };
-use crate::env::SpecmanEnv;
-use crate::error::SpecmanError;
+use crate::core::env::SpecmanEnv;
+use crate::core::error::SpecmanError;
 use crate::metadata::frontmatter::{
     ArtifactFrontMatter, ImplementationFrontMatter, ScratchFrontMatter, ScratchWorkType,
     SpecificationFrontMatter, split_front_matter,
 };
-use crate::persistence::PersistedArtifact;
-use crate::template::{RenderedTemplate, TemplateScenario, TokenMap};
+use crate::storage::persistence::PersistedArtifact;
+use crate::templates::engine::{RenderedTemplate, TemplateScenario, TokenMap};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

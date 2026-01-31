@@ -2,8 +2,7 @@ use std::fmt;
 use std::process::ExitCode;
 
 use clap::error::ErrorKind as ClapErrorKind;
-use specman::SpecmanError;
-use specman::error::LifecycleError;
+use specman::{LifecycleError, SpecmanError};
 
 const EX_OK: u8 = 0;
 const EX_USAGE: u8 = 64;

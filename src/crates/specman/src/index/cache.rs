@@ -7,8 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::dependency_tree::ArtifactKind;
-use crate::error::SpecmanError;
+use crate::graph::tree::ArtifactKind;
+use crate::core::error::SpecmanError;
 use crate::metadata::frontmatter::{
     ArtifactFrontMatter, ImplementationFrontMatter, ScratchFrontMatter, SpecificationFrontMatter,
 };

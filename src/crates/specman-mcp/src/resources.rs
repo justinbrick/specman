@@ -404,7 +404,7 @@ impl SpecmanMcpServer {
         let impl_id = artifact_id.clone();
 
         let report = tokio::task::spawn_blocking(move || {
-            specman::validation::validate_compliance(&root, &impl_id)
+            specman::validate_compliance(&root, &impl_id)
         })
         .await
         .map_err(|e| {

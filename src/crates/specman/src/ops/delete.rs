@@ -1,7 +1,7 @@
-use crate::dependency_tree::{ArtifactId, DependencyTree};
-use crate::env::SpecmanEnv;
-use crate::error::{LifecycleError, SpecmanError};
-use crate::persistence::{ArtifactRemovalStore, RemovedArtifact};
+use crate::graph::tree::{ArtifactId, DependencyTree};
+use crate::core::env::SpecmanEnv;
+use crate::core::error::{LifecycleError, SpecmanError};
+use crate::storage::persistence::{ArtifactRemovalStore, RemovedArtifact};
 
 #[derive(Clone, Debug, Default)]
 pub struct DeleteOptions {

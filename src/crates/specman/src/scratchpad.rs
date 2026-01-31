@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::template::{TemplateDescriptor, TemplateProvenance, TokenMap};
+use crate::templates::engine::{TemplateDescriptor, TemplateProvenance, TokenMap};
 
 /// Standard scratch pad profiles aligned with SpecMan work types.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]

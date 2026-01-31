@@ -8,10 +8,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::error::SpecmanError;
+use crate::core::error::SpecmanError;
 
 use crate::metadata::frontmatter::{self, ArtifactFrontMatter, DependencyEntry, FrontMatterKind};
-use crate::shared_function::SemVer;
+use crate::core::shared::SemVer;
 use crate::workspace::{normalize_workspace_path, WorkspaceLocator, WorkspacePaths};
 use std::fmt;
 

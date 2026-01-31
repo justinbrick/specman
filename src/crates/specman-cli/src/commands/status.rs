@@ -4,10 +4,11 @@ use std::time::Duration;
 
 use clap::Command;
 use serde::Serialize;
-use specman::dependency_tree::{ArtifactId, ArtifactKind};
-use specman::reference_validation::{
+use specman::{
+    ArtifactId, ArtifactKind,
     HttpsMethod, HttpsValidationMode, HttpsValidationOptions, IssueSeverity,
     ReferenceValidationOptions, ReferenceValidationStatus, TransitiveOptions,
+    validate_references,
 };
 
 use crate::commands::CommandResult;
@@ -80,7 +81,7 @@ pub fn run(session: &CliSession, matches: &clap::ArgMatches) -> Result<CommandRe
             }
         }
 
-        match specman::reference_validation::validate_references(
+        match validate_references(
             &path,
             &session.workspace_paths,
             options.clone(),
@@ -179,7 +180,7 @@ fn read_dir_artifacts(dir: PathBuf, kind: ArtifactKind) -> Vec<ArtifactId> {
     result
 }
 
-fn artifact_path(paths: &specman::workspace::WorkspacePaths, artifact: &ArtifactId) -> String {
+fn artifact_path(paths: &specman::WorkspacePaths, artifact: &ArtifactId) -> String {
     let rel = match artifact.kind {
         ArtifactKind::Specification => paths.spec_dir().join(&artifact.name).join("spec.md"),
         ArtifactKind::Implementation => paths.impl_dir().join(&artifact.name).join("impl.md"),

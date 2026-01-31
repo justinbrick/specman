@@ -6,7 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::error::SpecmanError;
+use crate::core::error::SpecmanError;
 
 pub type TokenMap = BTreeMap<String, serde_json::Value>;
 

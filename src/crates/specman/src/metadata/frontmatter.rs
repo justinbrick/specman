@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use serde_yaml::{Mapping, Value as YamlValue};
 
-use crate::dependency_tree::ArtifactId;
-use crate::error::SpecmanError;
-use crate::persistence::PersistedArtifact;
+use crate::graph::tree::ArtifactId;
+use crate::core::error::SpecmanError;
+use crate::storage::persistence::PersistedArtifact;
 
 /// Shared identity fields repeated across specification, implementation, and scratch metadata
 /// per the SpecMan Data Model requirements.

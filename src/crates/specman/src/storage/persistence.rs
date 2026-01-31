@@ -2,11 +2,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::adapter::DataModelAdapter;
-use crate::dependency_tree::{ArtifactId, ArtifactKind, DependencyInventory, DependencyTree};
-use crate::error::SpecmanError;
+use crate::storage::adapter::DataModelAdapter;
+use crate::graph::tree::{ArtifactId, ArtifactKind, DependencyInventory, DependencyTree};
+use crate::core::error::SpecmanError;
 use crate::metadata::frontmatter::split_front_matter;
-use crate::template::{RenderedTemplate, TemplateProvenance};
+use crate::templates::engine::{RenderedTemplate, TemplateProvenance};
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
 
 /// Result of persisting a rendered template to the workspace filesystem.
@@ -331,7 +331,7 @@ fn ensure_safe_name(name: &str) -> Result<(), SpecmanError> {
 mod tests {
     use super::*;
     use crate::adapter::DataModelAdapter;
-    use crate::dependency_tree::{ArtifactSummary, FilesystemDependencyMapper};
+    use crate::graph::tree::{ArtifactSummary, FilesystemDependencyMapper};
     use crate::template::TemplateDescriptor;
     use crate::workspace::FilesystemWorkspaceLocator;
     use std::sync::{Arc, Mutex};

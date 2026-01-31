@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::dependency_tree::ArtifactId;
+use crate::graph::tree::ArtifactId;
 
 /// Structured lifecycle failures surfaced by higher-level lifecycle orchestration.
 #[derive(Debug, Error)]

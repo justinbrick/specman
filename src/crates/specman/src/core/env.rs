@@ -1,9 +1,9 @@
-use crate::adapter::DataModelAdapter;
-use crate::dependency_tree::{DependencyMapping, FilesystemDependencyMapper};
-use crate::error::SpecmanError;
-use crate::persistence::WorkspacePersistence;
-use crate::template::{MarkdownTemplateEngine, TemplateEngine};
-use crate::template_catalog::TemplateCatalog;
+use crate::storage::adapter::DataModelAdapter;
+use crate::graph::tree::{DependencyMapping, FilesystemDependencyMapper};
+use crate::core::error::SpecmanError;
+use crate::storage::persistence::WorkspacePersistence;
+use crate::templates::engine::{MarkdownTemplateEngine, TemplateEngine};
+use crate::templates::catalog::TemplateCatalog;
 use crate::workspace::{FilesystemWorkspaceLocator, WorkspaceLocator};
 use std::path::Path;
 use std::sync::Arc;

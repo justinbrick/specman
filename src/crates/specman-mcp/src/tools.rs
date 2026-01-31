@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use specman::{
     ArtifactId, ArtifactKind, FrontMatterUpdate, IdentityUpdate, ImplementationUpdate,
-    PersistedArtifact, ScratchUpdate, SpecificationUpdate, SpecmanEnv, WorkspaceLocator, ops,
+    PersistedArtifact, ScratchUpdate, SpecificationUpdate, SpecmanEnv, WorkspaceLocator,
 };
 
 use crate::error::{McpError, invalid_params, to_mcp_error};
@@ -345,11 +345,11 @@ pub(crate) struct UpdateArtifactVariantArgs {
     // Scratch specific
     pub target: Option<String>,
     pub branch: Option<String>,
-    pub work_type: Option<specman::metadata::ScratchWorkType>,
+    pub work_type: Option<specman::ScratchWorkType>,
 
     // Collections
-    pub dependencies: Option<Vec<specman::metadata::DependencyEntry>>,
-    pub references: Option<Vec<specman::metadata::ReferenceEntry>>,
+    pub dependencies: Option<Vec<specman::DependencyEntry>>,
+    pub references: Option<Vec<specman::ReferenceEntry>>,
 }
 
 impl UpdateArtifactArgs {
@@ -780,9 +780,9 @@ Constraints:\n\
                     .await?;
                 validate_slug(&name, "specification")?;
 
-                let result = ops::create_specification(
+                let result = specman::create_specification(
                     &env,
-                    ops::CreateSpecOptions {
+                    specman::CreateSpecOptions {
                         name: name.clone(),
                         title: suggestion.title,
                         dry_run: false,
@@ -792,8 +792,8 @@ Constraints:\n\
                 .map_err(to_mcp_error)?;
 
                 match result {
-                    ops::CreateResult::Persisted(p) => p,
-                    ops::CreateResult::DryRun(_) => unreachable!(),
+                    specman::CreateResult::Persisted(p) => p,
+                    specman::CreateResult::DryRun(_) => unreachable!(),
                 }
             }
             CreateArtifactArgs::Implementation {
@@ -835,9 +835,9 @@ Constraints: name must be a slug (lowercase, digits, hyphens).\n",
                     .await?;
                 validate_slug(&name, "implementation")?;
 
-                let result = ops::create_implementation(
+                let result = specman::create_implementation(
                     &env,
-                    ops::CreateImplOptions {
+                    specman::CreateImplOptions {
                         name: name.clone(),
                         target: target_handle,
                         dry_run: false,
@@ -847,8 +847,8 @@ Constraints: name must be a slug (lowercase, digits, hyphens).\n",
                 .map_err(to_mcp_error)?;
 
                 match result {
-                    ops::CreateResult::Persisted(p) => p,
-                    ops::CreateResult::DryRun(_) => unreachable!(),
+                    specman::CreateResult::Persisted(p) => p,
+                    specman::CreateResult::DryRun(_) => unreachable!(),
                 }
             }
             CreateArtifactArgs::ScratchPad {
@@ -911,9 +911,9 @@ Constraints:\n\
                 let branch =
                     default_branch_from_target(&target, scratch_work_type_key(&work_type), &name);
 
-                let result = ops::create_scratch_pad(
+                let result = specman::create_scratch_pad(
                     &env,
-                    ops::CreateScratchOptions {
+                    specman::CreateScratchOptions {
                         name: name.clone(),
                         target: resolved_target,
                         work_type,
@@ -925,8 +925,8 @@ Constraints:\n\
                 .map_err(to_mcp_error)?;
 
                 match result {
-                    ops::CreateResult::Persisted(p) => p,
-                    ops::CreateResult::DryRun(_) => unreachable!(),
+                    specman::CreateResult::Persisted(p) => p,
+                    specman::CreateResult::DryRun(_) => unreachable!(),
                 }
             }
         };
@@ -977,8 +977,8 @@ Enter an alternate name, or leave blank to accept."
     fn build_scratch_work_type(
         &self,
         kind: &ScratchKind,
-    ) -> specman::metadata::frontmatter::ScratchWorkType {
-        use specman::metadata::frontmatter::{
+    ) -> specman::ScratchWorkType {
+        use specman::{
             ScratchFixMetadata, ScratchRefactorMetadata, ScratchRevisionMetadata, ScratchWorkType,
             ScratchWorkloadExtras,
         };
@@ -1163,9 +1163,9 @@ fn default_branch_from_target(target: &str, work_type: &str, scratch_name: &str)
 }
 
 fn scratch_work_type_key(
-    work_type: &specman::metadata::frontmatter::ScratchWorkType,
+    work_type: &specman::ScratchWorkType,
 ) -> &'static str {
-    use specman::metadata::frontmatter::ScratchWorkType;
+    use specman::ScratchWorkType;
     match work_type {
         ScratchWorkType::Draft(_) => "draft",
         ScratchWorkType::Revision(_) => "revision",

@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use thiserror::Error;
 
-use crate::error::SpecmanError;
+use crate::core::error::SpecmanError;
 
 #[derive(Debug, Error)]
 pub enum WorkspaceError {

@@ -1,3 +1,6 @@
+pub mod analysis;
+pub mod references;
+
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::Read;
@@ -9,12 +12,10 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::dependency_tree::{
-    ArtifactId, ArtifactKind, DependencyMapping, FilesystemDependencyMapper,
-};
-use crate::error::SpecmanError;
+use crate::core::error::SpecmanError;
+use crate::graph::tree::{ArtifactId, ArtifactKind, DependencyMapping, FilesystemDependencyMapper};
 use crate::metadata::frontmatter::{ImplementationFrontMatter, split_front_matter};
-use crate::structure::build_workspace_index_for_artifacts;
+use crate::index::build_workspace_index_for_artifacts;
 use crate::workspace::{
     FilesystemWorkspaceLocator, WorkspaceLocator, normalize_workspace_path, workspace_relative_path,
 };
@@ -411,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_compliance_report() {
-        use crate::dependency_tree::ArtifactKind;
+        use crate::graph::tree::ArtifactKind;
 
         let spec_id = ArtifactId {
             kind: ArtifactKind::Specification,

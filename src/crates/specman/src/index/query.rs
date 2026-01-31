@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::error::SpecmanError;
+use crate::core::error::SpecmanError;
 
 use super::index::{ConstraintIdentifier, HeadingIdentifier, WorkspaceIndex};
 

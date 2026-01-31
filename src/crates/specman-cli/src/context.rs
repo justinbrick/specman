@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use specman::SpecmanEnv;
-use specman::workspace::{FilesystemWorkspaceLocator, WorkspaceLocator, WorkspacePaths};
+use specman::{FilesystemWorkspaceLocator, WorkspaceLocator, WorkspacePaths};
 use specman::{DataModelAdapter, InMemoryAdapter};
 use std::sync::Arc;
 

@@ -2,7 +2,7 @@ use std::env;
 use std::path::{Component, Path, PathBuf};
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use specman::workspace::{WorkspaceDiscovery, WorkspaceError};
+use specman::{WorkspaceDiscovery, WorkspaceError};
 
 use crate::commands::CommandResult;
 use crate::error::{CliError, ExitStatus};

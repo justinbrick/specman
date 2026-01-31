@@ -3,12 +3,13 @@ use std::path::Path;
 
 use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum, builder::EnumValueParser};
 use serde::Serialize;
-use specman::dependency_tree::{ArtifactId, ArtifactKind, DependencyTree};
-use specman::metadata::frontmatter::{
-    self, ScratchFrontMatter, ScratchRefactorMetadata,
+use specman::{
+    ArtifactId, ArtifactKind, DependencyTree,
+    ScratchFrontMatter, ScratchRefactorMetadata,
     ScratchRevisionMetadata, ScratchWorkType, ScratchWorkloadExtras,
+    CreateResult, CreateScratchOptions, DeleteOptions, DeleteResult,
+    create_scratch_pad, delete_artifact, split_front_matter,
 };
-use specman::ops::{self, CreateResult, CreateScratchOptions, DeleteOptions, DeleteResult};
 
 use crate::commands::CommandResult;
 use crate::commands::dependencies::{self, DependencyScope};
@@ -124,7 +125,7 @@ fn create_scratchpad(
         ScratchType::Revision => ScratchWorkType::Revision(ScratchRevisionMetadata::default()),
     };
 
-    let result = ops::create_scratch_pad(
+    let result = create_scratch_pad(
         &session.env,
         CreateScratchOptions {
             name: name.clone(),
@@ -184,7 +185,7 @@ fn delete_scratchpad(
         }
     };
 
-    let impact = specman::analysis::check_deletion_impact(&session.env, &artifact)
+    let impact = specman::check_deletion_impact(&session.env, &artifact)
         .map_err(CliError::from)?;
 
     if impact.blocked && !forced {
@@ -194,7 +195,7 @@ fn delete_scratchpad(
         ));
     }
 
-    let result = ops::delete_artifact(
+    let result = delete_artifact(
         &session.env,
         &artifact,
         DeleteOptions {
@@ -329,7 +330,7 @@ fn scratch_dependencies(
 
 fn read_scratch_summary(root: &Path, path: &Path) -> Result<ScratchSummary, CliError> {
     let content = fs::read_to_string(path)?;
-    let split = frontmatter::split_front_matter(&content)
+    let split = split_front_matter(&content)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
     let fm: ScratchFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;

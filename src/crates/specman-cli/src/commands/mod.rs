@@ -1,5 +1,5 @@
 use serde::Serialize;
-use specman::dependency_tree::DependencyTree;
+use specman::DependencyTree;
 
 use crate::error::ExitStatus;
 

@@ -3,11 +3,12 @@ use std::path::{Path, PathBuf};
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
-use specman::dependency_tree::{
+use specman::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree,
+    ImplementationFrontMatter, SpecificationFrontMatter, ArtifactIdentityFields, ReferenceEntry,
+    CreateImplOptions, CreateResult, DeleteOptions, DeleteResult,
+    create_implementation, delete_artifact, split_front_matter,
 };
-use specman::metadata::frontmatter::{self, ImplementationFrontMatter, SpecificationFrontMatter, ArtifactIdentityFields, ReferenceEntry};
-use specman::ops::{self, CreateImplOptions, CreateResult, DeleteOptions, DeleteResult};
 
 use crate::commands::CommandResult;
 use crate::commands::dependencies::{self, DependencyScope};
@@ -112,7 +113,7 @@ fn create_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ..Default::default()
     };
 
-    let result = ops::create_implementation(
+    let result = create_implementation(
         &session.env,
         CreateImplOptions {
             name: name.clone(),
@@ -154,7 +155,7 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ));
     }
 
-    let impact = specman::analysis::check_deletion_impact(&session.env, &artifact)
+    let impact = specman::check_deletion_impact(&session.env, &artifact)
         .map_err(CliError::from)?;
 
     if impact.blocked && !forced {
@@ -164,7 +165,7 @@ fn delete_impl(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ));
     }
     
-    let result = ops::delete_artifact(
+    let result = delete_artifact(
         &session.env,
         &artifact,
         DeleteOptions {
@@ -301,7 +302,7 @@ fn impl_dependencies(
 
 fn read_impl_summary(root: &Path, path: &Path) -> Result<ImplSummary, CliError> {
     let content = fs::read_to_string(path)?;
-    let split = frontmatter::split_front_matter(&content)
+    let split = split_front_matter(&content)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
     let fm: ImplementationFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
@@ -376,7 +377,7 @@ fn spec_identifier_from_locator(root: &Path, locator: &str) -> Option<String> {
         return Some(locator.to_string());
     }
     let content = fs::read_to_string(&resolved).ok()?;
-    let split = frontmatter::split_front_matter(&content).ok()?;
+    let split = split_front_matter(&content).ok()?;
     let fm: SpecificationFrontMatter = serde_yaml::from_str(split.yaml).ok()?;
     match (fm.identity.name, fm.identity.version) {
         (Some(name), Some(version)) => Some(format!("{name}@{version}")),

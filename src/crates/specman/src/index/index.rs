@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::dependency_tree::ArtifactKind;
+use crate::graph::tree::ArtifactKind;
 use crate::metadata::frontmatter::ArtifactFrontMatter;
 
 pub const WORKSPACE_INDEX_SCHEMA_VERSION: u32 = 2;

@@ -3,11 +3,12 @@ use std::path::Path;
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
-use specman::dependency_tree::{
+use specman::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree,
+    DependencyEntry, ArtifactIdentityFields, SpecificationFrontMatter,
+    CreateSpecOptions, CreateResult, DeleteOptions, DeleteResult,
+    create_specification, delete_artifact, split_front_matter,
 };
-use specman::metadata::frontmatter::{self, DependencyEntry, ArtifactIdentityFields, SpecificationFrontMatter};
-use specman::ops::{self, CreateSpecOptions, CreateResult, DeleteOptions, DeleteResult};
 
 use crate::commands::CommandResult;
 use crate::commands::dependencies::{self, DependencyScope};
@@ -100,7 +101,7 @@ fn create_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ..Default::default()
     };
 
-    let result = ops::create_specification(
+    let result = create_specification(
         &session.env,
         CreateSpecOptions {
             name: name.clone(),
@@ -142,7 +143,7 @@ fn delete_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ));
     }
 
-    let impact = specman::analysis::check_deletion_impact(&session.env, &artifact)
+    let impact = specman::check_deletion_impact(&session.env, &artifact)
         .map_err(CliError::from)?;
 
     if impact.blocked && !forced {
@@ -152,7 +153,7 @@ fn delete_spec(session: &CliSession, matches: &ArgMatches) -> Result<CommandResu
         ));
     }
     
-    let result = ops::delete_artifact(
+    let result = delete_artifact(
         &session.env,
         &artifact,
         DeleteOptions {
@@ -299,7 +300,7 @@ fn parse_dependencies(raw: Option<&String>) -> Result<Vec<String>, CliError> {
 
 fn read_spec_summary(path: &Path) -> Result<SpecSummary, CliError> {
     let content = fs::read_to_string(path)?;
-    let split = frontmatter::split_front_matter(&content)
+    let split = split_front_matter(&content)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
     let fm: SpecificationFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;

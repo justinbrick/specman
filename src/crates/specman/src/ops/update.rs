@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use crate::dependency_tree::{ArtifactId, ArtifactKind, normalize_persisted_reference};
-use crate::error::SpecmanError;
+use crate::graph::tree::{ArtifactId, ArtifactKind, normalize_persisted_reference};
+use crate::core::error::SpecmanError;
 use crate::metadata::frontmatter::{
     self, ArtifactFrontMatter, ArtifactIdentityFields, DependencyEntry, FrontMatterKind,
     ImplementationFrontMatter, ReferenceEntry, ScratchFrontMatter, SpecificationFrontMatter,
@@ -282,7 +282,7 @@ fn extract_front_matter_kind(kind: &ArtifactKind) -> FrontMatterKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dependency_tree::{ArtifactId, ArtifactKind};
+    use crate::graph::tree::{ArtifactId, ArtifactKind};
     use crate::metadata::update_model::{IdentityUpdate, SpecificationUpdate};
     use std::path::PathBuf;
 

@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 use std::process::ExitCode;
 
 use serde_json::json;
-use specman::dependency_tree::{ArtifactKind, ArtifactSummary, DependencyEdge, DependencyTree};
-use specman::template::TemplateLocator;
+use specman::{ArtifactKind, ArtifactSummary, DependencyEdge, DependencyTree, TemplateLocator};
 
 use crate::commands::CommandResult;
 use crate::commands::dependencies::{self, DependencyScope, DependencyView};

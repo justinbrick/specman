@@ -8,19 +8,20 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
 
-use crate::error::SpecmanError;
+use crate::core::error::SpecmanError;
 use crate::scratchpad::{ScratchPadProfile, ScratchPadProfileKind};
-use crate::template::{
-    TemplateDescriptor, TemplateLocator, TemplateProvenance, TemplateScenario, TemplateTier,
-};
 use crate::workspace::{WorkspacePaths, workspace_relative_path};
 
-const EMBEDDED_SPEC: &str = include_str!("templates/spec/spec.md");
-const EMBEDDED_IMPL: &str = include_str!("templates/impl/impl.md");
-const EMBEDDED_SCRATCH_REF: &str = include_str!("templates/scratch/ref.md");
-const EMBEDDED_SCRATCH_FEAT: &str = include_str!("templates/scratch/feat.md");
-const EMBEDDED_SCRATCH_FIX: &str = include_str!("templates/scratch/fix.md");
-const EMBEDDED_SCRATCH_REVISION: &str = include_str!("templates/scratch/revision.md");
+use crate::templates::engine::{
+    TemplateDescriptor, TemplateLocator, TemplateProvenance, TemplateScenario, TemplateTier,
+};
+
+const EMBEDDED_SPEC: &str = include_str!("spec/spec.md");
+const EMBEDDED_IMPL: &str = include_str!("impl/impl.md");
+const EMBEDDED_SCRATCH_REF: &str = include_str!("scratch/ref.md");
+const EMBEDDED_SCRATCH_FEAT: &str = include_str!("scratch/feat.md");
+const EMBEDDED_SCRATCH_FIX: &str = include_str!("scratch/fix.md");
+const EMBEDDED_SCRATCH_REVISION: &str = include_str!("scratch/revision.md");
 
 /// Canonical template catalog implementation backed by workspace overrides,
 /// pointer files, remote caches, and embedded defaults.
@@ -491,8 +492,7 @@ fn sanitize_key(raw: &str) -> String {
 }
 
 fn workspace_relative(root: &Path, path: &Path) -> String {
-    workspace_relative_path(root, path)
-        .unwrap_or_else(|| path.to_string_lossy().to_string())
+    workspace_relative_path(root, path).unwrap_or_else(|| path.to_string_lossy().to_string())
 }
 
 struct TemplateCache {

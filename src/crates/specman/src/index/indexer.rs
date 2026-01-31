@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use unicode_normalization::UnicodeNormalization;
 
-use crate::dependency_tree::ArtifactKind;
-use crate::error::SpecmanError;
+use crate::graph::tree::ArtifactKind;
+use crate::core::error::SpecmanError;
 use crate::metadata::frontmatter::{ArtifactFrontMatter, optional_front_matter};
 use crate::workspace::{
     WorkspaceLocator, WorkspacePaths, normalize_workspace_path, workspace_relative_path,

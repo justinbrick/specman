@@ -1,4 +1,4 @@
-use crate::error::SpecmanError;
+use crate::core::error::SpecmanError;
 use crate::metadata::frontmatter::{ArtifactFrontMatter, split_front_matter};
 use std::fs;
 use std::path::Path;

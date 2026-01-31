@@ -1,6 +1,7 @@
 use serde::Serialize;
-use specman::workspace::WorkspacePaths;
-use specman::{ResolvedTemplate, TemplateCatalog as LibraryTemplateCatalog, TemplateScenario};
+use specman::{
+    ResolvedTemplate, TemplateCatalog as LibraryTemplateCatalog, TemplateScenario, WorkspacePaths,
+};
 use std::fmt;
 
 use crate::error::CliError;
