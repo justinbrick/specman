@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use rmcp::RoleServer;
 use rmcp::elicit_safe;
 use rmcp::model::{
-    Content, ContextInclusion, CreateMessageRequestParam, Role as SamplingRole, SamplingMessage,
+    Content, ContextInclusion, CreateMessageRequestParams, Role as SamplingRole, SamplingMessage,
 };
 use rmcp::service::Peer;
 use specman::apply_front_matter_update;
@@ -974,10 +974,7 @@ Enter an alternate name, or leave blank to accept."
         Ok(proposed)
     }
 
-    fn build_scratch_work_type(
-        &self,
-        kind: &ScratchKind,
-    ) -> specman::ScratchWorkType {
+    fn build_scratch_work_type(&self, kind: &ScratchKind) -> specman::ScratchWorkType {
         use specman::{
             ScratchFixMetadata, ScratchRefactorMetadata, ScratchRevisionMetadata, ScratchWorkType,
             ScratchWorkloadExtras,
@@ -1011,7 +1008,7 @@ Enter an alternate name, or leave blank to accept."
         let peer = peer.ok_or_else(|| {
             invalid_params("sampling is required to infer missing inputs, but no peer is available")
         })?;
-        let request = CreateMessageRequestParam {
+        let request = CreateMessageRequestParams {
             messages: vec![SamplingMessage {
                 role: SamplingRole::User,
                 content: Content::text(prompt.to_string()),
@@ -1025,6 +1022,8 @@ Enter an alternate name, or leave blank to accept."
             max_tokens: 1200,
             stop_sequences: None,
             metadata: None,
+            meta: None,
+            task: None,
         };
 
         let response = peer
@@ -1162,9 +1161,7 @@ fn default_branch_from_target(target: &str, work_type: &str, scratch_name: &str)
     format!("{target_slug}/{work_type}/{scratch_name}")
 }
 
-fn scratch_work_type_key(
-    work_type: &specman::ScratchWorkType,
-) -> &'static str {
+fn scratch_work_type_key(work_type: &specman::ScratchWorkType) -> &'static str {
     use specman::ScratchWorkType;
     match work_type {
         ScratchWorkType::Draft(_) => "draft",

@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    GetPromptRequestParam, GetPromptResult, ListPromptsResult, ListResourceTemplatesResult,
-    ListResourcesResult, PaginatedRequestParam, RawResource, RawResourceTemplate,
-    ReadResourceRequestParam, ReadResourceResult, Resource, ResourceContents, ResourceTemplate,
+    GetPromptRequestParams, GetPromptResult, ListPromptsResult, ListResourceTemplatesResult,
+    ListResourcesResult, PaginatedRequestParams, RawResource, RawResourceTemplate,
+    ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents, ResourceTemplate,
     ServerCapabilities, ServerInfo,
 };
 use rmcp::prompt_handler;
@@ -403,17 +403,16 @@ impl SpecmanMcpServer {
         let root = workspace.root().to_path_buf();
         let impl_id = artifact_id.clone();
 
-        let report = tokio::task::spawn_blocking(move || {
-            specman::validate_compliance(&root, &impl_id)
-        })
-        .await
-        .map_err(|e| {
-            to_mcp_error(SpecmanError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                e,
-            )))
-        })?
-        .map_err(to_mcp_error)?;
+        let report =
+            tokio::task::spawn_blocking(move || specman::validate_compliance(&root, &impl_id))
+                .await
+                .map_err(|e| {
+                    to_mcp_error(SpecmanError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e,
+                    )))
+                })?
+                .map_err(to_mcp_error)?;
 
         let json = serde_json::to_string(&report)
             .map_err(|err| to_mcp_error(SpecmanError::Serialization(err.to_string())))?;
@@ -630,6 +629,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                 title: Some("Specification content".to_string()),
                 description: Some("Read a SpecMan specification as a resource".to_string()),
                 mime_type: Some("text/markdown".to_string()),
+                icons: None,
             },
             annotations: None,
         },
@@ -640,6 +640,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                 title: Some("Implementation content".to_string()),
                 description: Some("Read a SpecMan implementation as a resource".to_string()),
                 mime_type: Some("text/markdown".to_string()),
+                icons: None,
             },
             annotations: None,
         },
@@ -650,6 +651,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                 title: Some("Scratch pad content".to_string()),
                 description: Some("Read a SpecMan scratch pad as a resource".to_string()),
                 mime_type: Some("text/markdown".to_string()),
+                icons: None,
             },
             annotations: None,
         },
@@ -660,6 +662,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                 title: Some("Specification dependency tree".to_string()),
                 description: Some("Return dependency tree JSON for a specification".to_string()),
                 mime_type: Some("application/json".to_string()),
+                icons: None,
             },
             annotations: None,
         },
@@ -671,6 +674,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                 title: Some("Specification constraints index".to_string()),
                 description: Some("Return constraint index JSON for a specification".to_string()),
                 mime_type: Some("application/json".to_string()),
+                icons: None,
             },
             annotations: None,
         },
@@ -681,6 +685,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                 title: Some("Specification constraint content".to_string()),
                 description: Some("Read a specific constraint group as Markdown".to_string()),
                 mime_type: Some("text/markdown".to_string()),
+                icons: None,
             },
             annotations: None,
         },
@@ -691,6 +696,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                 title: Some("Implementation dependency tree".to_string()),
                 description: Some("Return dependency tree JSON for an implementation".to_string()),
                 mime_type: Some("application/json".to_string()),
+                icons: None,
             },
             annotations: None,
         },
@@ -704,6 +710,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                         .to_string(),
                 ),
                 mime_type: Some("application/json".to_string()),
+                icons: None,
             },
             annotations: None,
         },
@@ -716,6 +723,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
                     "Return compliance coverage JSON for an implementation".to_string(),
                 ),
                 mime_type: Some("application/json".to_string()),
+                icons: None,
             },
             annotations: None,
         },
@@ -726,7 +734,7 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
 impl ServerHandler for SpecmanMcpServer {
     async fn list_resources(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
         debug!("list_resources requested");
@@ -738,7 +746,7 @@ impl ServerHandler for SpecmanMcpServer {
 
     fn list_resource_templates(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListResourceTemplatesResult, McpError>> + Send + '_
     {
@@ -749,7 +757,7 @@ impl ServerHandler for SpecmanMcpServer {
 
     async fn read_resource(
         &self,
-        request: ReadResourceRequestParam,
+        request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
         info!(uri = %request.uri, "read_resource requested");

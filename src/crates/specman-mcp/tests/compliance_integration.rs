@@ -3,16 +3,18 @@ use std::path::Path;
 
 use futures::channel::mpsc;
 use rmcp::model::{
-    ClientRequest, ReadResourceRequest, ReadResourceRequestParam, ResourceContents, ServerResult,
+    ClientRequest, ReadResourceRequest, ReadResourceRequestParams, ResourceContents,
+    ServerResult,
 };
-use rmcp::service::{RoleClient, RoleServer, ServiceError, serve_client, serve_server};
+use rmcp::{RoleClient, RoleServer, serve_client, serve_server};
+use rmcp::service::{ServiceError, RunningService};
 use specman_mcp::SpecmanMcpServer;
 use tempfile::TempDir;
 
 struct TestWorkspace {
     _temp: TempDir,
-    _server: rmcp::service::RunningService<RoleServer, SpecmanMcpServer>,
-    client: rmcp::service::RunningService<RoleClient, ()>,
+    _server: RunningService<RoleServer, SpecmanMcpServer>,
+    client: RunningService<RoleClient, ()>,
 }
 
 impl TestWorkspace {
@@ -53,8 +55,9 @@ impl TestWorkspace {
     }
 
     async fn read_text_resource(&self, uri: &str) -> Result<(String, String), ServiceError> {
-        let request = ReadResourceRequest::new(ReadResourceRequestParam {
+        let request = ReadResourceRequest::new(ReadResourceRequestParams {
             uri: uri.to_string(),
+            meta: None,
         });
 
         let result = self
@@ -63,21 +66,31 @@ impl TestWorkspace {
             .await?;
 
         match result {
-            ServerResult::ReadResourceResult(r) => {
-                let first = r
-                    .contents
-                    .into_iter()
-                    .next()
-                    .ok_or(ServiceError::UnexpectedResponse)?;
+            ServerResult::ReadResourceResult(result) => {
+                let content = result.contents.into_iter().next().ok_or_else(|| {
+                    ServiceError::McpError(rmcp::model::ErrorData {
+                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                        message: "No content returned".into(),
+                        data: None,
+                    })
+                })?;
 
-                match first {
+                match content {
                     ResourceContents::TextResourceContents {
-                        mime_type, text, ..
+                        text, mime_type, ..
                     } => Ok((mime_type.unwrap_or_default(), text)),
-                    _ => Err(ServiceError::UnexpectedResponse),
+                    _ => Err(ServiceError::McpError(rmcp::model::ErrorData {
+                        code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                        message: "Expected text content".into(),
+                        data: None,
+                    })),
                 }
             }
-            _ => Err(ServiceError::UnexpectedResponse),
+            _ => Err(ServiceError::McpError(rmcp::model::ErrorData {
+                code: rmcp::model::ErrorCode::INVALID_PARAMS,
+                message: "Unexpected result type".into(),
+                data: None,
+            })),
         }
     }
 }

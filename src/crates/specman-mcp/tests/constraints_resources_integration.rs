@@ -4,17 +4,18 @@ use std::path::Path;
 
 use futures::channel::mpsc;
 use rmcp::model::{
-    ClientRequest, ListResourceTemplatesRequest, ReadResourceRequest, ReadResourceRequestParam,
+    ClientRequest, ListResourceTemplatesRequest, ReadResourceRequest, ReadResourceRequestParams,
     ResourceContents, ServerResult,
 };
-use rmcp::service::{RoleClient, RoleServer, ServiceError, serve_client, serve_server};
+use rmcp::{RoleClient, RoleServer, serve_client, serve_server};
+use rmcp::service::{ServiceError, RunningService};
 use specman_mcp::SpecmanMcpServer;
 use tempfile::TempDir;
 
 struct TestWorkspace {
     _temp: TempDir,
-    _server: rmcp::service::RunningService<RoleServer, SpecmanMcpServer>,
-    client: rmcp::service::RunningService<RoleClient, ()>,
+    _server: RunningService<RoleServer, SpecmanMcpServer>,
+    client: RunningService<RoleClient, ()>,
 }
 
 impl TestWorkspace {
@@ -73,8 +74,9 @@ impl TestWorkspace {
     }
 
     async fn read_text_resource(&self, uri: &str) -> Result<(String, String), ServiceError> {
-        let request = ReadResourceRequest::new(ReadResourceRequestParam {
+        let request = ReadResourceRequest::new(ReadResourceRequestParams {
             uri: uri.to_string(),
+            meta: None,
         });
 
         let result = self
