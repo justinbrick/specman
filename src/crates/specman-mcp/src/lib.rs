@@ -1077,7 +1077,7 @@ mod tests {
     }
 
     fn body_of(doc: &str) -> &str {
-        specman::metadata::frontmatter::split_front_matter(doc)
+        specman::split_front_matter(doc)
             .expect("front matter split")
             .body
     }

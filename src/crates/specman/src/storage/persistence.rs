@@ -2,10 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::storage::adapter::DataModelAdapter;
-use crate::graph::tree::{ArtifactId, ArtifactKind, DependencyInventory, DependencyTree};
 use crate::core::error::SpecmanError;
+use crate::graph::tree::{ArtifactId, ArtifactKind, DependencyInventory, DependencyTree};
 use crate::metadata::frontmatter::split_front_matter;
+use crate::storage::adapter::DataModelAdapter;
 use crate::templates::engine::{RenderedTemplate, TemplateProvenance};
 use crate::workspace::{WorkspaceLocator, WorkspacePaths};
 
@@ -330,9 +330,9 @@ fn ensure_safe_name(name: &str) -> Result<(), SpecmanError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapter::DataModelAdapter;
     use crate::graph::tree::{ArtifactSummary, FilesystemDependencyMapper};
-    use crate::template::TemplateDescriptor;
+    use crate::storage::adapter::DataModelAdapter;
+    use crate::templates::engine::TemplateDescriptor;
     use crate::workspace::FilesystemWorkspaceLocator;
     use std::sync::{Arc, Mutex};
     use tempfile::tempdir;
@@ -577,7 +577,8 @@ mod tests {
 
         let locator = Arc::new(locator);
         let dependency_mapper = FilesystemDependencyMapper::new(locator.clone());
-        let persistence = WorkspacePersistence::with_inventory(locator, dependency_mapper.inventory_handle());
+        let persistence =
+            WorkspacePersistence::with_inventory(locator, dependency_mapper.inventory_handle());
 
         let anchor = artifact(ArtifactKind::Specification, "anchor");
         let anchor_doc = "---\nname: anchor\nversion: '0.1.0'\ndependencies: []\n---\n# Anchor\n";
