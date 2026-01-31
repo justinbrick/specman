@@ -8,6 +8,5 @@
   - includes checking all of the specs + implementations:
   - ensures references are valid (references should include inline links, dependencies, references, and the location of the source code for implementations)
   - ensures no cyclic dependencies
-- ref(specman-library): remove ops-based updating / editing
 - feat(specman-cli): list constraints
 - feat(specman-cli): read constraint content
