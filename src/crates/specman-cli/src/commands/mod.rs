@@ -14,10 +14,7 @@ pub mod templates;
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CommandResult {
-    Status {
-        reports: Vec<status::StatusReport>,
-        healthy: bool,
-    },
+    Status(specman::WorkspaceStatusReport),
     WorkspaceInitialized {
         root: String,
         dot_specman: String,
@@ -77,8 +74,8 @@ pub enum CommandResult {
 impl CommandResult {
     pub fn exit_status(&self) -> ExitStatus {
         match self {
-            CommandResult::Status { healthy, .. } => {
-                if *healthy {
+            CommandResult::Status(report) => {
+                if report.global_status == specman::StatusResult::Pass {
                     ExitStatus::Ok
                 } else {
                     ExitStatus::Data

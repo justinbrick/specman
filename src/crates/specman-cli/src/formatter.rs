@@ -27,31 +27,59 @@ pub fn emit_result(result: CommandResult, format: OutputFormat) -> Result<ExitCo
 
 fn print_text(result: &CommandResult) {
     match result {
-        CommandResult::Status { reports, healthy } => {
-            if *healthy {
-                println!("Workspace status: OK ({} artifacts)", reports.len());
-            } else {
-                println!("Workspace status: FAIL ({} artifacts)", reports.len());
+        CommandResult::Status(report) => {
+            println!(
+                "Global Status: {}",
+                match report.global_status {
+                    specman::StatusResult::Pass => "PASS",
+                    specman::StatusResult::Fail => "FAIL",
+                }
+            );
+
+            if !report.structure_errors.is_empty() {
+                println!("\nStructure Errors:");
+                for error in &report.structure_errors {
+                    println!("  - {}", error);
+                }
             }
-            for report in reports {
-                if report.ok {
-                    println!("  [OK] {} ({})", report.name, report.kind);
-                } else {
-                    if !report.errors.is_empty() {
-                        println!("  [ERR] {} ({}):", report.name, report.kind);
-                        for error in &report.errors {
-                            let loc = error
-                                .location
-                                .as_deref()
-                                .map(|l| format!(" [{}]", l))
-                                .unwrap_or_default();
-                            println!("    - {}{}", error.message, loc);
-                        }
-                    } else if let Some(message) = &report.message {
-                        println!("  [ERR] {} ({}): {message}", report.name, report.kind);
-                    } else {
-                        println!("  [ERR] {} ({}): unknown error", report.name, report.kind);
-                    }
+
+            if !report.cycle_errors.is_empty() {
+                println!("\nCycle Errors:");
+                for error in &report.cycle_errors {
+                    println!("  - {}", error);
+                }
+            }
+
+            println!("\nArtifacts:");
+            for (id, status) in &report.artifacts {
+                let status_label = if status.is_pass() { "OK" } else { "FAIL" };
+                println!("  [{}] {} ({:?})", status_label, id.name, id.kind);
+
+                for err in &status.structure_errors {
+                    println!("    [Structure] {}", err);
+                }
+                for issue in &status.reference_errors {
+                    let loc = issue
+                        .source
+                        .range
+                        .as_ref()
+                        .map(|r| format!(":{}:{}", r.start.line, r.start.column))
+                        .unwrap_or_default();
+                    println!(
+                        "    [{:?}] {}{}",
+                        issue.severity, issue.message, loc
+                    );
+                }
+                for missing in &status.compliance_missing {
+                    println!("    [Compliance] Missing: {}", missing);
+                }
+                for orphan in &status.compliance_orphans {
+                     println!(
+                        "    [Compliance] Orphan tag: {} at {}:{}",
+                        orphan.identifier,
+                        orphan.location.file_path.display(),
+                        orphan.location.line_number
+                    );
                 }
             }
         }

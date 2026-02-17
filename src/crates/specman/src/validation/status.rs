@@ -7,18 +7,20 @@ use crate::core::error::SpecmanError;
 use crate::graph::tree::{ArtifactId, ArtifactKind, FilesystemDependencyMapper};
 use crate::validation::references::{
     IssueSeverity, ReferenceIssueKind, ReferenceSource, ReferenceValidationIssue,
-    ReferenceValidator,
+    ReferenceValidationOptions, ReferenceValidator,
 };
 use crate::validation::{ValidationTag, validate_compliance};
 use crate::workspace::{FilesystemWorkspaceLocator, WorkspaceLocator};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct WorkspaceStatusConfig {
     pub structure: bool,
     pub references: bool,
     pub cycles: bool,
     pub compliance: bool,
     pub scratchpads: bool,
+    #[serde(skip)]
+    pub reference_options: Option<ReferenceValidationOptions>,
 }
 
 impl Default for WorkspaceStatusConfig {
@@ -29,6 +31,7 @@ impl Default for WorkspaceStatusConfig {
             cycles: true,
             compliance: true,
             scratchpads: true,
+            reference_options: None,
         }
     }
 }
@@ -153,7 +156,11 @@ pub fn validate_workspace_status(
 
     // Reference Check
     if config.references {
-        let validator = ReferenceValidator::new(&workspace);
+        let validator = if let Some(opts) = config.reference_options {
+            ReferenceValidator::with_mode(&workspace, opts.into())
+        } else {
+            ReferenceValidator::new(&workspace)
+        };
 
         for (id, status) in artifacts.iter_mut() {
             if let Some(entry) = inventory.entries.iter().find(|e| e.summary.id == *id) {

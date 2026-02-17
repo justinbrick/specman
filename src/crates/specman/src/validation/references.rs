@@ -8,7 +8,7 @@ use std::time::Duration;
 use unicode_normalization::UnicodeNormalization;
 use url::Url;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ReferenceValidationOptions {
     pub https: HttpsValidationOptions,
     pub transitive: TransitiveOptions,
@@ -64,7 +64,7 @@ mod tests {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct HttpsValidationOptions {
     pub mode: HttpsValidationMode,
 }
@@ -81,7 +81,7 @@ impl Default for HttpsValidationOptions {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum HttpsValidationMode {
     /// Parse + validate `https://` syntax; do not perform network I/O.
     SyntaxOnly,
@@ -93,7 +93,7 @@ pub enum HttpsValidationMode {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum HttpsMethod {
     Head,
     Get,
@@ -109,7 +109,7 @@ impl Default for HttpsValidationMode {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TransitiveOptions {
     /// Whether to validate linked markdown documents transitively.
     pub enabled: bool,
