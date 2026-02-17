@@ -312,6 +312,38 @@ Compliance reporting exposes the relationship between specification constraints 
 - If multiple tags reference the same constraint group, tooling MUST report all locations, acknowledging that verification may be distributed across multiple files (e.g., specification tests vs. unit tests).
 - Authors SHOULD place validation tags at the top of a file if that file is dedicated to testing the referenced constraint group.
 
+### Concept: Workspace Status
+
+Workspace status provides a holistic health check of the workspace, aggregating validation results across all managed artifacts to ensure structural integrity and compliance coverage.
+
+!concept-workspace-status.requirements:
+
+- The implementation MUST expose a workspace status capability that scans specifications, implementations, and scratch pads within the active workspace.
+- The status check MUST accept a configuration (e.g., flags or options) to enable or disable specific validation categories. Supported categories MUST include at least:
+  - `structure`: Validates YAML front matter and basic artifact validity.
+  - `references`: Validates inline links, dependencies, and external URLs.
+  - `cycles`: Validates the dependency graph for cycles.
+  - `compliance`: Validates implementation anchor coverage.
+  - `scratchpads`: Includes scratch pads in the validation set.
+- Implementations SHOULD enable all validation categories by default unless explicitly disabled by the user.
+- When `structure` validation is enabled, the status check MUST validate that every scanned artifact has valid YAML front matter conforming to the [SpecMan Data Model](../specman-data-model/spec.md).
+- When `references` validation is enabled, the status check MUST perform reference validation on all artifacts, ensuring that:
+  - All inline links to workspace files resolve to existing files.
+  - All inline links to HTTP(S) resources are valid URLs (connectivity checks MAY be optional or configurable).
+  - All artifact dependencies (in specifications) and references (in implementations) resolve to existing, valid artifacts.
+  - The `location` path in implementation metadata resolves to an existing directory on the filesystem.
+- When `cycles` validation is enabled, the status check MUST construct the full dependency graph and verify that no cyclic dependencies exist between specifications.
+- When `compliance` validation is enabled, the status check MUST verify compliance coverage for every implementation:
+  - It MUST extract all constraint groups from the implementation's governing specification (and transitive dependencies).
+  - It MUST scan the implementation's source code for validation anchors.
+  - It MUST report a failure if any mandatory constraint group lacks a corresponding validation anchor.
+- When `scratchpads` validation is enabled, the status check MUST apply the other enabled checks to scratch pad artifacts; if disabled, scratch pads MUST be ignored.
+- The status check MUST return an aggregated report containing:
+  - A primary section for Specifications and Implementations, determining the global pass/fail status.
+  - A secondary, distinct section for Scratch Pad validation results (if enabled), which MUST NOT affect the global pass/fail status of the workspace.
+  - A comprehensive list of all validation errors, warnings, and missing compliance anchors, grouped by artifact.
+- The status check SHOULD NOT halt on the first error; it MUST attempt to collect all discoverable errors in the workspace.
+
 ## Key Entities
 
 ### Entity: DataModelAdapter
