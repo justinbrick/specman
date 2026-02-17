@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use clap::Command;
 use crate::commands::CommandResult;
 use crate::context::CliSession;
 use crate::error::CliError;
+use clap::Command;
 
 pub fn command() -> Command {
     Command::new("status")
@@ -48,4 +48,3 @@ pub fn run(session: &CliSession, matches: &clap::ArgMatches) -> Result<CommandRe
 
     Ok(CommandResult::Status(report))
 }
-
