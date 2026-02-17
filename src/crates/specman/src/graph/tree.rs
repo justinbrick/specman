@@ -359,6 +359,31 @@ impl<L: WorkspaceLocator> DependencyGraphServices<L> {
         self.inventory_with_workspace(&workspace)
     }
 
+    pub fn detect_cycles(&self) -> Result<Vec<String>, SpecmanError> {
+        // [ENSURES: concept-dependency-mapping-services.cycle-detection:CHECK]
+        let inventory = self.inventory_snapshot()?;
+        let mut cycles = BTreeSet::new();
+
+        for entry in inventory.entries.iter() {
+            match self.dependency_tree_for_artifact(&entry.summary.id) {
+                Ok(_) => {}
+                Err(SpecmanError::Dependency(msg)) if msg.contains("dependency cycle detected") => {
+                    // Extract the cycle description part before any serialization data
+                    let clean_msg = msg
+                        .split(';')
+                        .next()
+                        .unwrap_or(&msg)
+                        .trim()
+                        .replace("dependency cycle detected: ", "");
+                    cycles.insert(clean_msg);
+                }
+                Err(_) => {}
+            }
+        }
+
+        Ok(cycles.into_iter().collect())
+    }
+
     pub fn invalidate_inventory(&self) {
         self.inventory_cache.lock().unwrap().take();
     }
@@ -504,10 +529,10 @@ struct ArtifactDocument {
 }
 
 #[derive(Clone, Debug)]
-struct ArtifactDependency {
-    locator: ArtifactLocator,
-    optional: bool,
-    resolution: ResolutionProvenance,
+pub struct ArtifactDependency {
+    pub locator: ArtifactLocator,
+    pub optional: bool,
+    pub resolution: ResolutionProvenance,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -525,7 +550,7 @@ impl DependencyResolutionMode {
 /// Canonicalized reference to either a workspace file or remote HTTPS document. Resource handles
 /// are lowered into filesystem paths before becoming `ArtifactLocator::File` variants.
 #[derive(Clone, Debug)]
-enum ArtifactLocator {
+pub enum ArtifactLocator {
     // [ENSURES: concept-implementations.locators.model:CHECK]
     File(PathBuf),
     Url(Url),
@@ -809,7 +834,7 @@ impl Traversal {
 
 #[derive(Clone)]
 pub struct WorkspaceInventorySnapshot {
-    entries: Arc<Vec<InventoryEntry>>,
+    pub entries: Arc<Vec<InventoryEntry>>,
 }
 
 impl WorkspaceInventorySnapshot {
@@ -842,6 +867,7 @@ impl WorkspaceInventorySnapshot {
         })
     }
 
+
     pub fn dependents_of(&self, target: &Path) -> Vec<InventoryDependent> {
         let mut dependents = Vec::new();
         for entry in self.entries.iter() {
@@ -868,9 +894,9 @@ impl WorkspaceInventorySnapshot {
 }
 
 #[derive(Clone)]
-struct InventoryEntry {
-    summary: ArtifactSummary,
-    dependencies: Vec<ArtifactDependency>,
+pub struct InventoryEntry {
+    pub summary: ArtifactSummary,
+    pub dependencies: Vec<ArtifactDependency>,
 }
 
 #[derive(Clone, Debug)]

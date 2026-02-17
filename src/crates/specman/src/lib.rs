@@ -49,7 +49,11 @@ pub use templates::engine::{
     TemplateDescriptor, TemplateEngine, TemplateLocator, TemplateProvenance, TemplateScenario,
     TemplateTier, TokenMap,
 };
-pub use validation::validate_compliance;
+pub use validation::status::{
+    ArtifactStatus, StatusResult, WorkspaceStatusConfig, WorkspaceStatusReport,
+    validate_workspace_status,
+};
+pub use validation::{ValidationTag, validate_compliance};
 pub use validation::analysis::{DeletionImpact, check_deletion_impact};
 pub use validation::references::{
     DestinationKind, DiscoveredReference, HttpsMethod, HttpsValidationMode, HttpsValidationOptions,

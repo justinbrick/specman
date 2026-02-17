@@ -1,5 +1,6 @@
 pub mod analysis;
 pub mod references;
+pub mod status;
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
@@ -14,8 +15,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::error::SpecmanError;
 use crate::graph::tree::{ArtifactId, ArtifactKind, DependencyMapping, FilesystemDependencyMapper};
-use crate::metadata::frontmatter::{ImplementationFrontMatter, split_front_matter};
 use crate::index::build_workspace_index_for_artifacts;
+use crate::metadata::frontmatter::{ImplementationFrontMatter, split_front_matter};
 use crate::workspace::{
     FilesystemWorkspaceLocator, WorkspaceLocator, normalize_workspace_path, workspace_relative_path,
 };

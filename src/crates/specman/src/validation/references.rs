@@ -1,4 +1,5 @@
 use crate::{SpecmanError, WorkspacePaths};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
@@ -162,13 +163,13 @@ pub enum ReachabilityPolicy {
     },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub enum ReferenceValidationStatus {
     Success,
     Failure,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReferenceValidationReport {
     // [ENSURES: concept-reference-validation.results.contract:CHECK]
     pub status: ReferenceValidationStatus,
@@ -215,13 +216,13 @@ impl ReferenceValidationReport {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub enum IssueSeverity {
     Error,
     Diagnostic,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReferenceValidationIssue {
     #[serde(default)]
     pub kind: ReferenceIssueKind,
@@ -231,7 +232,7 @@ pub struct ReferenceValidationIssue {
     pub destination: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub enum ReferenceIssueKind {
     UnsupportedScheme,
     DisallowedHandle,
@@ -256,7 +257,7 @@ impl Default for ReferenceIssueKind {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReferenceRecord {
     pub source: ReferenceSource,
     pub destination: String,
@@ -264,7 +265,7 @@ pub struct ReferenceRecord {
     pub kind: ReferenceKind,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub enum ReferenceKind {
     WorkspacePath,
     HttpsUrl,
@@ -278,20 +279,20 @@ pub type DestinationKind = ReferenceKind;
 /// Legacy compatibility alias; slated for removal once callers migrate to `ReferenceRecord`.
 pub type DiscoveredReference = ReferenceRecord;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, JsonSchema)]
 pub struct ReferenceSource {
     /// A stable key identifying the document.
     pub document: String,
     pub range: Option<SourceRange>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, JsonSchema)]
 pub struct SourceRange {
     pub start: SourcePoint,
     pub end: SourcePoint,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, JsonSchema)]
 pub struct SourcePoint {
     pub line: usize,
     pub column: usize,
