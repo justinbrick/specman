@@ -655,19 +655,26 @@ fn fetch_url(url: &Url, mode: &HttpsValidationMode) -> Result<String, ReferenceV
     };
 
     match request.call() {
-        Ok(response) => match response.into_string() {
-            Ok(s) => Ok(s),
-            Err(err) => Err(ReferenceValidationIssue {
-                kind: ReferenceIssueKind::Fetch,
-                severity: IssueSeverity::Diagnostic,
-                message: format!("failed reading response body: {err}"),
-                source: ReferenceSource {
-                    document: url.as_str().to_string(),
-                    range: None,
-                },
-                destination: Some(url.as_str().to_string()),
-            }),
-        },
+        Ok(response) => {
+            if let HttpsMethod::Head = method {
+                // HEAD responses have no body; avoid reading it to prevent "unexpected EOF".
+                return Ok(String::new());
+            }
+
+            match response.into_string() {
+                Ok(s) => Ok(s),
+                Err(err) => Err(ReferenceValidationIssue {
+                    kind: ReferenceIssueKind::Fetch,
+                    severity: IssueSeverity::Diagnostic,
+                    message: format!("failed reading response body: {err}"),
+                    source: ReferenceSource {
+                        document: url.as_str().to_string(),
+                        range: None,
+                    },
+                    destination: Some(url.as_str().to_string()),
+                }),
+            }
+        }
         Err(ureq::Error::Status(code, response)) => {
             let severity = if (400..500).contains(&code) {
                 IssueSeverity::Error
