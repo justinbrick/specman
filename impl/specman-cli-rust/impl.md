@@ -94,7 +94,7 @@ The `init` command resolves the target root before discovery, normalizes the pat
 
 The four command groups expose symmetrical create/list/delete/dependencies flows, all of which reuse the shared lifecycle controller to guard against unsafe deletions. Direction flags are centralized in [`commands/dependencies.rs`](../../src/crates/specman-cli/src/commands/dependencies.rs), keeping UX consistent across artifact types and ensuring the CLI rejects conflicting `--upstream`/`--downstream`/`--all` combinations with `EX_USAGE`. `CommandResult::DependencyTree` reuses the same serialization regardless of artifact type, so ASCII output, JSON output, and downstream deletes all share the exact tree that `plan_deletion` produced.
 
-```
+```txt
 Downstream: 2 edge(s)
     spec specman-cli@1.0.0
   ├── impl specman-cli-rust@2.1.0
@@ -158,15 +158,15 @@ Structured logs accompany verbose output so operators can correlate stdout with 
 
 ```rust
 pub struct CliSession {
-    pub workspace_paths: WorkspacePaths,
-    pub dependency_mapper: Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
+  pub workspace_paths: WorkspacePaths,
+  pub dependency_mapper: Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
   pub templates: TemplateCatalog,
   pub specman: Specman<
     Arc<FilesystemDependencyMapper<Arc<FilesystemWorkspaceLocator>>>,
     Arc<MarkdownTemplateEngine>,
     Arc<FilesystemWorkspaceLocator>,
   >,
-    pub verbosity: Verbosity,
+  pub verbosity: Verbosity,
 }
 ```
 

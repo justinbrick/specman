@@ -94,6 +94,22 @@ To allow MCP clients to update artifact metadata deterministically without rewri
   - preview: return the updated full document content with differences limited to the YAML front matter block
 - Supported mutations MUST match (and not exceed) the mutation surface defined by SpecMan Core metadata mutation.
 
+#### Required Tool: `get_workspace_status`
+
+To provide visibility into workspace health and compliance, compliant adapters MUST expose a diagnostic tool named `get_workspace_status`.
+
+!concept-specman-capability-parity.tooling.get-workspace-status:
+
+- The adapter MUST expose an MCP tool named `get_workspace_status`.
+- The tool MUST delegate to the underlying SpecMan Core workspace status capability (see [SpecMan Core Workspace Status](../specman-core/spec.md#concept-workspace-status)).
+- The tool MUST accept an optional boolean parameter `http` (default: `true`) to control external reachability checks.
+  - The tool MUST map this parameter to the `WorkspaceStatusConfig` (defined in [Entity: WorkspaceStatusConfig](../specman-core/spec.md#entity-workspacestatusconfig)) as follows:
+    - If `http` is `true` (or omitted), HTTP reference validation MUST be enabled (e.g., using `Reachability` mode).
+    - If `http` is `false`, HTTP reference validation MUST be disabled (e.g., using `SyntaxOnly` mode), while other reference checks MUST remain enabled.
+- The tool MUST return a structured validation report conforming to [Entity: WorkspaceStatusReport](../specman-core/spec.md#entity-workspacestatusreport) defined in SpecMan Core.
+  - Scratch pad validation SHOULD be included if supported by the underlying implementation's default configuration, or EXPLICITLY enabled if required to match specific user intent (defaults are implementation-defined but MUST include spec/impl validation).
+- The tool MUST NOT treat validation failures (e.g., broken links, missing coverage) as MCP protocol errors; it MUST return the report successfully so clients can analyze the failures.
+
 ### Concept: Prompt Catalog
 
 Prompt catalog tooling defines how MCP clients obtain deterministic prompts for artifact creation and modification.

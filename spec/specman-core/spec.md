@@ -430,6 +430,55 @@ A validation tag is the concrete syntax used to define a validation anchor.
   - `MANUAL`: Represents a manual assertion or non-automated verification.
 - If the type is omitted, tooling MUST treat the tag as type `TEST`.
 
+### Entity: WorkspaceStatusConfig
+
+Configuration object for the workspace status capability.
+
+!entity-workspacestatusconfig.schema:
+
+- `structure` (boolean, required): Enable structure validation (front matter, versioning). Default: `true`.
+- `references` (boolean, required): Enable reference validation. Default: `true`.
+- `cycles` (boolean, required): Enable dependency cycle detection. Default: `true`.
+- `compliance` (boolean, required): Enable compliance checks (anchors). Default: `true`.
+- `scratchpads` (boolean, required): Include scratch pads in validation. Default: `true`.
+
+### Entity: WorkspaceStatusReport
+
+The aggregated result of a workspace status check.
+
+!entity-workspacestatusreport.schema:
+
+- `global_status` (string, enum: `Pass` | `Fail`): Overall workspace status.
+- `spec_impl_status` (string, enum: `Pass` | `Fail`): Status for specification and implementation artifacts.
+- `scratchpad_status` (string, enum: `Pass` | `Fail`): Status for scratch pad artifacts.
+- `artifacts` (map<ArtifactId, ArtifactStatus>): Detailed status per artifact.
+- `cycle_errors` (array<string>): Global errors related to dependency cycles.
+- `structure_errors` (array<string>): Global errors related to workspace structure.
+- `artifact_count` (integer): Total number of artifacts processed.
+
+### Entity: ArtifactStatus
+
+Validation results for a single artifact.
+
+!entity-artifactstatus.schema:
+
+- `structure_errors` (array<string>): Errors related to file structure or front matter.
+- `reference_errors` (array<ReferenceValidationIssue>): Errors from reference validation.
+- `compliance_missing` (array<string>): Missing compliance constraints (implementations only).
+- `compliance_orphans` (array<ValidationTag>): Orphaned compliance tags (implementations only).
+
+### Entity: ReferenceValidationOptions
+
+Configuration options for reference validation.
+
+!entity-referencevalidationoptions.schema:
+
+- `https` (object): HTTPS validation options.
+  - `mode` (string, enum: `check-syntax` | `check-reachability`): Validation mode.
+- `transitive` (object): Transitive traversal options.
+  - `enabled` (boolean): Whether to validate linked documents.
+  - `max_documents` (integer): Maximum traversal depth/count.
+
 ## Additional Notes
 
 Migration guides MAY accompany minor releases to help downstream integrators adopt new optional capabilities.
