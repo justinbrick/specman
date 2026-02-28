@@ -51,7 +51,7 @@ pub fn validate_references(
 
 ## Concept: Validation Compliance
 
-The `validation` module implements the [Validation Scanning](../../spec/specman-core/spec.md#concept-validation-scanning) and [Compliance Reporting](../../spec/specman-core/spec.md#concept-compliance-reporting) concepts. It scans implementation sources for `[ENSURES: id]` anchors and correlates them against specification constraints to produce coverage reports.
+The `validation` module implements the [Validation Scanning](../../spec/specman-core/spec.md#concept-validation-scanning) and [Compliance Reporting](../../spec/specman-core/spec.md#concept-compliance-reporting) concepts. It scans implementation sources for "ENSURES" anchors and correlates them against specification constraints to produce coverage reports.
 
 Key behaviors:
 
@@ -638,7 +638,7 @@ If a deterministic precedence policy is ever adopted, it MUST be explicitly docu
 
 #### Staged Refactor Checklist
 
-The staged checklist + current status is tracked in the scratch pad at [../../.specman/scratchpad/metadata-api-declarative-refactor/scratch.md](../../.specman/scratchpad/metadata-api-declarative-refactor/scratch.md).
+_Checklist completed or moved._
 
 #### Open Questions
 
@@ -795,6 +795,6 @@ impl ScratchPadProfile {
 - **Build & Testing:** Run `cargo build -p specman` and `cargo test -p specman` from the `src` directory to exercise the workspace crate with Rust 1.91. Clippy and fmt gates should run in CI to enforce style and catch regressions.
 - **Configuration:** Template locators are read from environment variables (`SPECMAN_TEMPLATE_ROOT`) or CLI flags before falling back to repository-relative defaults, satisfying the extensibility guidance from [Template Orchestration](../../spec/specman-core/spec.md#concept-template-orchestration).
 - **Lifecycle Automation:** Delete operations must call `dependency_tree` first and abort when downstream edges exist, returning the serialized tree to the caller as mandated by [Lifecycle Automation](../../spec/specman-core/spec.md#concept-lifecycle-automation).
-- **Observability:** Each public function logs structured events (entity name, version, dependency counts) so operators can trace execution and audit compliance with the [SpecMan Data Model](../../spec/specman-data-model/spec.md#implementations).
+- **Observability:** Each public function logs structured events (entity name, version, dependency counts) so operators can trace execution and audit compliance with the [SpecMan Data Model](../../spec/specman-data-model/spec.md#concept-implementations).
 
 Together, these notes ensure the implementation remains compliant with the SpecMan Data Model sections covering Implementations, Implementing Language, References, APIs, and Metadata while providing actionable guidance for practitioners running the crate.

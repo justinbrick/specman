@@ -13,7 +13,7 @@ references:
 
 ## Overview
 
-This adapter implements the [SpecMan MCP Server](../../spec/specman-mcp/spec.md) by projecting SpecMan Core capabilities into MCP tools over a STDIN transport. The runtime uses the `rmcp` crate for lifecycle negotiation and framing, delegates capability logic to the shared `specman-library`, and preserves data-model fidelity for every request and response. Version negotiation and tool schemas adhere to [Concept: MCP Transport Compliance](../../spec/specman-mcp/spec.md#concept-mcp-transport-compliance), while capability mapping aligns with [Concept: SpecMan Capability Parity](../../spec/specman-mcp/spec.md#concept-specman-capability-parity) and [Concept: Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance). The binary accepts an optional `--workspace <path>` argument to pin workspace discovery to a specific root; when omitted it defaults to the current working directory.
+This adapter implements the [SpecMan MCP Server](../../spec/specman-mcp/spec.md) by projecting SpecMan Core capabilities into MCP tools over a STDIN transport. The runtime uses the `rmcp` crate for lifecycle negotiation and framing, delegates capability logic to the shared `specman-library`, and preserves data-model fidelity for every request and response. Version negotiation and tool schemas adhere to [Concept: MCP Transport Compliance](../../spec/specman-mcp/spec.md#concept-mcp-transport-compliance), while capability mapping aligns with [Concept: SpecMan Capability Parity](../../spec/specman-mcp/spec.md#concept-specman-capability-parity) and [Concept: Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace-data-governance). The binary accepts an optional `--workspace <path>` argument to pin workspace discovery to a specific root; when omitted it defaults to the current working directory.
 
 ## Implementation Stack
 
@@ -94,7 +94,7 @@ The adapter exposes compliance reports for implementations, leveraging `specman-
 - Content: JSON-serialized `ComplianceReport` struct (coverage, missing requirements, orphans).
 - Error handling: Returns specific errors if the implementation has no upstream specification or multiple (ambiguous) specifications.
 
-### Concept: [Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace--data-governance)
+### Concept: [Workspace & Data Governance](../../spec/specman-mcp/spec.md#concept-workspace-data-governance)
 
 All filesystem access flows through SpecMan workspace discovery, and resource handles (`spec://`, `impl://`, `scratch://`) are normalized before use. Dependency graph queries and `/dependencies` handles are read-only and return SpecMan Data Model representations. Mutating operations reuse lifecycle automation with dependency checks.
 
@@ -141,7 +141,7 @@ async fn update_artifact(Parameters(args): Parameters<UpdateArtifactArgs>)
 - For `create_artifact` implementation targets, the adapter normalizes the input into a canonical `spec://...` handle before persisting so dependency resolution is base-path independent.
 - Paths returned to MCP clients are canonical workspace-relative paths and never allow escaping outside the discovered root.
 
-### Concept: [Session Safety & Deterministic Execution](../../spec/specman-mcp/spec.md#concept-session-safety--deterministic-execution)
+### Concept: [Session Safety & Deterministic Execution](../../spec/specman-mcp/spec.md#concept-session-safety-deterministic-execution)
 
 Sessions bind to single workspaces, maintain locks for mutating operations, and stream progress via MCP notifications. Conflicts serialize operations or fail fast with actionable errors aligned to SpecMan Core deterministic execution rules.
 

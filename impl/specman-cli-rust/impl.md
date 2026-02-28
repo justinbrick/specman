@@ -113,7 +113,7 @@ Delete commands always print at least one dependency-tree example like the above
 - `serde_json@1` — JSON serialization for `CommandResult` when `--json` is set.
 - `tracing@0.1`/`tracing-subscriber@0.3` — structured logs keyed by workspace context and template locators.
 
-### Concept: Template Integration & Token Handling ([spec/specman-cli/spec.md#concept-template-integration--token-handling](../../spec/specman-cli/spec.md#concept-template-integration--token-handling))
+### Concept: Template Integration & Token Handling ([spec/specman-cli/spec.md#concept-template-integration-token-handling](../../spec/specman-cli/spec.md#concept-template-integration-token-handling))
 
 Workspace pointer files under `.specman/templates/{SPEC,IMPL,SCRATCH}` override the bundled catalog. The `specman` façade resolves templates via `TemplateCatalog::resolve(...)`, then renders deterministically via `MarkdownTemplateEngine`.
 
@@ -134,7 +134,7 @@ let persisted = session
 
 Tokens sourced from CLI flags (for example, `--dependencies`) feed directly into the `TokenMap`, so template errors cite the originating concept and template path.
 
-### Concept: Observability & Error Surfacing ([spec/specman-cli/spec.md#concept-observability--error-surfacing](../../spec/specman-cli/spec.md#concept-observability--error-surfacing))
+### Concept: Observability & Error Surfacing ([spec/specman-cli/spec.md#concept-observability-error-surfacing](../../spec/specman-cli/spec.md#concept-observability-error-surfacing))
 
 `emit_result` emits deterministic text for humans and newline-delimited JSON for automation, while `tracing` logs capture workspace roots, adapter identifiers, and template locators whenever `--verbose` is toggled. Errors reference the governing concept (for example, Workspace Context Resolution when discovery fails) and bubble the correct `sysexits` value via `ExitStatus`.
 
@@ -242,7 +242,7 @@ This trio enforces the same guarantees described in the specification: every req
 - **Installing the Binary:** Run `cargo install --path src/crates/specman-cli` from the repository root (or any directory that can resolve that relative path). The crate now defines a `[[bin]]` target named `specman`, so installation places a `specman` executable on `$PATH` without extra flags while continuing to depend on the path-only `specman` library crate bundled in this workspace.
 - **Workspace Resolution:** The `--workspace <path>` flag overrides discovery; absent that flag, the CLI mirrors `specman-core` behavior by scanning ancestors for `.specman`. Invalid overrides fall back to ancestor search and emit `EX_USAGE` errors referencing the Workspace Context Resolution concept.
 - **Reference Validation:** `specman status` enforces strict reference integrity for all specifications, implementations, and scratch pads. By default, it performs network reachability checks for HTTPS links (HEAD request). Use `--local` to disable network IO (syntax-only validation).
-- **Template Overrides:** Pointer files inside `.specman/templates/{SPEC|IMPL|SCRATCH}` are read on every invocation. Unsupported schemes, unreadable files, or pointers outside the workspace produce `EX_CONFIG` errors that cite [Concept: Template Integration & Token Handling](../../spec/specman-cli/spec.md#concept-template-integration--token-handling).
+- **Template Overrides:** Pointer files inside `.specman/templates/{SPEC,IMPL,SCRATCH}` are read on every invocation. Unsupported schemes, unreadable files, or pointers outside the workspace produce `EX_CONFIG` errors that cite [Concept: Template Integration & Token Handling](../../spec/specman-cli/spec.md#concept-template-integration-token-handling).
 - **Dependency Inspection:** `spec dependencies`, `impl dependencies`, and `scratch dependencies` are read-only subcommands that reuse the shared `DependencyTree` formatter. Direction flags restrict traversal (`--downstream` default, `--upstream`, or combined `--all`), and the CLI rejects conflicting flags so scripts can rely on deterministic `sysexits` codes.
 - **Lifecycle Safeguards:** Delete commands refuse to run when downstream dependencies exist unless `--force` is supplied. Forced deletions still print the blocking dependency tree and annotate results so operators know dependencies were overridden, satisfying the Lifecycle Command Surface rules.
 - **Logging & JSON Output:** Human-readable summaries are emitted by default. When `--json` is supplied, the CLI emits newline-delimited JSON records containing the command name, workspace root, adapter id, result payload, and reference to the governing specification section. `--verbose` enables structured `tracing` logs alongside textual summaries. Errors always cite the concept or entity that triggered the failure per the Observability guidance.
