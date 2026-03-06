@@ -9,7 +9,9 @@ fn cli() -> Command {
 
 fn init_workspace(root: &std::path::Path) {
     let mut cmd = cli();
-    cmd.args(["init", root.to_str().unwrap()]).assert().success();
+    cmd.args(["init", root.to_str().unwrap()])
+        .assert()
+        .success();
 }
 
 #[test]
@@ -22,7 +24,7 @@ fn status_empty_workspace_is_ok() -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.assert()
         .success()
-        .stdout(contains("Workspace status: OK"));
+        .stdout(contains("Global Status: PASS"));
     Ok(())
 }
 
@@ -35,13 +37,16 @@ fn status_with_local_broken_link_fails() -> Result<(), Box<dyn std::error::Error
     let spec_dir = temp.path().join("spec/my-spec");
     fs::create_dir_all(&spec_dir)?;
 
-    let spec_content = r#"
----
+    let spec_content = r#"---
 name: my-spec
 brief: Test spec
 version: 1.0.0
 ---
 # My Spec
+
+## Structure
+
+Artifact structure details.
 
 [Broken Link](missing.md)
 "#;
@@ -53,7 +58,7 @@ version: 1.0.0
     cmd.assert()
         .failure()
         .code(65)
-        .stdout(contains("Workspace status: FAIL"))
+        .stdout(contains("Global Status: FAIL"))
         .stdout(contains("missing filesystem target"));
     Ok(())
 }
@@ -68,13 +73,16 @@ fn status_local_skips_network() -> Result<(), Box<dyn std::error::Error>> {
 
     // We rely on the fact that SyntaxOnly will accept any syntactically valid URL
     // without checking reachability.
-    let spec_content = r#"
----
+    let spec_content = r#"---
 name: network-spec
 brief: Network spec
 version: 1.0.0
 ---
 # Network Spec
+
+## Structure
+
+Artifact structure details.
 
 [Example](https://example.invalid/resource)
 "#;
@@ -85,7 +93,7 @@ version: 1.0.0
 
     cmd.assert()
         .success()
-        .stdout(contains("Workspace status: OK"));
+        .stdout(contains("Global Status: PASS"));
 
     Ok(())
 }
