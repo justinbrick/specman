@@ -63,6 +63,9 @@ pub struct WorkspaceStatusReport {
 
     /// Global structure errors (e.g., failure to build index).
     pub structure_errors: Vec<String>,
+
+    /// Total number of artifacts processed by this status run.
+    pub artifact_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -232,8 +235,11 @@ pub fn validate_workspace_status(
         true
     };
 
+    let artifact_count = artifacts.len();
+
     Ok(WorkspaceStatusReport {
-        global_status: if spec_impl_program_pass && scratchpad_pass {
+        // Scratch pad status is reported separately and MUST NOT affect global pass/fail.
+        global_status: if spec_impl_program_pass {
             StatusResult::Pass
         } else {
             StatusResult::Fail
@@ -251,5 +257,6 @@ pub fn validate_workspace_status(
         artifacts,
         cycle_errors,
         structure_errors: global_structure_errors,
+        artifact_count,
     })
 }

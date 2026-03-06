@@ -84,8 +84,10 @@ impl Default for HttpsValidationOptions {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum HttpsValidationMode {
     /// Parse + validate `https://` syntax; do not perform network I/O.
+    #[serde(rename = "check-syntax")]
     SyntaxOnly,
     /// Perform reachability checks using `ureq`.
+    #[serde(rename = "check-reachability")]
     Reachability {
         timeout: Duration,
         max_redirects: u32,

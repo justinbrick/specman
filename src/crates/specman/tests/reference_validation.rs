@@ -1,3 +1,4 @@
+use serde_json::json;
 use specman::{
     HttpsMethod, HttpsValidationMode, IssueSeverity, ReferenceIssueKind,
     ReferenceValidationOptions, ReferenceValidationStatus, ReferenceValidator, ValidationMode,
@@ -271,4 +272,33 @@ fn unreachable_https_reports_diagnostic_not_error() {
     assert!(report.issues.iter().any(|i| {
         i.kind == ReferenceIssueKind::UnreachableUrl && i.severity == IssueSeverity::Diagnostic
     }));
+}
+
+#[test]
+fn https_mode_serializes_to_spec_literals() {
+    let syntax = serde_json::to_value(HttpsValidationMode::SyntaxOnly).unwrap();
+    assert_eq!(syntax, json!("check-syntax"));
+
+    let reachability = HttpsValidationMode::Reachability {
+        timeout: Duration::from_secs(1),
+        max_redirects: 1,
+        method: HttpsMethod::Head,
+    };
+    let reachability_json = serde_json::to_value(reachability).unwrap();
+    assert!(reachability_json.get("check-reachability").is_some());
+}
+
+#[test]
+fn https_mode_rejects_legacy_variant_names() {
+    let syntax_legacy = serde_json::from_value::<HttpsValidationMode>(json!("SyntaxOnly"));
+    assert!(syntax_legacy.is_err());
+
+    let reachability_legacy = serde_json::from_value::<HttpsValidationMode>(json!({
+        "Reachability": {
+            "timeout": {"secs": 1, "nanos": 0},
+            "max_redirects": 5,
+            "method": "Head"
+        }
+    }));
+    assert!(reachability_legacy.is_err());
 }
