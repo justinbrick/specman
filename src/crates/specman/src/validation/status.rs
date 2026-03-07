@@ -81,6 +81,9 @@ pub struct ArtifactStatus {
 
     /// Orphaned compliance tags (for implementations).
     pub compliance_orphans: Vec<ValidationTag>,
+
+    /// Resolved scan root used for compliance validation (implementations only).
+    pub compliance_scan_root: Option<String>,
 }
 
 impl ArtifactStatus {
@@ -90,6 +93,7 @@ impl ArtifactStatus {
             reference_errors: Vec::new(),
             compliance_missing: Vec::new(),
             compliance_orphans: Vec::new(),
+            compliance_scan_root: None,
         }
     }
 
@@ -205,6 +209,7 @@ pub fn validate_workspace_status(
             if id.kind == ArtifactKind::Implementation {
                 match validate_compliance(&workspace_root, id) {
                     Ok(report) => {
+                        status.compliance_scan_root = Some(report.scan_root.display().to_string());
                         status.compliance_missing.extend(report.missing);
                         status.compliance_orphans.extend(report.orphans);
                     }

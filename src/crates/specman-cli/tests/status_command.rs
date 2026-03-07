@@ -97,3 +97,53 @@ Artifact structure details.
 
     Ok(())
 }
+
+#[test]
+fn status_includes_compliance_scan_root_diagnostic() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDir::new()?;
+    init_workspace(temp.path());
+
+    let spec_dir = temp.path().join("spec/core");
+    fs::create_dir_all(&spec_dir)?;
+    let spec_content = r#"---
+name: core
+version: 1.0.0
+---
+# Core
+
+## Concept: SpecMan Structure
+
+!concept-specman-structure.referencing.validation:
+- Implementations that index relationships from inline links MUST provide a method to validate the referenced destinations and report any invalid references.
+"#;
+    fs::write(spec_dir.join("spec.md"), spec_content)?;
+
+    let impl_dir = temp.path().join("impl/lib");
+    fs::create_dir_all(&impl_dir)?;
+    let impl_content = r#"---
+name: lib
+spec: spec://core
+location: ../../src/lib
+version: 1.0.0
+---
+# Lib
+"#;
+    fs::write(impl_dir.join("impl.md"), impl_content)?;
+
+    let code_dir = temp.path().join("src/lib");
+    fs::create_dir_all(&code_dir)?;
+    fs::write(
+        code_dir.join("indexer.rs"),
+        "// [ENSURES: concept-specman-structure.referencing.validation:CHECK]\n",
+    )?;
+
+    let mut cmd = cli();
+    cmd.current_dir(temp.path()).arg("status");
+
+    cmd.assert()
+        .success()
+        .stdout(contains("Global Status: PASS"))
+        .stdout(contains("[Compliance] Scan root:"));
+
+    Ok(())
+}

@@ -67,6 +67,8 @@ pub struct SourceLocation {
 pub struct ComplianceReport {
     pub specification: ArtifactId,
     pub implementation: ArtifactId,
+    /// Resolved implementation scan root used for ENSURES discovery.
+    pub scan_root: PathBuf,
     /// Maps constraint group IDs to the tags that cover them.
     pub coverage: BTreeMap<String, Vec<ValidationTag>>,
     /// List of constraint group IDs that have no coverage.
@@ -119,6 +121,7 @@ pub fn parse_tags(line: &str, line_idx: usize, file_path: &Path) -> Vec<Validati
 pub fn generate_report(
     spec_id: ArtifactId,
     impl_id: ArtifactId,
+    scan_root: PathBuf,
     spec_constraints: &[String],
     mut tags: Vec<ValidationTag>,
 ) -> ComplianceReport {
@@ -156,6 +159,7 @@ pub fn generate_report(
     ComplianceReport {
         specification: spec_id,
         implementation: impl_id,
+        scan_root,
         coverage,
         missing,
         orphans,
@@ -306,11 +310,64 @@ pub fn validate_compliance(
     }
     spec_constraints.sort();
 
-    // 3. Scan implementation
-    let tags = scan_source_root(impl_root)?;
+    // 3. Resolve compliance scan root from required implementation location metadata.
+    let location = front.location.as_deref().ok_or_else(|| {
+        SpecmanError::Dependency(format!(
+            "implementation {} is missing required `location` metadata for compliance reporting",
+            impl_id.name
+        ))
+    })?;
+
+    if location.trim().is_empty() {
+        return Err(SpecmanError::Dependency(format!(
+            "implementation {} has empty `location` metadata for compliance reporting",
+            impl_id.name
+        )));
+    }
+
+    if location.contains("://") {
+        return Err(SpecmanError::Dependency(format!(
+            "implementation {} uses unsupported `location` scheme for compliance reporting: {}",
+            impl_id.name, location
+        )));
+    }
+
+    let mut scan_root = {
+        let candidate = Path::new(location);
+        if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            impl_root.join(candidate)
+        }
+    };
+    scan_root = normalize_workspace_path(&scan_root);
+
+    if workspace_relative_path(workspace.root(), &scan_root).is_none() {
+        return Err(SpecmanError::Workspace(format!(
+            "compliance scan root escapes workspace: {}",
+            scan_root.display()
+        )));
+    }
+
+    if !scan_root.exists() {
+        return Err(SpecmanError::Dependency(format!(
+            "compliance scan root does not exist: {}",
+            scan_root.display()
+        )));
+    }
+
+    if !scan_root.is_dir() {
+        return Err(SpecmanError::Dependency(format!(
+            "compliance scan root is not a directory: {}",
+            scan_root.display()
+        )));
+    }
+
+    let tags = scan_source_root(&scan_root)?;
     Ok(generate_report(
         spec_id,
         impl_id.clone(),
+        scan_root,
         &spec_constraints,
         tags,
     ))
@@ -451,10 +508,18 @@ mod tests {
             },
         ];
 
-        let report = generate_report(spec_id.clone(), impl_id.clone(), &constraints, tags);
+        let scan_root = PathBuf::from("src");
+        let report = generate_report(
+            spec_id.clone(),
+            impl_id.clone(),
+            scan_root.clone(),
+            &constraints,
+            tags,
+        );
 
         assert_eq!(report.specification, spec_id);
         assert_eq!(report.implementation, impl_id);
+        assert_eq!(report.scan_root, scan_root);
 
         // Check coverage
         assert!(report.coverage.contains_key("req.1"));
@@ -469,6 +534,101 @@ mod tests {
         // Check orphans
         assert_eq!(report.orphans.len(), 1);
         assert_eq!(report.orphans[0].identifier, "req.orphan");
+    }
+
+    fn write_workspace_fixture(
+        root: &Path,
+        impl_location: Option<&str>,
+    ) -> Result<ArtifactId, Box<dyn std::error::Error>> {
+        fs::create_dir_all(root.join(".specman/scratchpad"))?;
+        fs::create_dir_all(root.join("spec/core"))?;
+        fs::create_dir_all(root.join("impl/lib"))?;
+
+        fs::write(
+            root.join("spec/core/spec.md"),
+            "---\nname: core\nversion: \"1.0.0\"\n---\n# Core\n## Concept: SpecMan Structure\n!concept-specman-structure.referencing.validation:\n- Implementations that index relationships from inline links MUST provide a method to validate the referenced destinations and report any invalid references.\n",
+        )?;
+
+        let mut impl_front_matter =
+            String::from("---\nname: lib\nspec: spec://core\nversion: \"1.0.0\"\n");
+        if let Some(location) = impl_location {
+            impl_front_matter.push_str(&format!("location: {location}\n"));
+        }
+        impl_front_matter.push_str("---\n# Lib\n");
+
+        fs::write(root.join("impl/lib/impl.md"), impl_front_matter)?;
+
+        Ok(ArtifactId {
+            kind: ArtifactKind::Implementation,
+            name: "lib".into(),
+        })
+    }
+
+    #[test]
+    fn validate_compliance_uses_required_location_directory() {
+        let temp = TempDir::new().expect("tempdir");
+        let root = temp.path();
+
+        let impl_id =
+            write_workspace_fixture(root, Some("../../src/lib")).expect("write workspace fixture");
+
+        fs::create_dir_all(root.join("src/lib")).expect("create source dir");
+        fs::write(
+            root.join("src/lib/indexer.rs"),
+            "// [ENSURES: concept-specman-structure.referencing.validation:CHECK]\n",
+        )
+        .expect("write ENSURES tag");
+
+        let report = validate_compliance(root, &impl_id).expect("validate compliance");
+        assert_eq!(report.missing, Vec::<String>::new());
+        assert!(
+            report
+                .coverage
+                .contains_key("concept-specman-structure.referencing.validation")
+        );
+        assert_eq!(report.scan_root, root.join("src/lib"));
+    }
+
+    #[test]
+    fn validate_compliance_fails_when_location_omitted() {
+        let temp = TempDir::new().expect("tempdir");
+        let root = temp.path();
+
+        let impl_id = write_workspace_fixture(root, None).expect("write workspace fixture");
+
+        let err = validate_compliance(root, &impl_id).expect_err("expected compliance failure");
+        let message = err.to_string();
+        assert!(message.contains("missing required `location` metadata"));
+    }
+
+    #[test]
+    fn validate_compliance_fails_when_location_path_is_missing() {
+        let temp = TempDir::new().expect("tempdir");
+        let root = temp.path();
+
+        let impl_id = write_workspace_fixture(root, Some("../../src/missing"))
+            .expect("write workspace fixture");
+
+        let err = validate_compliance(root, &impl_id).expect_err("expected compliance failure");
+        let message = err.to_string();
+        assert!(message.contains("compliance scan root does not exist"));
+        assert!(message.contains("src/missing"));
+    }
+
+    #[test]
+    fn validate_compliance_fails_when_location_is_not_directory() {
+        let temp = TempDir::new().expect("tempdir");
+        let root = temp.path();
+
+        let impl_id =
+            write_workspace_fixture(root, Some("../../src/not-a-dir.rs")).expect("fixture");
+        fs::create_dir_all(root.join("src")).expect("create src");
+        fs::write(root.join("src/not-a-dir.rs"), "// file").expect("write file");
+
+        let err = validate_compliance(root, &impl_id).expect_err("expected compliance failure");
+        let message = err.to_string();
+        assert!(message.contains("compliance scan root is not a directory"));
+        assert!(message.contains("src/not-a-dir.rs"));
     }
 
     #[test]

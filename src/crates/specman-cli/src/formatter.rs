@@ -73,6 +73,9 @@ fn print_text(result: &CommandResult) {
                 for missing in &status.compliance_missing {
                     println!("    [Compliance] Missing: {}", missing);
                 }
+                if let Some(scan_root) = &status.compliance_scan_root {
+                    println!("    [Compliance] Scan root: {}", scan_root);
+                }
                 for orphan in &status.compliance_orphans {
                      println!(
                         "    [Compliance] Orphan tag: {} at {}:{}",

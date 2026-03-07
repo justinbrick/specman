@@ -3,11 +3,10 @@ use std::path::Path;
 
 use futures::channel::mpsc;
 use rmcp::model::{
-    ClientRequest, ReadResourceRequest, ReadResourceRequestParams, ResourceContents,
-    ServerResult,
+    ClientRequest, ReadResourceRequest, ReadResourceRequestParams, ResourceContents, ServerResult,
 };
+use rmcp::service::{RunningService, ServiceError};
 use rmcp::{RoleClient, RoleServer, serve_client, serve_server};
-use rmcp::service::{ServiceError, RunningService};
 use specman_mcp::SpecmanMcpServer;
 use tempfile::TempDir;
 
@@ -127,6 +126,7 @@ dependencies: []
 name: testimpl
 version: '0.1.0'
 spec: spec://testspec
+location: src
 ---
 # Impl Body
 ",

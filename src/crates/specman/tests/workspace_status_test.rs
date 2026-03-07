@@ -152,3 +152,79 @@ fn scratchpad_separation() {
     assert_eq!(report.scratchpad_status, StatusResult::Fail);
     assert_eq!(report.artifact_count, 2);
 }
+
+#[test]
+fn compliance_reports_resolved_scan_root() {
+    let (_dir, workspace) = make_workspace();
+    let root = workspace.root();
+
+    fs::create_dir_all(root.join("spec/core")).unwrap();
+    fs::write(
+        root.join("spec/core/spec.md"),
+        "---\nname: core\nversion: \"1.0.0\"\n---\n# Core\n## Concept: SpecMan Structure\n!concept-specman-structure.referencing.validation:\n- Implementations that index relationships from inline links MUST provide a method to validate the referenced destinations and report any invalid references.\n",
+    )
+    .unwrap();
+
+    fs::create_dir_all(root.join("impl/lib")).unwrap();
+    fs::write(
+        root.join("impl/lib/impl.md"),
+        "---\nname: lib\nspec: spec://core\nlocation: ../../src/lib\nversion: \"1.0.0\"\n---\n# Lib\n",
+    )
+    .unwrap();
+
+    fs::create_dir_all(root.join("src/lib")).unwrap();
+    fs::write(
+        root.join("src/lib/indexer.rs"),
+        "// [ENSURES: concept-specman-structure.referencing.validation:CHECK]\n",
+    )
+    .unwrap();
+
+    let report = validate_workspace_status(root.to_path_buf(), WorkspaceStatusConfig::default())
+        .unwrap();
+
+    let impl_id = ArtifactId {
+        kind: ArtifactKind::Implementation,
+        name: "lib".into(),
+    };
+    let impl_status = report.artifacts.get(&impl_id).expect("impl artifact status");
+    assert_eq!(impl_status.compliance_missing, Vec::<String>::new());
+    assert_eq!(
+        impl_status.compliance_scan_root.as_deref(),
+        Some(root.join("src/lib").to_string_lossy().as_ref())
+    );
+}
+
+#[test]
+fn compliance_fails_when_location_metadata_is_omitted() {
+    let (_dir, workspace) = make_workspace();
+    let root = workspace.root();
+
+    fs::create_dir_all(root.join("spec/core")).unwrap();
+    fs::write(
+        root.join("spec/core/spec.md"),
+        "---\nname: core\nversion: \"1.0.0\"\n---\n# Core\n## Concept: SpecMan Structure\n!concept-specman-structure.referencing.validation:\n- Implementations that index relationships from inline links MUST provide a method to validate the referenced destinations and report any invalid references.\n",
+    )
+    .unwrap();
+
+    fs::create_dir_all(root.join("impl/lib")).unwrap();
+    fs::write(
+        root.join("impl/lib/impl.md"),
+        "---\nname: lib\nspec: spec://core\nversion: \"1.0.0\"\n---\n# Lib\n",
+    )
+    .unwrap();
+
+    let report = validate_workspace_status(root.to_path_buf(), WorkspaceStatusConfig::default())
+        .unwrap();
+
+    assert_eq!(report.global_status, StatusResult::Fail);
+
+    let impl_id = ArtifactId {
+        kind: ArtifactKind::Implementation,
+        name: "lib".into(),
+    };
+    let impl_status = report.artifacts.get(&impl_id).expect("impl artifact status");
+    assert!(impl_status
+        .compliance_missing
+        .iter()
+        .any(|m| m.contains("missing required `location` metadata")));
+}
