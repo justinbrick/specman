@@ -254,6 +254,8 @@ impl TemplateCatalog {
     fn refresh_embedded_cache(&self, scenario: &TemplateScenario) -> Result<(), SpecmanError> {
         let (key, body) = embedded_assets(scenario)?;
         let cache = TemplateCache::new(&self.workspace);
+        // [ENSURES: concept-template-orchestration.ai-instruction-directives:CHECK]
+        // Embedded template bodies are copied verbatim so AI instruction directives remain intact.
         cache.write_embedded(key, body).map(|_| ())
     }
 
@@ -687,6 +689,7 @@ mod tests {
 
     #[test]
     fn sets_pointer_to_workspace_file() {
+        // [ENSURES: concept-template-orchestration.requirements:TEST]
         let (_tempdir, workspace) = workspace_fixture();
         let catalog = TemplateCatalog::new(workspace.clone());
         let custom_path = workspace.root().join("custom-spec.md");
@@ -711,6 +714,7 @@ mod tests {
 
     #[test]
     fn removing_pointer_rewrites_embedded_cache() {
+        // [ENSURES: concept-template-orchestration.requirements:TEST]
         let (_tempdir, workspace) = workspace_fixture();
         let catalog = TemplateCatalog::new(workspace.clone());
         let custom_path = workspace.root().join("custom-impl.md");
@@ -742,6 +746,7 @@ mod tests {
 
     #[test]
     fn set_pointer_rejects_http_pointers() {
+        // [ENSURES: concept-template-orchestration.requirements:TEST]
         let (_tempdir, workspace) = workspace_fixture();
         let catalog = TemplateCatalog::new(workspace.clone());
 

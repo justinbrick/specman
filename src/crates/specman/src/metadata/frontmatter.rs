@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use serde_yaml::{Mapping, Value as YamlValue};
 
-use crate::graph::tree::ArtifactId;
 use crate::core::error::SpecmanError;
+use crate::graph::tree::ArtifactId;
 use crate::storage::persistence::PersistedArtifact;
 
 /// Shared identity fields repeated across specification, implementation, and scratch metadata
@@ -477,6 +477,7 @@ mod tests {
 
     #[test]
     fn parses_specification_front_matter() {
+        // [ENSURES: concept-specifications.metadata.frontmatter:TEST]
         let yaml = r#"
 name: spec-core
 version: "1.0.0"
@@ -493,6 +494,7 @@ dependencies:
 
     #[test]
     fn classifies_scratch_work_type() {
+        // [ENSURES: concept-scratch-pads.metadata:TEST]
         let yaml = r#"
 target: ../impl/foo/impl.md
 work_type:
@@ -509,6 +511,7 @@ work_type:
 
     #[test]
     fn scratch_work_type_round_trip() {
+        // [ENSURES: concept-scratch-pads.content:TEST]
         let ty = ScratchWorkType::Revision(ScratchRevisionMetadata {
             revised_headings: vec!["../spec/core/spec.md#concept".into()],
             extras: BTreeMap::new(),
@@ -522,6 +525,7 @@ work_type:
 
     #[test]
     fn parses_headings_with_embedded_colons() {
+        // [ENSURES: concept-scratch-pads.metadata:TEST]
         let yaml = r#"
 target: ../spec/specman-mcp/spec.md
 work_type:
@@ -544,6 +548,56 @@ work_type:
                 "Concept: Prompt Catalog".to_string(),
                 "Concept: SpecMan Capability Parity".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn parses_implementation_front_matter_with_spec_location_and_references() {
+        // [ENSURES: concept-implementations.metadata.frontmatter:TEST]
+        // [ENSURES: concept-implementations.specification-coverage.requirements:TEST]
+        // [ENSURES: concept-implementations.references.model:TEST]
+        let yaml = r#"
+name: specman-library
+version: "1.0.0"
+spec: ../spec/core/spec.md
+location: ../../src/crates/specman
+references:
+  - ref: ../spec/data-model/spec.md
+    type: specification
+    optional: false
+"#;
+
+        let front = ArtifactFrontMatter::from_yaml_str(yaml).expect("parse implementation");
+        let implementation = front.as_implementation().expect("implementation variant");
+
+        assert_eq!(implementation.spec.as_deref(), Some("../spec/core/spec.md"));
+        assert_eq!(
+            implementation.location.as_deref(),
+            Some("../../src/crates/specman")
+        );
+        assert_eq!(implementation.references.len(), 1);
+        assert_eq!(
+            implementation.references[0].reference_type.as_deref(),
+            Some("specification")
+        );
+    }
+
+    #[test]
+    fn parses_scratch_front_matter_with_git_branch() {
+        // [ENSURES: concept-scratch-pads.git-branches:TEST]
+        let yaml = r#"
+name: fix-branch-case
+target: ../impl/specman-library/impl.md
+branch: feature/metadata-tightening
+work_type:
+  fix: {}
+"#;
+
+        let front = ArtifactFrontMatter::from_yaml_str(yaml).expect("parse scratch front matter");
+        let scratch = front.as_scratch().expect("scratch variant");
+        assert_eq!(
+            scratch.branch.as_deref(),
+            Some("feature/metadata-tightening")
         );
     }
 }

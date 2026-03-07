@@ -56,6 +56,8 @@ pub fn create_specification(
     env: &SpecmanEnv,
     opts: CreateSpecOptions,
 ) -> Result<CreateResult, SpecmanError> {
+    // [ENSURES: concept-lifecycle-automation.requirements:CHECK]
+    // [ENSURES: entity-lifecyclecontroller.requirements:CHECK]
     let resolved = env.catalog.resolve(TemplateScenario::Specification)?;
     let artifact = ArtifactId {
         kind: ArtifactKind::Specification,
@@ -122,6 +124,8 @@ pub fn create_implementation(
     env: &SpecmanEnv,
     opts: CreateImplOptions,
 ) -> Result<CreateResult, SpecmanError> {
+    // [ENSURES: concept-lifecycle-automation.requirements:CHECK]
+    // [ENSURES: entity-lifecyclecontroller.requirements:CHECK]
     let resolved = env.catalog.resolve(TemplateScenario::Implementation)?;
     let artifact = ArtifactId {
         kind: ArtifactKind::Implementation,
@@ -185,6 +189,8 @@ pub fn create_scratch_pad(
     env: &SpecmanEnv,
     opts: CreateScratchOptions,
 ) -> Result<CreateResult, SpecmanError> {
+    // [ENSURES: concept-lifecycle-automation.requirements:CHECK]
+    // [ENSURES: entity-lifecyclecontroller.requirements:CHECK]
     let scenario =
         TemplateScenario::WorkType(opts.work_type.kind().as_str().to_string());
     let resolved = env.catalog.resolve(scenario)?;
@@ -282,6 +288,7 @@ fn merge_front_matter_after_render(
     workspace: &crate::workspace::WorkspacePaths,
     desired: &serde_yaml::Mapping,
 ) -> Result<String, SpecmanError> {
+    // [ENSURES: concept-lifecycle-automation.frontmatter-generation:CHECK]
     let parent = artifact_path.parent().ok_or_else(|| {
         SpecmanError::Workspace(format!(
             "artifact {} has no parent directory",

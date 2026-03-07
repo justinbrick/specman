@@ -1,7 +1,7 @@
-use std::fs;
 use specman::{
     FilesystemStructureIndexer, FilesystemWorkspaceLocator, StructureQuery, WorkspacePaths,
 };
+use std::fs;
 use tempfile::tempdir;
 
 fn make_workspace() -> WorkspacePaths {
@@ -19,6 +19,8 @@ fn make_workspace() -> WorkspacePaths {
 
 #[test]
 fn render_constraint_group_includes_inline_refs() {
+    // [ENSURES: concept-specifications.concepts-and-entities.structure:TEST]
+    // [ENSURES: concept-concept-entity-headings.structure:TEST]
     let workspace = make_workspace();
     fs::create_dir_all(workspace.spec_dir().join("render_refs")).unwrap();
     fs::write(
@@ -48,17 +50,30 @@ Details of B.
         .into_iter()
         .find(|id| id.group == "constraints.a")
         .expect("constraints.a not found");
-    
+
     let rendered = index.render_constraint_group(&group_id).unwrap();
 
-    assert!(rendered.contains("# Concept: A"), "Should contain parent heading A\n{rendered}");
-    assert!(rendered.contains("Context for A"), "Should contain parent content\n{rendered}");
-    assert!(rendered.contains("# Concept: B"), "Should contain referenced heading B\n{rendered}");
-    assert!(rendered.contains("Details of B"), "Should contain referenced content B\n{rendered}");
+    assert!(
+        rendered.contains("# Concept: A"),
+        "Should contain parent heading A\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Context for A"),
+        "Should contain parent content\n{rendered}"
+    );
+    assert!(
+        rendered.contains("# Concept: B"),
+        "Should contain referenced heading B\n{rendered}"
+    );
+    assert!(
+        rendered.contains("Details of B"),
+        "Should contain referenced content B\n{rendered}"
+    );
 }
 
 #[test]
 fn render_constraint_group_is_transitive() {
+    // [ENSURES: concept-constraints.identifiers.generation:TEST]
     let workspace = make_workspace();
     fs::create_dir_all(workspace.spec_dir().join("transitive")).unwrap();
     fs::write(
@@ -95,5 +110,8 @@ Deep content.
 
     assert!(rendered.contains("# Root"), "{rendered}");
     assert!(rendered.contains("# Child"), "{rendered}");
-    assert!(rendered.contains("# Grandchild"), "Should contain recursive reference Grandchild\n{rendered}");
+    assert!(
+        rendered.contains("# Grandchild"),
+        "Should contain recursive reference Grandchild\n{rendered}"
+    );
 }

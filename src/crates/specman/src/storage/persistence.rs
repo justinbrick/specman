@@ -515,6 +515,7 @@ mod tests {
 
     #[test]
     fn persist_with_dependency_tree_registers_adapter() {
+        // [ENSURES: concept-data-model-backing-implementation.requirements:TEST]
         let (_temp, _root, locator) = workspace_with_locator();
         let adapter = Arc::new(RecordingAdapter::default());
         let adapter_handle: Arc<dyn DataModelAdapter> = adapter.clone();

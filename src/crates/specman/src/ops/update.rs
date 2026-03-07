@@ -283,11 +283,15 @@ fn extract_front_matter_kind(kind: &ArtifactKind) -> FrontMatterKind {
 mod tests {
     use super::*;
     use crate::graph::tree::{ArtifactId, ArtifactKind};
-    use crate::metadata::update_model::{IdentityUpdate, SpecificationUpdate};
+    use crate::metadata::frontmatter::ReferenceEntry;
+    use crate::metadata::update_model::{
+        IdentityUpdate, ImplementationUpdate, SpecificationUpdate,
+    };
     use std::path::PathBuf;
 
     #[test]
     fn test_update_spec_identity() {
+        // [ENSURES: concept-metadata-mutation.requirements:TEST]
         let doc = "---\nname: old-name\n---\nbody content";
         let artifact_id = ArtifactId {
             kind: ArtifactKind::Specification,
@@ -323,6 +327,7 @@ mod tests {
 
     #[test]
     fn test_update_mismatch() {
+        // [ENSURES: concept-metadata-mutation.scope.supported-fields:TEST]
         let doc = "---\nname: spec\n---\nbody";
         let artifact_id = ArtifactId {
             kind: ArtifactKind::Specification,
@@ -347,5 +352,46 @@ mod tests {
             SpecmanError::Template(msg) => assert!(msg.contains("kind does not match")),
             _ => panic!("unexpected error: {:?}", err),
         }
+    }
+
+    #[test]
+    fn test_update_impl_references_and_location() {
+        // [ENSURES: concept-metadata-mutation.requirements:TEST]
+        // [ENSURES: concept-metadata-mutation.scope.supported-fields:TEST]
+        let doc = "---\nname: impl-a\nspec: ../spec/a/spec.md\nlocation: src\nreferences:\n  - ref: ../spec/a/spec.md\n    type: specification\n---\nbody";
+        let artifact_id = ArtifactId {
+            kind: ArtifactKind::Implementation,
+            name: "impl-a".to_string(),
+        };
+        let path = PathBuf::from("/tmp/specman/impl/impl-a/impl.md");
+        let root = PathBuf::from("/tmp/specman");
+        let workspace = WorkspacePaths::new(root.clone(), root.join(".specman"));
+        std::fs::create_dir_all(root.join("spec/b")).expect("create referenced spec dir");
+        std::fs::write(root.join("spec/b/spec.md"), "---\nname: b\n---\n# B\n")
+            .expect("write referenced spec");
+
+        let update = FrontMatterUpdate::Implementation(ImplementationUpdate {
+            location: Some("src/crates/specman".to_string()),
+            references: Some(vec![ReferenceEntry {
+                reference: "../../spec/b/spec.md".to_string(),
+                reference_type: Some("specification".to_string()),
+                optional: Some(true),
+            }]),
+            ..Default::default()
+        });
+
+        let (new_doc, mutated) = apply_front_matter_update(
+            &artifact_id,
+            &path,
+            &workspace,
+            doc,
+            &update,
+            false,
+        )
+        .expect("update impl fields");
+
+        assert!(mutated);
+        assert!(new_doc.contains("location: src/crates/specman"));
+        assert!(new_doc.contains("../spec/b/spec.md"));
     }
 }

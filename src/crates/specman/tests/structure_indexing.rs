@@ -23,6 +23,8 @@ fn make_workspace() -> WorkspacePaths {
 
 #[test]
 fn indexing_fails_on_duplicate_heading_slugs_within_document() {
+    // [ENSURES: concept-specifications.formatting:TEST]
+    // [ENSURES: concept-specifications.headings.structure:TEST]
     let workspace = make_workspace();
     fs::create_dir_all(workspace.spec_dir().join("dup")).unwrap();
     fs::write(
@@ -73,6 +75,10 @@ fn render_heading_includes_referenced_headings_deduped_in_order() {
 
 #[test]
 fn constraint_groups_map_to_first_group_heading_or_nearest() {
+    // [ENSURES: concept-constraints.content:TEST]
+    // [ENSURES: concept-constraints.groups.formatting:TEST]
+    // [ENSURES: concept-constraints.groups.ordering:TEST]
+    // [ENSURES: concept-constraints.identifiers.referencing:TEST]
     let workspace = make_workspace();
     fs::create_dir_all(workspace.spec_dir().join("constraints")).unwrap();
     fs::write(
@@ -128,6 +134,7 @@ fn indexing_rejects_links_that_escape_workspace() {
 
 #[test]
 fn discover_workspace_still_works_with_indexer() {
+    // [ENSURES: concept-specifications.standalone.requirements:TEST]
     let workspace = make_workspace();
     let discovered = discover_workspace(workspace.dot_specman()).unwrap();
     assert_eq!(discovered.root(), workspace.root());

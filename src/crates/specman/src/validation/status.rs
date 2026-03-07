@@ -45,14 +45,12 @@ pub enum StatusResult {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct WorkspaceStatusReport {
     /// Overall workspace status. Fails if any enabled check fails.
-    /// [ENSURES: concept-workspace-status.aggregation:CHECK]
     pub global_status: StatusResult,
 
     /// Status for specification and implementation artifacts.
     pub spec_impl_status: StatusResult,
 
     /// Status specifically for scratch pad artifacts.
-    /// [ENSURES: concept-workspace-status.scratchpads:CHECK]
     pub scratchpad_status: StatusResult,
 
     /// Detailed status per artifact.

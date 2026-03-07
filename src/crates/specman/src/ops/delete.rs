@@ -26,6 +26,7 @@ pub fn delete_artifact(
     target: &ArtifactId,
     opts: DeleteOptions,
 ) -> Result<DeleteResult, SpecmanError> {
+    // [ENSURES: entity-lifecyclecontroller.requirements:CHECK]
     let dependencies = env.mapping.dependency_tree(target)?;
     let blocked = dependencies.has_blocking_dependents();
 

@@ -62,6 +62,51 @@ mod tests {
         assert!(issues.is_empty());
         assert!(slugs.contains("hello-world"));
     }
+
+    #[test]
+    fn reference_validation_options_default_shape_matches_schema() {
+        // [ENSURES: entity-referencevalidationoptions.schema:TEST]
+        let options = ReferenceValidationOptions::default();
+        assert!(options.transitive.enabled);
+        assert!(options.transitive.max_documents > 0);
+
+        let json = serde_json::to_value(&options).expect("serialize options");
+        assert!(json.get("https").is_some());
+        assert!(json.get("transitive").is_some());
+    }
+
+    #[test]
+    fn https_mode_serialization_uses_spec_enum_labels() {
+        // [ENSURES: entity-referencevalidationoptions.schema:TEST]
+        let syntax_only = ReferenceValidationOptions {
+            https: HttpsValidationOptions {
+                mode: HttpsValidationMode::SyntaxOnly,
+            },
+            transitive: TransitiveOptions {
+                enabled: false,
+                max_documents: 1,
+            },
+        };
+        let syntax_json = serde_json::to_string(&syntax_only).expect("serialize syntax-only");
+        assert!(syntax_json.contains("check-syntax"));
+
+        let reachability = ReferenceValidationOptions {
+            https: HttpsValidationOptions {
+                mode: HttpsValidationMode::Reachability {
+                    timeout: Duration::from_secs(1),
+                    max_redirects: 2,
+                    method: HttpsMethod::Get,
+                },
+            },
+            transitive: TransitiveOptions {
+                enabled: true,
+                max_documents: 4,
+            },
+        };
+        let reachability_json =
+            serde_json::to_string(&reachability).expect("serialize reachability");
+        assert!(reachability_json.contains("check-reachability"));
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

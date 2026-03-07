@@ -1,6 +1,7 @@
+use schemars::schema_for;
 use specman::{
-    ArtifactId, ArtifactKind, StatusResult, WorkspacePaths, WorkspaceStatusConfig,
-    validate_workspace_status,
+    ArtifactId, ArtifactKind, ArtifactStatus, StatusResult, WorkspacePaths, WorkspaceStatusConfig,
+    WorkspaceStatusReport, validate_workspace_status,
 };
 use std::fs;
 
@@ -19,6 +20,7 @@ fn make_workspace() -> (tempfile::TempDir, WorkspacePaths) {
 
 #[test]
 fn clean_workspace_passes() {
+    // [ENSURES: concept-specifications.metadata.frontmatter:TEST]
     let (_dir, workspace) = make_workspace();
     let root = workspace.root();
 
@@ -40,6 +42,7 @@ fn clean_workspace_passes() {
 
 #[test]
 fn validation_detects_cycles() {
+    // [ENSURES: concept-specifications.dependencies:TEST]
     let (_dir, workspace) = make_workspace();
     let root = workspace.root();
 
@@ -179,14 +182,17 @@ fn compliance_reports_resolved_scan_root() {
     )
     .unwrap();
 
-    let report = validate_workspace_status(root.to_path_buf(), WorkspaceStatusConfig::default())
-        .unwrap();
+    let report =
+        validate_workspace_status(root.to_path_buf(), WorkspaceStatusConfig::default()).unwrap();
 
     let impl_id = ArtifactId {
         kind: ArtifactKind::Implementation,
         name: "lib".into(),
     };
-    let impl_status = report.artifacts.get(&impl_id).expect("impl artifact status");
+    let impl_status = report
+        .artifacts
+        .get(&impl_id)
+        .expect("impl artifact status");
     assert_eq!(impl_status.compliance_missing, Vec::<String>::new());
     assert_eq!(
         impl_status.compliance_scan_root.as_deref(),
@@ -213,8 +219,8 @@ fn compliance_fails_when_location_metadata_is_omitted() {
     )
     .unwrap();
 
-    let report = validate_workspace_status(root.to_path_buf(), WorkspaceStatusConfig::default())
-        .unwrap();
+    let report =
+        validate_workspace_status(root.to_path_buf(), WorkspaceStatusConfig::default()).unwrap();
 
     assert_eq!(report.global_status, StatusResult::Fail);
 
@@ -222,9 +228,49 @@ fn compliance_fails_when_location_metadata_is_omitted() {
         kind: ArtifactKind::Implementation,
         name: "lib".into(),
     };
-    let impl_status = report.artifacts.get(&impl_id).expect("impl artifact status");
-    assert!(impl_status
-        .compliance_missing
-        .iter()
-        .any(|m| m.contains("missing required `location` metadata")));
+    let impl_status = report
+        .artifacts
+        .get(&impl_id)
+        .expect("impl artifact status");
+    assert!(
+        impl_status
+            .compliance_missing
+            .iter()
+            .any(|m| m.contains("missing required `location` metadata"))
+    );
+}
+
+#[test]
+fn workspace_status_config_defaults_match_required_categories() {
+    // [ENSURES: concept-workspace-status.requirements:TEST]
+    // [ENSURES: entity-workspacestatusconfig.schema:TEST]
+    let config = WorkspaceStatusConfig::default();
+    assert!(config.structure);
+    assert!(config.references);
+    assert!(config.cycles);
+    assert!(config.compliance);
+    assert!(config.scratchpads);
+    assert!(config.reference_options.is_none());
+}
+
+#[test]
+fn workspace_status_report_schema_declares_required_fields() {
+    // [ENSURES: entity-workspacestatusreport.schema:TEST]
+    // [ENSURES: entity-artifactstatus.schema:TEST]
+    let report_schema = schema_for!(WorkspaceStatusReport);
+    let report_json = serde_json::to_string(&report_schema).expect("serialize report schema");
+    assert!(report_json.contains("\"global_status\""));
+    assert!(report_json.contains("\"spec_impl_status\""));
+    assert!(report_json.contains("\"scratchpad_status\""));
+    assert!(report_json.contains("\"artifacts\""));
+    assert!(report_json.contains("\"cycle_errors\""));
+    assert!(report_json.contains("\"structure_errors\""));
+    assert!(report_json.contains("\"artifact_count\""));
+
+    let artifact_schema = schema_for!(ArtifactStatus);
+    let artifact_json = serde_json::to_string(&artifact_schema).expect("serialize artifact schema");
+    assert!(artifact_json.contains("\"structure_errors\""));
+    assert!(artifact_json.contains("\"reference_errors\""));
+    assert!(artifact_json.contains("\"compliance_missing\""));
+    assert!(artifact_json.contains("\"compliance_orphans\""));
 }
