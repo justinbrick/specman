@@ -1,63 +1,21 @@
-use std::collections::BTreeSet;
-use std::fs;
-use std::path::Path;
-
-use rmcp::model::{ArgumentInfo, CompleteRequestParams, CompletionContext, Reference};
-use serde_json::{Map, Value, json};
+use rmcp::model::{CompleteRequestParams, Reference};
 
 use specman::WorkspacePaths;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ArtifactClass {
-    Spec,
-    Impl,
-}
+mod contracts;
+mod index;
+mod matching;
+mod serialization;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HandleScope {
-    SpecOnly,
-    ImplOnly,
-}
+use contracts::HandleScope;
+use index::{build_index, complete_constraint_ids};
+use matching::{filter_handles_fuzzy, filter_slugs_fuzzy};
 
-#[derive(Debug, Default)]
-struct CompletionIndex {
-    specs: Vec<String>,
-    impls: Vec<String>,
-    warnings: Vec<String>,
-}
+pub(crate) use serialization::capability_descriptor_metadata;
 
 pub(crate) struct CompletionOutcome {
     pub(crate) values: Vec<String>,
     pub(crate) warnings: Vec<String>,
-}
-
-pub(crate) fn capability_descriptor_metadata() -> Map<String, Value> {
-    let value = json!({
-        "specmanCapabilityDescriptor": {
-            "entity": "SpecManCapabilityDescriptor",
-            "completion": {
-                "warningTransport": "notifications/message",
-                "ordering": "artifact-class-first-then-lexical-handle",
-                "scratchSuggestions": false,
-                "surfaces": [
-                    { "surface": "prompt.revision.target", "acceptedKinds": ["spec"] },
-                    { "surface": "prompt.migration.target", "acceptedKinds": ["spec"] },
-                    { "surface": "prompt.impl.spec", "acceptedKinds": ["spec"] },
-                    { "surface": "prompt.feat.target", "acceptedKinds": ["impl"] },
-                    { "surface": "prompt.ref.target", "acceptedKinds": ["impl"] },
-                    { "surface": "prompt.fix.target", "acceptedKinds": ["impl"] },
-                    { "surface": "prompt.compliance.implementation", "acceptedKinds": ["impl"] },
-                    { "surface": "resource.spec://{artifact}", "acceptedKinds": ["spec"] },
-                    { "surface": "resource.impl://{artifact}", "acceptedKinds": ["impl"] },
-                    { "surface": "resource.spec://{artifact}/constraints", "acceptedKinds": ["spec"] },
-                    { "surface": "resource.spec://{artifact}/constraints/{constraint_id}", "acceptedKinds": ["spec"] },
-                    { "surface": "resource.impl://{artifact}/compliance", "acceptedKinds": ["impl"] }
-                ]
-            }
-        }
-    });
-
-    value.as_object().cloned().unwrap_or_default()
 }
 
 pub(crate) fn complete_request(
@@ -89,57 +47,40 @@ pub(crate) fn complete_request(
 }
 
 fn complete_prompt(
-    index: &CompletionIndex,
+    index: &index::CompletionIndex,
     prompt_name: &str,
-    argument: &ArgumentInfo,
-    _context: Option<&CompletionContext>,
+    argument: &rmcp::model::ArgumentInfo,
+    _context: Option<&rmcp::model::CompletionContext>,
 ) -> Vec<String> {
-    let scope = match (prompt_name, argument.name.as_str()) {
-        ("revision", "target") => Some(HandleScope::SpecOnly),
-        ("migration", "target") => Some(HandleScope::SpecOnly),
-        ("impl", "spec") => Some(HandleScope::SpecOnly),
-        ("feat", "target") => Some(HandleScope::ImplOnly),
-        ("ref", "target") => Some(HandleScope::ImplOnly),
-        ("fix", "target") => Some(HandleScope::ImplOnly),
-        ("compliance", "implementation") => Some(HandleScope::ImplOnly),
-        _ => None,
-    };
+    let scope = contracts::prompt_scope(prompt_name, &argument.name);
 
     match scope {
-        Some(HandleScope::SpecOnly) => filter_handles(&index.specs, &argument.value),
-        Some(HandleScope::ImplOnly) => filter_handles(&index.impls, &argument.value),
+        Some(HandleScope::SpecOnly) => filter_handles_fuzzy(&index.specs, &argument.value),
+        Some(HandleScope::ImplOnly) => filter_handles_fuzzy(&index.impls, &argument.value),
         None => Vec::new(),
     }
 }
 
 fn complete_resource(
-    index: &CompletionIndex,
+    index: &index::CompletionIndex,
     workspace: &WorkspacePaths,
     uri_template: &str,
-    argument: &ArgumentInfo,
-    context: Option<&CompletionContext>,
+    argument: &rmcp::model::ArgumentInfo,
+    context: Option<&rmcp::model::CompletionContext>,
 ) -> Vec<String> {
     let normalized = normalize_uri_template(uri_template);
 
     if argument.name == "artifact" {
-        let scope = if normalized.starts_with("spec://{artifact}") {
-            Some(HandleScope::SpecOnly)
-        } else if normalized.starts_with("impl://{artifact}") {
-            Some(HandleScope::ImplOnly)
-        } else {
-            None
-        };
+        let scope = contracts::resource_scope_for_artifact(&normalized);
 
         return match scope {
-            Some(HandleScope::SpecOnly) => filter_slugs(&index.specs, &argument.value),
-            Some(HandleScope::ImplOnly) => filter_slugs(&index.impls, &argument.value),
+            Some(HandleScope::SpecOnly) => filter_slugs_fuzzy(&index.specs, &argument.value),
+            Some(HandleScope::ImplOnly) => filter_slugs_fuzzy(&index.impls, &argument.value),
             None => Vec::new(),
         };
     }
 
-    if normalized == "spec://{artifact}/constraints/{constraint_id}"
-        && argument.name == "constraint_id"
-    {
+    if contracts::is_constraint_id_surface(&normalized, &argument.name) {
         let artifact = context
             .and_then(|ctx| ctx.get_argument("artifact"))
             .map(String::as_str)
@@ -149,169 +90,21 @@ fn complete_resource(
 
     Vec::new()
 }
-
-fn complete_constraint_ids(
-    workspace: &WorkspacePaths,
-    artifact_name: &str,
-    current: &str,
-) -> Vec<String> {
-    if artifact_name.trim().is_empty() {
-        return Vec::new();
-    }
-
-    let path = workspace
-        .spec_dir()
-        .join(artifact_name.trim())
-        .join("spec.md");
-    let text = match fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(_) => return Vec::new(),
-    };
-
-    let mut ids = BTreeSet::new();
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        if !trimmed.starts_with('!') {
-            continue;
-        }
-
-        let Some((raw, _)) = trimmed[1..].split_once(':') else {
-            continue;
-        };
-        let id = raw.trim();
-        if id.is_empty() || id.contains('/') || id.chars().any(char::is_whitespace) {
-            continue;
-        }
-        ids.insert(id.to_string());
-    }
-
-    ids.into_iter()
-        .filter(|id| id.starts_with(current))
-        .collect()
-}
-
-fn build_index(workspace: &WorkspacePaths) -> CompletionIndex {
-    let mut index = CompletionIndex::default();
-    index.specs = collect_handles(
-        workspace.spec_dir().as_path(),
-        "spec.md",
-        ArtifactClass::Spec,
-        &mut index.warnings,
-    );
-    index.impls = collect_handles(
-        workspace.impl_dir().as_path(),
-        "impl.md",
-        ArtifactClass::Impl,
-        &mut index.warnings,
-    );
-    index
-}
-
-fn collect_handles(
-    root: &Path,
-    artifact_file: &str,
-    class: ArtifactClass,
-    warnings: &mut Vec<String>,
-) -> Vec<String> {
-    let mut out = Vec::new();
-
-    let entries = match fs::read_dir(root) {
-        Ok(entries) => entries,
-        Err(err) => {
-            warnings.push(format!(
-                "completion index degraded: failed to read '{}': {err}",
-                root.display()
-            ));
-            return out;
-        }
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-
-        let name = entry.file_name().to_string_lossy().to_string();
-        if !is_slug_like(&name) {
-            warnings.push(format!(
-                "completion index degraded: skipped invalid artifact directory '{}'; expected lowercase slug",
-                path.display()
-            ));
-            continue;
-        }
-
-        let marker = path.join(artifact_file);
-        if !marker.exists() {
-            warnings.push(format!(
-                "completion index degraded: skipped '{}' because '{}' is missing",
-                path.display(),
-                artifact_file
-            ));
-            continue;
-        }
-
-        let handle = match class {
-            ArtifactClass::Spec => format!("spec://{name}"),
-            ArtifactClass::Impl => format!("impl://{name}"),
-        };
-        out.push(handle);
-    }
-
-    out.sort_unstable();
-    out.dedup();
-    out
-}
-
-fn filter_handles(handles: &[String], current: &str) -> Vec<String> {
-    if current.trim().is_empty() {
-        return handles.to_vec();
-    }
-
-    let typed_handle = current.contains("://");
-    handles
-        .iter()
-        .filter(|h| {
-            if typed_handle {
-                h.starts_with(current)
-            } else {
-                h.split_once("://")
-                    .map(|(_, name)| name.starts_with(current))
-                    .unwrap_or(false)
-            }
-        })
-        .cloned()
-        .collect()
-}
-
-fn filter_slugs(handles: &[String], current: &str) -> Vec<String> {
-    handles
-        .iter()
-        .filter_map(|handle| handle.split_once("://").map(|(_, name)| name.to_string()))
-        .filter(|name| name.starts_with(current))
-        .collect()
-}
-
 fn normalize_uri_template(uri_template: &str) -> String {
     uri_template.trim().trim_end_matches('/').to_string()
-}
-
-fn is_slug_like(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rmcp::model::{
-        CompleteRequestParams, CompletionContext, PromptReference, ResourceReference,
+        ArgumentInfo, CompleteRequestParams, CompletionContext, PromptReference, ResourceReference,
     };
     use specman::WorkspacePaths;
     use std::collections::HashMap;
+    use std::fs;
     use std::io::Write;
+    use std::path::Path;
 
     fn write_file(path: &Path, contents: &str) {
         let parent = path.parent().expect("parent");
@@ -435,6 +228,47 @@ mod tests {
 
         let values = complete_request(&ws, &request).values;
         assert_eq!(values, vec!["concept-a.group"]);
+    }
+
+    #[test]
+    fn prompt_completion_uses_fuzzy_matching() {
+        let (_temp, ws) = fixture_workspace();
+
+        let request = CompleteRequestParams {
+            meta: None,
+            r#ref: Reference::Prompt(PromptReference {
+                name: "revision".to_string(),
+                title: None,
+            }),
+            argument: ArgumentInfo {
+                name: "target".to_string(),
+                value: "oa".to_string(),
+            },
+            context: None,
+        };
+
+        let values = complete_request(&ws, &request).values;
+        assert_eq!(values, vec!["spec://omega"]);
+    }
+
+    #[test]
+    fn resource_slug_completion_uses_fuzzy_matching() {
+        let (_temp, ws) = fixture_workspace();
+
+        let request = CompleteRequestParams {
+            meta: None,
+            r#ref: Reference::Resource(ResourceReference {
+                uri: "impl://{artifact}".to_string(),
+            }),
+            argument: ArgumentInfo {
+                name: "artifact".to_string(),
+                value: "gm".to_string(),
+            },
+            context: None,
+        };
+
+        let values = complete_request(&ws, &request).values;
+        assert_eq!(values, vec!["gamma"]);
     }
 
     #[test]

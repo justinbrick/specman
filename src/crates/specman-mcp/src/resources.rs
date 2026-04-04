@@ -25,6 +25,7 @@ use tracing::{debug, info, instrument};
 
 use crate::completion;
 use crate::error::{McpError, invalid_params, to_mcp_error};
+use crate::resolve::normalize_resource_uri;
 use crate::server::SpecmanMcpServer;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -172,22 +173,6 @@ enum ParsedResourceRequest {
     ComplianceReport(String),
     ConstraintsIndex(String),
     ConstraintContent(String, String),
-}
-
-fn normalize_resource_uri(uri: &str) -> String {
-    let trimmed = uri.trim();
-    if let Some((scheme, rest)) = trimmed.split_once("://") {
-        if rest.is_empty() {
-            return trimmed.to_string();
-        }
-        let rest = rest.trim_end_matches('/');
-        if rest.is_empty() {
-            return format!("{scheme}://");
-        }
-        return format!("{scheme}://{rest}");
-    }
-
-    trimmed.trim_end_matches('/').to_string()
 }
 
 impl std::str::FromStr for ParsedResourceRequest {

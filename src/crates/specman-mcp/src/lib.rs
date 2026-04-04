@@ -3,6 +3,7 @@
 mod completion;
 mod error;
 mod prompts;
+mod resolve;
 mod resources;
 mod server;
 mod telemetry;

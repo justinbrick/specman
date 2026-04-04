@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use specman::{DependencyTree, SpecmanError, WorkspaceLocator, WorkspacePaths};
 
 use crate::error::{McpError, to_mcp_error};
+use crate::resolve::coerce_reference;
 use crate::resources::{artifact_handle, resolved_path_or_artifact_path};
 use crate::server::SpecmanMcpServer;
 use tracing::{debug, info, instrument};
@@ -357,21 +358,3 @@ fn bullet_list(items: &[String]) -> String {
     }
 }
 
-fn coerce_reference(reference: &str, default_scheme: &str) -> String {
-    let trimmed = reference.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-
-    // If the caller supplied an explicit locator scheme, preserve it.
-    if trimmed.contains("://") {
-        return trimmed.to_string();
-    }
-
-    // If the value looks like a workspace-relative path, preserve it.
-    if trimmed.contains('/') || trimmed.contains('\\') {
-        return trimmed.to_string();
-    }
-
-    format!("{default_scheme}://{trimmed}")
-}
