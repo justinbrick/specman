@@ -30,9 +30,39 @@ The MCP server adapter sits on top of a STDIN/STDOUT MCP runtime that brokers Sp
 - The adapter MUST surface lifecycle hooks (initialize, shutdown, keep-alive) so MCP clients can coordinate long-running SpecMan tasks without bypassing the MCP lifecycle described in [SpecMan Core Deterministic Execution](../specman-core/spec.md#concept-deterministic-execution).
 - Streaming outputs, partial results, and tool errors MUST follow the MCP framing rules; when SpecMan Core would emit structured errors, the MCP transport MUST encapsulate them as MCP-compliant error payloads without losing error codes or references.
 
+### Concept: MCP Auto-Completion
+
+MCP clients need deterministic completion responses for SpecMan-facing tool/resource/prompt arguments so they can discover valid identifiers without bespoke workspace scans.
+
+!concept-mcp-auto-completion.requirements:
+
+- Implementations MUST provide completion responses for MCP surfaces that accept artifact identifiers, including tools, resources, and prompt arguments.
+- Completion suggestions defined by this specification MUST include only `spec://{artifact}` and `impl://{artifact}` handles when a handle-valued argument is being completed.
+- Completion responses defined by this specification MUST NOT suggest `scratch://` handles.
+- Completion responses MUST be deterministic for the same workspace state and prefix input, and MUST preserve stable ordering for equivalent candidates.
+- Completion candidates MUST be sourced from the active workspace discovered by SpecMan Core workspace discovery and MUST respect workspace-boundary rules.
+
+!concept-mcp-auto-completion.validation:
+
+- Suggestions representing locators or references MUST pass the same locator-scheme and workspace-boundary validation rules used by dependency and reference validation.
+- Implementations MUST NOT suggest unsupported destination schemes.
+- When completion indexes or metadata are malformed, adapters MUST return partial suggestions for valid segments and MUST emit warning diagnostics through MCP-supported warning logging mechanisms.
+- Degraded completion warnings MUST NOT be encoded as MCP transport errors unless the adapter cannot produce any valid suggestion.
+
+!concept-mcp-auto-completion.performance:
+
+- Implementations SHOULD cache completion indexes for the duration of a request and MAY cache across requests when cache keys include workspace root and content fingerprinting.
+- Cached completion data MUST be invalidated when source artifacts change.
+
 ### Concept: SpecMan Capability Parity
 
 This concept ensures that every capability delivered by a SpecMan Core-compliant implementation is reachable through MCP tools with identical semantics, regardless of which MCP runtime library hosts the adapter.
+
+!concept-specman-capability-parity.completion:
+
+- MCP tools and resources that accept artifact identifiers MUST provide completion hints/responses aligned to their accepted handle scope.
+- Resource completion for derived resource suffixes (for example `/constraints`, `/dependencies`, `/compliance`) MUST only suggest suffixes valid for the selected base artifact type.
+- Tool/resource completion responses covered by this specification MUST share a consistent completion index so deterministic behavior is preserved across MCP surfaces.
 
 - For each concept defined in [SpecMan Core](../specman-core/spec.md#concepts), the MCP adapter MUST expose at least one tool whose behavior, inputs, and outputs align with the originating concept’s constraints (for example, workspace discovery, dependency mapping, template orchestration, lifecycle automation, metadata mutation).
 - When a SpecMan Core implementation ships additional optional or experimental capabilities, the adapter MAY surface them via extension tools, but it MUST clearly label each tool with the governing specification or implementation path so clients can opt into or ignore the capability.
@@ -124,6 +154,12 @@ Prompt catalog tooling defines how MCP clients obtain deterministic prompts for 
 
 - Prompt catalog governance applies exclusively to MCP prompt- and resource-oriented surfaces. CLI documentation MUST NOT expose prompt templates directly; CLI usage relies on the same SpecMan Core lifecycle automation without surfacing prompt text.
 - Prompt catalog responses MAY tailor wording for specific MCP scenarios, but they MUST remain deterministic for a given template/version combination.
+
+!concept-prompt-catalog.argument-completion:
+
+- Prompt arguments for revision workflows MUST auto-complete only specification targets and MUST NOT suggest implementation handles.
+- Prompt arguments for refactor/fix/feature workflows (`ref`, `fix`, `feat`) MUST auto-complete only implementation targets and MUST NOT suggest specification handles.
+- Where prompt arguments accept handle values, suggestions MUST resolve to canonical `spec://` or `impl://` handles, while human-readable labels MAY be provided as auxiliary metadata.
 
 !concept-prompt-catalog.migration-prompts:
 
@@ -234,6 +270,7 @@ Represents a negotiated MCP session bound to a single SpecMan workspace.
 Defines the MCP tool metadata for each SpecMan Core capability.
 
 - MUST include fields for `id`, `concept_ref` (link to the governing SpecMan Core heading), supported SpecMan Core version range, and optional extension metadata.
+- MUST include completion capability metadata for MCP surfaces that support completion, including accepted handle kinds and whether degraded completion warnings are emitted via MCP warning logging.
 - MUST embed JSON Schema fragments that match the SpecMan Data Model serialization for the capability’s inputs/outputs.
 - MAY reference implementation-specific extensions, but those entries MUST carry a `type: extension` label and cite the owning specification or implementation path.
 
