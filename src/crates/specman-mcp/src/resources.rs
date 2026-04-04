@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    GetPromptRequestParams, GetPromptResult, ListPromptsResult, ListResourceTemplatesResult,
-    ListResourcesResult, PaginatedRequestParams, RawResource, RawResourceTemplate,
+    CompleteRequestParams, CompleteResult, CompletionInfo, GetPromptRequestParams, GetPromptResult,
+    ListPromptsResult, ListResourceTemplatesResult, ListResourcesResult, LoggingLevel,
+    LoggingMessageNotificationParam, PaginatedRequestParams, RawResource, RawResourceTemplate,
     ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents, ResourceTemplate,
     ServerCapabilities, ServerInfo,
 };
@@ -22,6 +23,7 @@ use specman::{
 
 use tracing::{debug, info, instrument};
 
+use crate::completion;
 use crate::error::{McpError, invalid_params, to_mcp_error};
 use crate::server::SpecmanMcpServer;
 
@@ -732,6 +734,30 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
 
 #[prompt_handler]
 impl ServerHandler for SpecmanMcpServer {
+    async fn complete(
+        &self,
+        request: CompleteRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CompleteResult, McpError> {
+        let workspace = self.workspace.workspace().map_err(to_mcp_error)?;
+        let outcome = completion::complete_request(&workspace, &request);
+
+        for warning in outcome.warnings {
+            let notification = LoggingMessageNotificationParam {
+                level: LoggingLevel::Warning,
+                logger: Some("specman-mcp.completion".to_string()),
+                data: serde_json::Value::String(warning),
+            };
+            if let Err(err) = context.peer.notify_logging_message(notification).await {
+                debug!(error = ?err, "failed to emit completion warning notification");
+            }
+        }
+
+        let completion = CompletionInfo::with_all_values(outcome.values)
+            .map_err(|err| McpError::internal_error(err, None))?;
+        Ok(CompleteResult { completion })
+    }
+
     async fn list_resources(
         &self,
         _request: Option<PaginatedRequestParams>,
@@ -773,6 +799,7 @@ impl ServerHandler for SpecmanMcpServer {
                 .enable_tools()
                 .enable_resources()
                 .enable_prompts()
+                .enable_completions_with(completion::capability_descriptor_metadata())
                 .build(),
             ..ServerInfo::default()
         }
