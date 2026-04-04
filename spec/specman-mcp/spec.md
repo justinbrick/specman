@@ -39,13 +39,22 @@ MCP clients need deterministic completion responses for SpecMan-facing tool/reso
 - Implementations MUST provide completion responses for MCP surfaces that accept artifact identifiers, including tools, resources, and prompt arguments.
 - Completion suggestions defined by this specification MUST include only `spec://{artifact}` and `impl://{artifact}` handles when a handle-valued argument is being completed.
 - Completion responses defined by this specification MUST NOT suggest `scratch://` handles.
-- Completion responses MUST be deterministic for the same workspace state and prefix input, and MUST preserve stable ordering for equivalent candidates.
+- Completion filtering MUST evaluate candidate text using the completion value that would be inserted into the target argument.
+- For this concept, normalization MUST be: trim leading and trailing whitespace, then apply Unicode-aware case folding.
+- Completion filtering MUST use a deterministic `fuzzy` matching mode.
+- In `fuzzy` mode, a candidate MUST be retained according to a deterministic fuzzy-matching algorithm that is documented by the implementation.
+- Mode selection MUST be deterministic. When a completion surface accepts an explicit mode selector, omitted mode values MUST default to `fuzzy`; when a surface does not accept an explicit mode selector, the implementation MUST document and apply a fixed mode for that surface.
+- Completion responses MUST be deterministic for the same workspace state, source input text, and selected mode, and MUST preserve stable ordering for equivalent candidates.
+- If the normalized source text is empty, implementations MUST return the full candidate set scoped by existing handle/type constraints.
 - Completion candidates MUST be sourced from the active workspace discovered by SpecMan Core workspace discovery and MUST respect workspace-boundary rules.
 
 !concept-mcp-auto-completion.validation:
 
 - Suggestions representing locators or references MUST pass the same locator-scheme and workspace-boundary validation rules used by dependency and reference validation.
 - Implementations MUST NOT suggest unsupported destination schemes.
+- Implementations MUST evaluate matching after normalization and before final ordering is emitted.
+- Implementations MUST keep filtering deterministic for a fixed workspace state, fixed input text, and fixed matching mode.
+- Implementations MUST define deterministic tie-breaking so equivalent fuzzy scores preserve stable ordering expectations.
 - When completion indexes or metadata are malformed, adapters MUST return partial suggestions for valid segments and MUST emit warning diagnostics through MCP-supported warning logging mechanisms.
 - Degraded completion warnings MUST NOT be encoded as MCP transport errors unless the adapter cannot produce any valid suggestion.
 
@@ -63,6 +72,7 @@ This concept ensures that every capability delivered by a SpecMan Core-compliant
 - MCP tools and resources that accept artifact identifiers MUST provide completion hints/responses aligned to their accepted handle scope.
 - Resource completion for derived resource suffixes (for example `/constraints`, `/dependencies`, `/compliance`) MUST only suggest suffixes valid for the selected base artifact type.
 - Tool/resource completion responses covered by this specification MUST share a consistent completion index so deterministic behavior is preserved across MCP surfaces.
+- Tool/resource/prompt completion responses covered by this specification MUST share the same normalization, mode-selection, and filtering semantics defined by [Concept: MCP Auto-Completion](#concept-mcp-auto-completion).
 
 - For each concept defined in [SpecMan Core](../specman-core/spec.md#concepts), the MCP adapter MUST expose at least one tool whose behavior, inputs, and outputs align with the originating concept’s constraints (for example, workspace discovery, dependency mapping, template orchestration, lifecycle automation, metadata mutation).
 - When a SpecMan Core implementation ships additional optional or experimental capabilities, the adapter MAY surface them via extension tools, but it MUST clearly label each tool with the governing specification or implementation path so clients can opt into or ignore the capability.
