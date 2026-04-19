@@ -8,3 +8,6 @@ members = [
 
 [workspace.package]
 authors = ["Justin B <justin@justin.directory>"]
+
+[profile.dev.package."*"]
+debug = false
