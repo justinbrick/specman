@@ -17,7 +17,7 @@ Dependencies:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` to create a new feature scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
+1. Call the MCP tool `create_feature` to create a new feature scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following:
     - Feature requirements breakdown: goals, non-goals, acceptance criteria, edge cases, and constraints.
     - Implementation breakdown: outline the major components/modules, data structures, APIs, and execution flow; include a staged implementation plan (milestones) that could be executed later.

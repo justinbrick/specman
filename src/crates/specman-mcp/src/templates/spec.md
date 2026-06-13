@@ -1,6 +1,6 @@
 # Specification Creation
 
-You are creating a SpecMan specification and must use the MCP tool `create_artifact` to instantiate the canonical specification template, preserving each HTML comment directive until its instruction is satisfied.
+You are creating a SpecMan specification and must use the MCP tool `create_specification` to instantiate the canonical specification template, preserving each HTML comment directive until its instruction is satisfied.
 
 ## Standards Quick Reference (Standalone)
 
@@ -24,7 +24,7 @@ Before interpreting any inputs, complete these reading prerequisites:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` to create a new specification artifact, following the tool-call schema exposed by the current environment (do not rely on older examples that enumerate specific fields).
+1. Call the MCP tool `create_specification` to create a new specification artifact, following the tool-call schema exposed by the current environment (do not rely on older examples that enumerate specific fields).
 2. Open the created specification artifact and fill it out:
     - Declare dependencies (if any) and ensure they are necessary and sufficient.
     - Define Concepts and Entities (use the required heading prefixes) and write normative requirements using RFC 2119 keywords.

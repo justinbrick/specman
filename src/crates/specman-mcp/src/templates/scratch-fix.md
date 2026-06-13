@@ -17,7 +17,7 @@ Dependencies:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` to create a new fix scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
+1. Call the MCP tool `create_fix` to create a new fix scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following (do not implement yet):
     - Observed behavior vs expected behavior; reproduction notes; scope of impact.
     - Candidate fixes: list at least 2 plausible approaches; for each, note risks, blast radius, and required changes.

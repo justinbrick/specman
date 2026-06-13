@@ -37,7 +37,7 @@ Read the following dependencies before continuing:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` to create a new revision scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
+1. Call the MCP tool `create_revision` to create a new revision scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following:
     - Proposed revision outline: the sections/headings affected, and what will change.
     - Draft wording proposals: write candidate replacement/additional paragraphs and constraint statements.

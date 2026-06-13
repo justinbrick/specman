@@ -1,6 +1,6 @@
 # Implementation Creation
 
-You are documenting an implementation and must use the MCP tool `create_artifact` to instantiate the canonical implementation template, ensuring it complies with the SpecMan Data Model and realizes the specification at {{target_path}} while keeping every HTML comment directive until fulfilled.
+You are documenting an implementation and must use the MCP tool `create_implementation` to instantiate the canonical implementation template, ensuring it complies with the SpecMan Data Model and realizes the specification at {{target_path}} while keeping every HTML comment directive until fulfilled.
 
 Before doing anything else, complete these prerequisites:
 
@@ -12,7 +12,7 @@ Read the following dependencies before continuing:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` to create a new implementation artifact for the governing specification, following the tool-call schema exposed by the current environment (avoid hard-coding any specific field names).
+1. Call the MCP tool `create_implementation` to create a new implementation artifact for the governing specification, following the tool-call schema exposed by the current environment (avoid hard-coding any specific field names).
 2. Open the created implementation artifact and fill it out:
     - Break down how the implementation should work: modules/components, key types, interfaces, error handling, data flow, and external integrations.
     - Provide a staged implementation plan (milestones) that could be executed later, including where tests/docs should be added.

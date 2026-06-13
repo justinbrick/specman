@@ -1,5 +1,5 @@
 ---
-version: 1.1.0
+version: 2.0.0
 dependencies:
   - ../../docs/founding-spec.md
   - https://spec.commonmark.org/0.31.2/
@@ -96,30 +96,19 @@ Example:
 
 A work type can be one of the following:
 
-- `draft`: create an initial specification
-  - The target artifact MUST be a specification. The specification MUST NOT be an external reference.
 - `revision`: a change to the specification
   - The target artifact MUST be a specification. The specification MUST NOT be an external reference.
   - Implies potential refactoring required for all referencing implementations.
   - One or more extra scratch pads MAY be created as a result of a revision.
-  - The object representation of this work type MUST follow this form:
-    - `revised_headings`: a list of headings that have been revised.
-      - each revised heading MUST be represented as a markdown fragment that exists within the specification
 - `feat`: an introduction of a feature
   - The target artifact MUST be an implementation.
   - SHOULD be used to introduce new functionality via implementations.
 - `ref`: a refactor of an implementation
   - The target artifact MUST be an implementation.
   - Implies potential refactoring required for downstream implementations.
-  - The object representation of this work type MUST follow this form:
-    - `refactored_headings`: a list of headings that have been refactored.
-      - each refactored heading MUST be represented as a markdown fragment that exists within the specification
 - `fix`: a correction applied to an implementation to address defects without modifying specifications
   - The target artifact MUST be an implementation and MUST NOT be a specification or external reference.
   - SHOULD be used when the implementation needs remediation (bug fixes, defects) independent of specification updates.
-  - The object representation of this work type MUST follow this form:
-    - `fixed_headings`: a list of headings for concepts or entities impacted by the fix.
-      - each fixed heading MUST be represented as a markdown fragment that exists within the implementation's referenced specifications.
 
 ### Scratch Pad Metadata
 
@@ -130,7 +119,7 @@ A work type can be one of the following:
 
 - `target`: the target artifact
 - `work_type`: the object representing the work type
-  - `draft|revision|feat|ref|fix`: a field on the object representing the work type.
+  - `revision|feat|ref|fix`: a field on the object representing the work type.
 - `dependencies`: a list of [dependencies](#scratch-pad-dependencies).
   - this field MAY be omitted if this scratch pad does not depend on other scratch pads.
 

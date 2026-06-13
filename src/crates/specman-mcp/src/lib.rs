@@ -38,29 +38,9 @@ mod tests {
     use crate::resources::{
         artifact_handle, artifact_path, resource_templates, resources_from_inventory,
     };
-    use crate::tools::{UpdateArtifactArgs, UpdateMode};
+    use crate::tools::PersistenceMode;
 
-    fn empty_update_args(
-        locator: &str,
-        mode: UpdateMode,
-    ) -> crate::tools::UpdateArtifactVariantArgs {
-        crate::tools::UpdateArtifactVariantArgs {
-            locator: locator.to_string(),
-            mode,
-            name: None,
-            title: None,
-            description: None,
-            version: None,
-            tags: None,
-            requires_implementation: None,
-            spec: None,
-            location: None,
-            target: None,
-            work_type: None,
-            dependencies: None,
-            references: None,
-        }
-    }
+
 
     #[tokio::test]
     async fn list_resources_includes_handles() -> Result<(), Box<dyn std::error::Error>> {
@@ -692,16 +672,16 @@ mod tests {
         );
 
         let spec_instruction = text
-            .find("create_artifact` to create the specification artifact")
+            .find("create_specification` to create the specification artifact")
             .expect("migration prompt should instruct spec creation first");
         let scratch_instruction = text
-            .find("revision scratch pad")
+            .find("create_revision` to create a revision scratch pad")
             .expect("migration prompt should instruct revision scratch pad creation");
         let impl_instruction = text
-            .find("create an implementation targeting that specification")
+            .find("create_implementation` to create an implementation")
             .expect("migration prompt should instruct implementation creation");
         let feat_instruction = text
-            .find("feature scratch pad targeting the implementation")
+            .find("create_feature` to create a feature scratch pad")
             .expect("migration prompt should instruct feat scratch pad creation");
         assert!(
             spec_instruction < scratch_instruction,
@@ -757,9 +737,9 @@ mod tests {
     }
 
     #[test]
-    fn create_artifact_schema_is_deterministic() {
-        let schema_a = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
-        let schema_b = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
+    fn create_specification_schema_is_deterministic() {
+        let schema_a = rmcp::schemars::schema_for!(crate::tools::CreateSpecificationArgs);
+        let schema_b = rmcp::schemars::schema_for!(crate::tools::CreateSpecificationArgs);
 
         let a = serde_json::to_string(&schema_a).expect("schema serializes");
         let b = serde_json::to_string(&schema_b).expect("schema serializes");
@@ -768,33 +748,36 @@ mod tests {
     }
 
     #[test]
-    fn tool_input_schemas_avoid_forbidden_json_schema_features() {
-        fn assert_no_forbidden_keys(schema: &impl serde::Serialize, label: &str) {
-            let json = serde_json::to_string(schema).expect("schema serializes");
-
-            for forbidden in [
-                "\"oneOf\"",
-                "\"anyOf\"",
-                "\"$ref\"",
-                "\"patternProperties\"",
-            ] {
-                assert!(
-                    !json.contains(forbidden),
-                    "{label} schema must not contain forbidden key {forbidden}: {json}"
-                );
-            }
+    fn tool_input_schemas_are_flat_objects() {
+        fn assert_top_level_object(schema: &impl serde::Serialize, label: &str) {
+            let value = serde_json::to_value(schema).expect("schema serializes");
+            let ty = value.get("type").and_then(|v| v.as_str()).unwrap_or_default();
+            assert_eq!(ty, "object", "{label} top-level type must be 'object'");
+            assert!(
+                value.get("properties").is_some(),
+                "{label} must have top-level 'properties'"
+            );
+            // No externally-tagged enum hacks: no minProperties/maxProperties at top level
+            assert!(
+                value.get("minProperties").is_none(),
+                "{label} must not use minProperties hack"
+            );
+            assert!(
+                value.get("maxProperties").is_none(),
+                "{label} must not use maxProperties hack"
+            );
         }
 
-        let create_schema = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
-        assert_no_forbidden_keys(&create_schema, "create_artifact");
+        let create_schema = rmcp::schemars::schema_for!(crate::tools::CreateSpecificationArgs);
+        assert_top_level_object(&create_schema, "create_specification");
 
-        let update_schema = rmcp::schemars::schema_for!(crate::tools::UpdateArtifactArgs);
-        assert_no_forbidden_keys(&update_schema, "update_artifact");
+        let update_schema = rmcp::schemars::schema_for!(crate::tools::UpdateSpecificationArgs);
+        assert_top_level_object(&update_schema, "update_specification");
     }
 
     #[test]
-    fn create_artifact_input_schema_is_object_type() {
-        let schema = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
+    fn create_specification_input_schema_is_object_type() {
+        let schema = rmcp::schemars::schema_for!(crate::tools::CreateSpecificationArgs);
         let value = serde_json::to_value(&schema).expect("schema serializes");
         let ty = value
             .get("type")
@@ -808,8 +791,8 @@ mod tests {
     }
 
     #[test]
-    fn create_artifact_input_schema_has_field_descriptions() {
-        let schema = rmcp::schemars::schema_for!(crate::tools::CreateArtifactArgs);
+    fn create_specification_input_schema_has_field_descriptions() {
+        let schema = rmcp::schemars::schema_for!(crate::tools::CreateSpecificationArgs);
         let value = serde_json::to_value(&schema).expect("schema serializes");
 
         fn collect_property_schemas<'a>(
@@ -857,17 +840,7 @@ mod tests {
             }
         }
 
-        // New externally-tagged schema: top-level variant keys plus inner common fields.
-        for key in [
-            "specification",
-            "implementation",
-            "scratch_pad",
-            "target",
-            "scratchKind",
-            "intent",
-            "name",
-            "title",
-        ] {
+        for key in ["name", "title"] {
             assert_all_described(&value, key);
         }
     }
@@ -897,20 +870,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_artifact_normalizes_scratchpad_target() -> Result<(), Box<dyn std::error::Error>>
+    async fn create_feature_normalizes_scratchpad_target() -> Result<(), Box<dyn std::error::Error>>
     {
         let workspace = TestWorkspace::create()?;
 
         let Json(result) = workspace
             .server
-            .create_artifact_internal(
-                None,
-                crate::tools::CreateArtifactArgs::ScratchPad {
+            .create_feature(rmcp::handler::server::wrapper::Parameters(
+                crate::tools::CreateScratchPadArgs {
+                    name: "plan-small-feature".to_string(),
                     target: "impl://testimpl".to_string(),
-                    scratch_kind: crate::tools::ScratchKind::Feat,
-                    intent: "Create a scratch pad to plan a small feature".to_string(),
                 },
-            )
+            ))
             .await
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, format!("{err:?}")))?;
 
@@ -947,20 +918,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_artifact_normalizes_implementation_target()
+    async fn create_implementation_normalizes_target()
     -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
 
         let Json(result) = workspace
             .server
-            .create_artifact_internal(
-                None,
-                crate::tools::CreateArtifactArgs::Implementation {
+            .create_implementation(rmcp::handler::server::wrapper::Parameters(
+                crate::tools::CreateImplementationArgs {
+                    name: "mcpimpl".to_string(),
                     target: "spec://testspec".to_string(),
-                    intent: None,
-                    name: Some("mcpimpl".to_string()),
                 },
-            )
+            ))
             .await
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, format!("{err:?}")))?;
 
@@ -984,19 +953,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_artifact_rejects_url_locators() -> Result<(), Box<dyn std::error::Error>> {
+    async fn create_feature_rejects_url_locators() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
 
         let result = workspace
             .server
-            .create_artifact_internal(
-                None,
-                crate::tools::CreateArtifactArgs::ScratchPad {
+            .create_feature(rmcp::handler::server::wrapper::Parameters(
+                crate::tools::CreateScratchPadArgs {
+                    name: "test".to_string(),
                     target: "https://example.com".to_string(),
-                    scratch_kind: crate::tools::ScratchKind::Feat,
-                    intent: "Try to create a scratch pad from an external URL".to_string(),
                 },
-            )
+            ))
             .await;
 
         let err = result.err().expect("url targets must be rejected");
@@ -1010,7 +977,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_scratchpad_after_new_spec_with_warm_inventory()
+    async fn create_revision_after_new_spec_with_warm_inventory()
     -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
 
@@ -1023,14 +990,12 @@ mod tests {
 
         let spec = workspace
             .server
-            .create_artifact_internal(
-                None,
-                crate::tools::CreateArtifactArgs::Specification {
-                    name: Some("tempspec".to_string()),
-                    title: Some("Temp Spec".to_string()),
-                    intent: None,
+            .create_specification(rmcp::handler::server::wrapper::Parameters(
+                crate::tools::CreateSpecificationArgs {
+                    name: "tempspec".to_string(),
+                    title: "Temp Spec".to_string(),
                 },
-            )
+            ))
             .await?
             .0;
 
@@ -1038,14 +1003,12 @@ mod tests {
 
         let scratch = workspace
             .server
-            .create_artifact_internal(
-                None,
-                crate::tools::CreateArtifactArgs::ScratchPad {
+            .create_revision(rmcp::handler::server::wrapper::Parameters(
+                crate::tools::CreateScratchPadArgs {
+                    name: "add-regression-coverage".to_string(),
                     target: "spec://tempspec".to_string(),
-                    scratch_kind: crate::tools::ScratchKind::Revision,
-                    intent: "add regression coverage".to_string(),
                 },
-            )
+            ))
             .await?
             .0;
 
@@ -1105,7 +1068,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_artifact_preview_does_not_persist_and_preserves_body()
+    async fn update_specification_preview_does_not_persist_and_preserves_body()
     -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
         let root = workspace._temp.path();
@@ -1115,11 +1078,18 @@ mod tests {
 
         let result = workspace
             .server
-            .update_artifact(rmcp::handler::server::wrapper::Parameters(
-                UpdateArtifactArgs::Spec(crate::tools::UpdateArtifactVariantArgs {
+            .update_specification(rmcp::handler::server::wrapper::Parameters(
+                crate::tools::UpdateSpecificationArgs {
+                    locator: "spec://testspec".to_string(),
+                    mode: crate::tools::PersistenceMode::Preview,
                     version: Some("0.2.0".to_string()),
-                    ..empty_update_args("spec://testspec", UpdateMode::Preview)
-                }),
+                    name: None,
+                    title: None,
+                    description: None,
+                    tags: None,
+                    requires_implementation: None,
+                    dependencies: None,
+                },
             ))
             .await?;
 
@@ -1134,7 +1104,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_artifact_persist_writes_and_preserves_body()
+    async fn update_implementation_persist_writes_and_preserves_body()
     -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
         let root = workspace._temp.path();
@@ -1144,11 +1114,20 @@ mod tests {
 
         let result = workspace
             .server
-            .update_artifact(rmcp::handler::server::wrapper::Parameters(
-                UpdateArtifactArgs::Impl(crate::tools::UpdateArtifactVariantArgs {
+            .update_implementation(rmcp::handler::server::wrapper::Parameters(
+                crate::tools::UpdateImplementationArgs {
+                    locator: "impl://testimpl".to_string(),
+                    mode: crate::tools::PersistenceMode::Persist,
                     tags: Some(vec!["mcp".to_string()]),
-                    ..empty_update_args("impl://testimpl", UpdateMode::Persist)
-                }),
+                    name: None,
+                    title: None,
+                    description: None,
+                    version: None,
+                    spec: None,
+                    location: None,
+                    references: None,
+                    dependencies: None,
+                },
             ))
             .await?;
 
@@ -1164,16 +1143,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_artifact_rejects_kind_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+    async fn update_implementation_rejects_kind_mismatch() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
 
         let err = match workspace
             .server
-            .update_artifact(rmcp::handler::server::wrapper::Parameters(
-                UpdateArtifactArgs::Impl(crate::tools::UpdateArtifactVariantArgs {
+            .update_implementation(rmcp::handler::server::wrapper::Parameters(
+                crate::tools::UpdateImplementationArgs {
+                    locator: "spec://testspec".to_string(),
+                    mode: crate::tools::PersistenceMode::Preview,
                     version: Some("0.2.0".to_string()),
-                    ..empty_update_args("spec://testspec", UpdateMode::Preview)
-                }),
+                    name: None,
+                    title: None,
+                    description: None,
+                    tags: None,
+                    spec: None,
+                    location: None,
+                    references: None,
+                    dependencies: None,
+                },
             ))
             .await
         {
@@ -1186,43 +1174,54 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_artifact_rejects_scratch_target_mutation()
-    -> Result<(), Box<dyn std::error::Error>> {
+    async fn update_revision_rejects_https() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
 
         let err = match workspace
             .server
-            .update_artifact(rmcp::handler::server::wrapper::Parameters(
-                UpdateArtifactArgs::Scratch(crate::tools::UpdateArtifactVariantArgs {
-                    target: Some("spec://testspec".to_string()),
-                    ..empty_update_args("scratch://testscratch", UpdateMode::Preview)
-                }),
+            .update_revision(rmcp::handler::server::wrapper::Parameters(
+                crate::tools::UpdateScratchPadArgs {
+                    locator: "https://example.com/scratch.md".to_string(),
+                    mode: crate::tools::PersistenceMode::Preview,
+                    name: None,
+                    title: None,
+                    description: None,
+                    version: None,
+                    tags: None,
+                    dependencies: None,
+                },
             ))
             .await
         {
-            Ok(_) => panic!("scratch target mutation should fail"),
+            Ok(_) => panic!("https scratch update should fail"),
             Err(err) => err,
         };
 
-        // [ENSURES: concept-metadata-mutation.scope.supported-fields]
         assert!(
-            err.message.contains("immutable"),
+            err.message.contains("HTTPS locators are not supported for scratch pads"),
             "unexpected error: {err:?}"
         );
         Ok(())
     }
 
     #[tokio::test]
-    async fn update_artifact_rejects_https_persist() -> Result<(), Box<dyn std::error::Error>> {
+    async fn update_specification_rejects_https_persist() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
 
         let err = match workspace
             .server
-            .update_artifact(rmcp::handler::server::wrapper::Parameters(
-                UpdateArtifactArgs::Spec(crate::tools::UpdateArtifactVariantArgs {
+            .update_specification(rmcp::handler::server::wrapper::Parameters(
+                crate::tools::UpdateSpecificationArgs {
+                    locator: "https://example.com/spec.md".to_string(),
+                    mode: crate::tools::PersistenceMode::Persist,
                     version: Some("0.2.0".to_string()),
-                    ..empty_update_args("https://example.com/spec.md", UpdateMode::Persist)
-                }),
+                    name: None,
+                    title: None,
+                    description: None,
+                    tags: None,
+                    requires_implementation: None,
+                    dependencies: None,
+                },
             ))
             .await
         {

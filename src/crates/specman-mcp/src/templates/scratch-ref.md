@@ -17,7 +17,7 @@ Dependencies:
 
 Steps:
 
-1. Call the MCP tool `create_artifact` to create a new refactor scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
+1. Call the MCP tool `create_refactor` to create a new refactor scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following (do not refactor yet):
     - Current-state inventory: key modules, data flows, and pain points motivating the refactor.
     - Refactor options: list at least 2 viable approaches; compare pros/cons, complexity, and migration risk.

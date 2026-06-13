@@ -1,6 +1,6 @@
 ---
 name: specman-mcp
-version: 1.1.0
+version: 2.0.0
 dependencies:
 - ref: ../specman-data-model/spec.md
   optional: false
@@ -82,57 +82,163 @@ This concept ensures that every capability delivered by a SpecMan Core-compliant
 - The adapter MUST provide MCP tools that enumerate specifications, implementations, and scratch pads as resource handles using the `spec://{artifact}`, `impl://{artifact}`, and `scratch://{artifact}` schemes defined in [SpecMan Core Dependency Mapping Services](../specman-core/spec.md#concept-dependency-mapping-services). At a minimum, adapters MUST expose list and describe tools for each artifact class, and each response MUST serialize entities using the [SpecMan Data Model](../specman-data-model/spec.md).
 - Dependency graph tooling MUST accept `<scheme>://{artifact}/dependencies` inputs and return upstream/downstream trees powered by the SpecMan Core dependency mapping services. `/dependencies` handles are read-only aliases whose responses MUST include the same structure and error semantics as invoking the dependency tree builder directly.
 - The adapter MUST surface prompt-catalog tools that return authoring prompts for creating and modifying specifications, implementations, and scratch pads. Each prompt response MUST conform to [Concept: Prompt Catalog](#concept-prompt-catalog), cite the effective template resolved by SpecMan Core, declare the intended work type (for scratch pads), and remind clients to honor HTML comment directives.
-- The adapter MUST provide lifecycle tools that execute the prompted create or modify flows for specs, implementations, and scratch pads. These tools MUST call into SpecMan Core lifecycle automation, enforce naming and metadata constraints from the SpecMan Data Model, and emit MCP errors when persistence or validation fails.
+- The adapter MUST provide lifecycle tools that execute the prompted create or modify flows for specs, implementations, and scratch pads. These tools MUST call into SpecMan Core lifecycle automation, enforce naming and metadata constraints from the SpecMan Data Model, and emit MCP errors when persistence or validation fails. MCP lifecycle tools MUST NOT perform sampling or elicitation; all inputs MUST be supplied directly by the caller.
 
-#### Required Tool: `create_artifact`
+#### Required Tool: `create_specification`
 
-To make artifact creation consistently automatable across MCP clients, compliant adapters MUST expose a lifecycle tool named `create_artifact`.
+To allow MCP clients to create specification artifacts deterministically, compliant adapters MUST expose a lifecycle tool named `create_specification`.
 
-- The adapter MUST expose an MCP tool named `create_artifact` that creates SpecMan artifacts (specifications, implementations, scratch pads) by delegating to [SpecMan Core Lifecycle Automation](../specman-core/spec.md#concept-lifecycle-automation).
-- The tool MUST support creating each artifact class:
-  - specifications (`spec/{name}/spec.md`)
-  - implementations (`impl/{name}/impl.md`)
-  - scratch pads (`.specman/scratchpad/{name}/scratch.md`) for every supported scratch work type (`draft`, `revision`, `feat`, `ref`, `fix`).
-- The tool MUST accept inputs sufficient to populate all REQUIRED values in the selected artifact template and to write a data-model-compliant YAML front matter block for the addressed artifact kind.
-  - For scratch pads, this includes allowing callers to supply the work type object (including `revised_headings` / `refactored_headings` / `fixed_headings` as applicable) and the persisted `target` value.
-- The tool MUST enforce naming, metadata, and workspace-boundary constraints from the [SpecMan Data Model](../specman-data-model/spec.md) before persisting any files.
-- The tool MUST normalize any locator handles provided as inputs (for example `spec://{artifact}` / `impl://{artifact}` / `scratch://{artifact}`) into canonical workspace-relative paths before writing artifact content, including scratch pad front matter `target`.
-- The tool MUST honor template governance requirements from [SpecMan Core Template Orchestration](../specman-core/spec.md#concept-template-orchestration): templates MUST be applied as the source of truth, HTML comment directives MUST be preserved until their guidance is satisfied, and required template substitutions MUST be validated.
-- The tool MUST return a deterministic result payload describing what was created. At minimum it MUST include the created artifact identifier(s) and canonical workspace-relative path(s). Implementations SHOULD also include the effective template locator/provenance used.
+!concept-specman-capability-parity.tooling.create-specification:
 
-##### Input Schema Requirements
+- The adapter MUST expose an MCP tool named `create_specification` that creates a specification artifact (`spec/{name}/spec.md`) by delegating to SpecMan Core lifecycle automation.
+- The tool MUST accept a `name` parameter (the specification slug) and a `title` parameter (the human-readable title).
+- The tool MUST enforce naming, metadata, and workspace-boundary constraints from the SpecMan Data Model before persisting.
+- The tool MUST honor template governance requirements from SpecMan Core template orchestration: templates MUST be applied as the source of truth, HTML comment directives MUST be preserved until satisfied, and required template substitutions MUST be validated.
+- The tool MUST return a deterministic result payload including the created artifact identifier, canonical handle (`spec://{name}`), and workspace-relative path.
+- The tool MUST NOT perform MCP sampling or elicitation; all inputs MUST be supplied directly by the caller.
 
-Because MCP requires explicit tool schemas, `create_artifact` MUST publish a deterministic parameter schema; however, the specific input _shape_ is implementation-defined.
+#### Required Tool: `create_implementation`
 
-- The adapter MUST document the `create_artifact` input schema it exposes, and it MUST be deterministic across releases except where versioned as a breaking change.
-- The schema MUST allow callers to provide enough information to:
-  - select the artifact class to create (specification vs implementation vs scratch pad)
-  - rely on the server to resolve the effective template via workspace template pointer files and scenario selection (callers MUST NOT provide template locator overrides)
-  - supply every required value needed to fully render the selected template (including any required template substitutions)
-  - for scratch pads, select the scratch pad work type variant and provide any required work-type-specific metadata (for example revised/refactored/fixed heading fragments)
-  - control persistence behavior when such options are supported
-- When the schema accepts template-substitution inputs, the adapter MUST NOT permit substitutions for tokens outside the set governed by [SpecMan Core Template Orchestration](../specman-core/spec.md#concept-template-orchestration), including the token-contract constraints defined there.
+!concept-specman-capability-parity.tooling.create-implementation:
 
-#### Required Tool: `update_artifact`
+- The adapter MUST expose an MCP tool named `create_implementation` that creates an implementation artifact (`impl/{name}/impl.md`).
+- The tool MUST accept a `name` parameter and a `target` parameter that resolves to a specification artifact.
+- The tool MUST validate that `target` resolves to an existing specification before persisting.
+- The tool MUST enforce naming, metadata, and workspace-boundary constraints from the SpecMan Data Model before persisting.
+- The tool MUST honor template governance requirements from SpecMan Core template orchestration.
+- The tool MUST return a deterministic result payload including the created artifact identifier, canonical handle (`impl://{name}`), and workspace-relative path.
+- The tool MUST NOT perform MCP sampling or elicitation; all inputs MUST be supplied directly by the caller.
 
-To allow MCP clients to update artifact metadata deterministically without rewriting Markdown bodies, compliant adapters MUST expose a lifecycle tool named `update_artifact`.
+#### Required Tool: `create_revision`
 
-!concept-specman-capability-parity.tooling.update-artifact:
+!concept-specman-capability-parity.tooling.create-revision:
 
-- The adapter MUST expose an MCP tool named `update_artifact`.
-- The tool MUST update YAML front matter metadata for specifications, implementations, and scratch pads, and it MUST leave the Markdown body unchanged.
-- The tool MUST delegate to the underlying SpecMan Core implementation’s metadata mutation capabilities (see [Concept: Metadata Mutation](../specman-core/spec.md#concept-metadata-mutation)) rather than implementing bespoke rewriting logic in the MCP layer.
-- The tool MUST accept an artifact locator identifying the target artifact.
-  - Callers MAY supply a filesystem path, HTTPS URL, or a SpecMan locator handle (`spec://{artifact}`, `impl://{artifact}`, `scratch://{artifact}`) as the locator input.
-  - If a SpecMan handle is supplied, the adapter MUST normalize it to a canonical workspace-relative path before applying any update, and it MUST NOT persist the handle into artifact content.
-- The tool MUST accept an ops-based mutation request whose supported operations match (and do not exceed) the mutation surface defined by SpecMan Core metadata mutation.
-  - For list-valued fields (for example tags, dependencies, references), removals MUST be expressible via explicit remove ops, and additions MUST be idempotent when the entry already exists.
-  - The tool MUST NOT claim "replace list" semantics unless the underlying SpecMan Core mutation surface provides an explicit replace operation for that field.
-- The tool MUST enforce scratch pad `target` immutability; attempts to change `target` MUST fail with an MCP error.
-- The tool MUST support a persistence mode switch:
-  - persist: write the updated artifact to disk
-  - preview: return the updated full document content with differences limited to the YAML front matter block
-- Supported mutations MUST match (and not exceed) the mutation surface defined by SpecMan Core metadata mutation.
+- The adapter MUST expose an MCP tool named `create_revision` that creates a revision scratch pad.
+- The tool's description MUST indicate that it creates a scratch pad (a planning document for a specification revision), not a modification to the specification itself.
+- The tool MUST accept a `name` parameter and a `target` parameter that MUST resolve to a specification artifact.
+- The scratch pad work type MUST be set to `revision`.
+- The tool MUST enforce naming, metadata, and workspace-boundary constraints from the SpecMan Data Model before persisting.
+- The tool MUST honor template governance requirements from SpecMan Core template orchestration.
+- The tool MUST return a deterministic result payload including the created artifact identifier, canonical handle (`scratch://{name}`), and workspace-relative path.
+- The tool MUST NOT perform MCP sampling or elicitation; all inputs MUST be supplied directly by the caller.
+
+#### Required Tool: `create_feature`
+
+!concept-specman-capability-parity.tooling.create-feature:
+
+- The adapter MUST expose an MCP tool named `create_feature` that creates a feature scratch pad.
+- The tool's description MUST indicate that it creates a scratch pad (a planning document for introducing a feature), not a feature implementation itself.
+- The tool MUST accept a `name` parameter and a `target` parameter that MUST resolve to an implementation artifact.
+- The scratch pad work type MUST be set to `feat`.
+- The tool MUST enforce naming, metadata, and workspace-boundary constraints from the SpecMan Data Model before persisting.
+- The tool MUST honor template governance requirements from SpecMan Core template orchestration.
+- The tool MUST return a deterministic result payload including the created artifact identifier, canonical handle (`scratch://{name}`), and workspace-relative path.
+- The tool MUST NOT perform MCP sampling or elicitation; all inputs MUST be supplied directly by the caller.
+
+#### Required Tool: `create_refactor`
+
+!concept-specman-capability-parity.tooling.create-refactor:
+
+- The adapter MUST expose an MCP tool named `create_refactor` that creates a refactor scratch pad.
+- The tool's description MUST indicate that it creates a scratch pad (a planning document for refactoring).
+- The tool MUST accept a `name` parameter and a `target` parameter that MUST resolve to an implementation artifact.
+- The scratch pad work type MUST be set to `ref`.
+- The tool MUST enforce naming, metadata, and workspace-boundary constraints from the SpecMan Data Model before persisting.
+- The tool MUST honor template governance requirements from SpecMan Core template orchestration.
+- The tool MUST return a deterministic result payload including the created artifact identifier, canonical handle (`scratch://{name}`), and workspace-relative path.
+- The tool MUST NOT perform MCP sampling or elicitation; all inputs MUST be supplied directly by the caller.
+
+#### Required Tool: `create_fix`
+
+!concept-specman-capability-parity.tooling.create-fix:
+
+- The adapter MUST expose an MCP tool named `create_fix` that creates a fix scratch pad.
+- The tool's description MUST indicate that it creates a scratch pad (a planning document for applying a fix).
+- The tool MUST accept a `name` parameter and a `target` parameter that MUST resolve to an implementation artifact.
+- The scratch pad work type MUST be set to `fix`.
+- The tool MUST enforce naming, metadata, and workspace-boundary constraints from the SpecMan Data Model before persisting.
+- The tool MUST honor template governance requirements from SpecMan Core template orchestration.
+- The tool MUST return a deterministic result payload including the created artifact identifier, canonical handle (`scratch://{name}`), and workspace-relative path.
+- The tool MUST NOT perform MCP sampling or elicitation; all inputs MUST be supplied directly by the caller.
+
+#### Required Tool: `update_specification`
+
+To allow MCP clients to update specification metadata deterministically without rewriting Markdown bodies, compliant adapters MUST expose a lifecycle tool named `update_specification`.
+
+!concept-specman-capability-parity.tooling.update-specification:
+
+- The adapter MUST expose an MCP tool named `update_specification`.
+- The tool MUST update YAML front matter metadata for specification artifacts and MUST leave the Markdown body unchanged.
+- The tool MUST delegate to the underlying SpecMan Core implementation's metadata mutation capabilities (see [Concept: Metadata Mutation](../specman-core/spec.md#concept-metadata-mutation)).
+- The tool MUST accept a `locator` identifying the target specification and a `mode` switch (`persist` | `preview`).
+  - Callers MAY supply a filesystem path, HTTPS URL, or a SpecMan locator handle (`spec://{artifact}`) as the locator input.
+  - If a SpecMan handle is supplied, the adapter MUST normalize it to a canonical workspace-relative path before applying any update.
+- Supported mutation fields: `name`, `title`, `description`, `version`, `tags`, `requires_implementation`, `dependencies`.
+  - For list-valued fields, removals MUST be expressible via explicit remove ops, and additions MUST be idempotent.
+- The tool MUST support a persistence mode switch: `persist` writes to disk; `preview` returns the updated document without writing.
+
+#### Required Tool: `update_implementation`
+
+!concept-specman-capability-parity.tooling.update-implementation:
+
+- The adapter MUST expose an MCP tool named `update_implementation`.
+- The tool MUST update YAML front matter metadata for implementation artifacts and MUST leave the Markdown body unchanged.
+- The tool MUST accept a `locator` identifying the target implementation and a `mode` switch (`persist` | `preview`).
+  - Callers MAY supply a filesystem path, HTTPS URL, or a SpecMan locator handle (`impl://{artifact}`).
+- Supported mutation fields: `name`, `title`, `description`, `version`, `tags`, `spec`, `location`, `references`, `dependencies`.
+- The tool MUST support a persistence mode switch: `persist` writes to disk; `preview` returns the updated document without writing.
+
+#### Required Tool: `update_revision`
+
+!concept-specman-capability-parity.tooling.update-revision:
+
+- The adapter MUST expose an MCP tool named `update_revision`.
+- The tool's description MUST indicate that it updates a revision scratch pad (a planning document).
+- The tool MUST update YAML front matter metadata for revision scratch pad artifacts and MUST leave the Markdown body unchanged.
+- The tool MUST accept a `locator` identifying the target revision scratch pad and a `mode` switch (`persist` | `preview`).
+  - Callers MAY supply a filesystem path or a SpecMan locator handle (`scratch://{artifact}`). HTTPS locators MUST NOT be accepted (scratch pads are workspace-local only).
+- Supported mutation fields: `name`, `title`, `description`, `version`, `tags`, `dependencies`.
+- The `target` field MUST NOT be accepted as input; scratch pad target is immutable.
+- The tool MUST support a persistence mode switch: `persist` writes to disk; `preview` returns the updated document without writing.
+
+#### Required Tool: `update_feature`
+
+!concept-specman-capability-parity.tooling.update-feature:
+
+- The adapter MUST expose an MCP tool named `update_feature`.
+- The tool's description MUST indicate that it updates a feature scratch pad (a planning document).
+- The tool MUST update YAML front matter metadata for feature scratch pad artifacts and MUST leave the Markdown body unchanged.
+- The tool MUST accept a `locator` identifying the target feature scratch pad and a `mode` switch (`persist` | `preview`).
+  - Callers MAY supply a filesystem path or a SpecMan locator handle (`scratch://{artifact}`). HTTPS locators MUST NOT be accepted (scratch pads are workspace-local only).
+- Supported mutation fields: `name`, `title`, `description`, `version`, `tags`, `dependencies`.
+- The `target` field MUST NOT be accepted as input; scratch pad target is immutable.
+- The tool MUST support a persistence mode switch: `persist` writes to disk; `preview` returns the updated document without writing.
+
+#### Required Tool: `update_refactor`
+
+!concept-specman-capability-parity.tooling.update-refactor:
+
+- The adapter MUST expose an MCP tool named `update_refactor`.
+- The tool's description MUST indicate that it updates a refactor scratch pad (a planning document).
+- The tool MUST update YAML front matter metadata for refactor scratch pad artifacts and MUST leave the Markdown body unchanged.
+- The tool MUST accept a `locator` identifying the target refactor scratch pad and a `mode` switch (`persist` | `preview`).
+  - Callers MAY supply a filesystem path or a SpecMan locator handle (`scratch://{artifact}`). HTTPS locators MUST NOT be accepted (scratch pads are workspace-local only).
+- Supported mutation fields: `name`, `title`, `description`, `version`, `tags`, `dependencies`.
+- The `target` field MUST NOT be accepted as input; scratch pad target is immutable.
+- The tool MUST support a persistence mode switch: `persist` writes to disk; `preview` returns the updated document without writing.
+
+#### Required Tool: `update_fix`
+
+!concept-specman-capability-parity.tooling.update-fix:
+
+- The adapter MUST expose an MCP tool named `update_fix`.
+- The tool's description MUST indicate that it updates a fix scratch pad (a planning document).
+- The tool MUST update YAML front matter metadata for fix scratch pad artifacts and MUST leave the Markdown body unchanged.
+- The tool MUST accept a `locator` identifying the target fix scratch pad and a `mode` switch (`persist` | `preview`).
+  - Callers MAY supply a filesystem path or a SpecMan locator handle (`scratch://{artifact}`). HTTPS locators MUST NOT be accepted (scratch pads are workspace-local only).
+- Supported mutation fields: `name`, `title`, `description`, `version`, `tags`, `dependencies`.
+- The `target` field MUST NOT be accepted as input; scratch pad target is immutable.
+- The tool MUST support a persistence mode switch: `persist` writes to disk; `preview` returns the updated document without writing.
 
 #### Required Tool: `get_workspace_status`
 
@@ -167,8 +273,8 @@ Prompt catalog tooling defines how MCP clients obtain deterministic prompts for 
 
 !concept-prompt-catalog.argument-completion:
 
-- Prompt arguments for revision workflows MUST auto-complete only specification targets and MUST NOT suggest implementation handles.
-- Prompt arguments for refactor/fix/feature workflows (`ref`, `fix`, `feat`) MUST auto-complete only implementation targets and MUST NOT suggest specification handles.
+- Prompt arguments for `create_revision` MUST auto-complete only specification targets and MUST NOT suggest implementation handles.
+- Prompt arguments for `create_feature`, `create_refactor`, and `create_fix` MUST auto-complete only implementation targets and MUST NOT suggest specification handles.
 - Where prompt arguments accept handle values, suggestions MUST resolve to canonical `spec://` or `impl://` handles, while human-readable labels MAY be provided as auxiliary metadata.
 
 !concept-prompt-catalog.migration-prompts:
@@ -254,7 +360,7 @@ MCP calls interact with on-disk workspaces governed by the SpecMan Data Model.
 - Resource handles resolved via `spec://`, `impl://`, or `scratch://` MUST be normalized through workspace discovery, bound to canonical artifact paths, and rejected when they refer to artifacts outside the active workspace. Normalized handles MUST retain stable identifiers so MCP clients can reuse them across sessions.
 - `/dependencies` handles MUST be treated as derived read-only locators whose responses are generated exclusively by dependency mapping services; mutation attempts against these handles MUST fail with an MCP error explaining that only query operations are supported.
 - `/constraints` handles MUST be treated as derived read-only locators whose responses are generated exclusively by structure discovery services; mutation attempts against these handles MUST fail with an MCP error explaining that only query operations are supported.
-- Prompt catalog and lifecycle tools MUST reference template locators resolved via SpecMan Core template orchestration (workspace pointer files first, then packaged defaults), validate that supplied names comply with the [founding specification](../../docs/founding-spec.md), and document any workspace mutations in the lifecycle tool results.
+- Prompt catalog and lifecycle tools MUST reference template locators resolved via SpecMan Core template orchestration (workspace pointer files first, then packaged defaults) and validate that supplied names comply with the [founding specification](../../docs/founding-spec.md). MCP lifecycle tools MUST NOT perform sampling or elicitation; all inputs MUST be supplied directly by the caller.
 
 ### Concept: Session Safety & Deterministic Execution
 
@@ -281,7 +387,8 @@ Defines the MCP tool metadata for each SpecMan Core capability.
 
 - MUST include fields for `id`, `concept_ref` (link to the governing SpecMan Core heading), supported SpecMan Core version range, and optional extension metadata.
 - MUST include completion capability metadata for MCP surfaces that support completion, including accepted handle kinds and whether degraded completion warnings are emitted via MCP warning logging.
-- MUST embed JSON Schema fragments that match the SpecMan Data Model serialization for the capability’s inputs/outputs.
+- MUST embed JSON Schema fragments that match the SpecMan Data Model serialization for the capability's inputs/outputs.
+- Each dedicated lifecycle tool (`create_specification`, `create_implementation`, `create_revision`, `create_feature`, `create_refactor`, `create_fix`, `update_specification`, `update_implementation`, `update_revision`, `update_feature`, `update_refactor`, `update_fix`) MUST have its own capability descriptor.
 - MAY reference implementation-specific extensions, but those entries MUST carry a `type: extension` label and cite the owning specification or implementation path.
 
 ## Additional Notes

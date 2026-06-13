@@ -1,7 +1,7 @@
 ---
 spec: ../../spec/specman-mcp/spec.md
 name: specman-mcp-rust
-version: 1.2.0
+version: 2.0.0
 location: ../../src/crates/specman-mcp
 references:
 - ref: ../specman-library/impl.md
@@ -81,7 +81,9 @@ The adapter exposes a focused subset of SpecMan functionality as MCP tools/promp
 // Each handler is a method on `SpecmanMcpServer` annotated with `#[tool(...)]` or `#[prompt(...)]`.
 ```
 
-- Current tool surface: `create_artifact`, `update_artifact`.
+- Current tool surface (12 tools): `create_specification`, `create_implementation`, `create_revision`, `create_feature`, `create_refactor`, `create_fix`, `update_specification`, `update_implementation`, `update_revision`, `update_feature`, `update_refactor`, `update_fix`.
+- All tools use flat input structs with `#[derive(JsonSchema)]` — no handcrafted schemas, no tagged unions.
+- MCP sampling and elicitation are NOT used; all inputs are supplied directly by the caller.
 - Current prompt surface: `feat`, `ref`, `revision`, `fix`, `spec`, `impl`, `migration`, `compliance`.
   - `migration` renders deterministic guidance to create the target specification via lifecycle automation, then create a revision scratch pad for that spec before running the four mandated migration phases (enumerate sources, extract findings, draft/update specification, generate implementation documentation).
   - `compliance` instructs the agent to retrieve `impl://{artifact}/compliance` and handle any missing constraints.
@@ -104,40 +106,48 @@ All filesystem access flows through SpecMan workspace discovery, and resource ha
 fn artifact_path(id: &ArtifactId, workspace: &WorkspacePaths) -> PathBuf;
 fn artifact_handle(summary: &ArtifactSummary) -> String;
 
-// Tool handler (rmcp `#[tool]`) that delegates to SpecMan Core creation.
-async fn create_artifact(Parameters(args): Parameters<CreateArtifactArgs>)
+// Create tools — each delegates to SpecMan Core lifecycle automation.
+async fn create_specification(Parameters(args): Parameters<CreateSpecificationArgs>)
+  -> Result<Json<CreateArtifactResult>, McpError>;
+async fn create_implementation(Parameters(args): Parameters<CreateImplementationArgs>)
+  -> Result<Json<CreateArtifactResult>, McpError>;
+async fn create_revision(Parameters(args): Parameters<CreateScratchPadArgs>)
+  -> Result<Json<CreateArtifactResult>, McpError>;
+async fn create_feature(Parameters(args): Parameters<CreateScratchPadArgs>)
+  -> Result<Json<CreateArtifactResult>, McpError>;
+async fn create_refactor(Parameters(args): Parameters<CreateScratchPadArgs>)
+  -> Result<Json<CreateArtifactResult>, McpError>;
+async fn create_fix(Parameters(args): Parameters<CreateScratchPadArgs>)
   -> Result<Json<CreateArtifactResult>, McpError>;
 
-// Tool handler that updates YAML front matter via SpecMan Core metadata mutation.
-async fn update_artifact(Parameters(args): Parameters<UpdateArtifactArgs>)
+// Update tools — each delegates to SpecMan Core metadata mutation.
+// Update tools mirror the create tool surface (6 create + 6 update).
+async fn update_specification(Parameters(args): Parameters<UpdateSpecificationArgs>)
+  -> Result<Json<UpdateArtifactResult>, McpError>;
+async fn update_implementation(Parameters(args): Parameters<UpdateImplementationArgs>)
+  -> Result<Json<UpdateArtifactResult>, McpError>;
+async fn update_revision(Parameters(args): Parameters<UpdateScratchPadArgs>)
+  -> Result<Json<UpdateArtifactResult>, McpError>;
+async fn update_feature(Parameters(args): Parameters<UpdateScratchPadArgs>)
+  -> Result<Json<UpdateArtifactResult>, McpError>;
+async fn update_refactor(Parameters(args): Parameters<UpdateScratchPadArgs>)
+  -> Result<Json<UpdateArtifactResult>, McpError>;
+async fn update_fix(Parameters(args): Parameters<UpdateScratchPadArgs>)
   -> Result<Json<UpdateArtifactResult>, McpError>;
 
-// `CreateArtifactArgs` is a tagged enum (tag field: `kind`) with variant-specific fields.
-// This keeps the MCP tool schema deterministic and avoids "bags of optional fields".
-
-// Example shapes:
-// - { kind: "specification", intent?: string, name?: string, title?: string }
-// - { kind: "implementation", target: "spec://...", intent?: string, name?: string }
-// - { kind: "scratch_pad", target: "impl://...", scratch_kind: "ref", intent?: string, name?: string, branch?: string }
-
-// `update_artifact` uses an ops-based schema that mirrors SpecMan Core `FrontMatterUpdateOp`.
-// Example shape:
-// {
-//   locator: "spec://testspec" | "impl/testimpl/impl.md" | "https://...",
-//   expectedKind: { spec: {} } | { impl: {} } | { scratch: {} },
-//   mode: "persist" | "preview",
-//   ops: [ { op: "set_version", version: "1.2.3" }, ... ]
-// }
+// All input types use flat structs with #[derive(JsonSchema)].
+// No handcrafted schemas, no tagged unions, no sampling/elicitation.
 
 // Semantics:
 // - Only YAML front matter changes; the Markdown body is preserved byte-for-byte.
-// - Scratch pad `target` is immutable; attempts to mutate it fail.
-// - HTTPS locators are preview-only (persist is rejected).
-// - List-valued changes are expressed via ops (e.g., add/remove) rather than implicit replace-list semantics.
+// - Scratch pad `target` is immutable; scratch update tools do not accept `target`.
+// - HTTPS locators are preview-only for spec/impl updates; scratch updates reject HTTPS.
 ```
 
 - Handles use the `spec://`, `impl://`, and `scratch://` schemes and are always emitted in normalized form.
-- For `create_artifact`, scratch pad `target` locators are normalized to canonical workspace-relative paths before persisting (so the scratch front matter stores a stable path).
+- Scratch pad `target` locators are normalized to canonical workspace-relative paths before persisting.
+- Implementation targets are normalized to canonical `spec://...` handles before persisting.
+- Paths returned to MCP clients are canonical workspace-relative paths and never allow escaping outside the discovered root.
 - For `create_artifact` implementation targets, the adapter normalizes the input into a canonical `spec://...` handle before persisting so dependency resolution is base-path independent.
 - Paths returned to MCP clients are canonical workspace-relative paths and never allow escaping outside the discovered root.
 
