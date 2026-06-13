@@ -1737,7 +1737,7 @@ dependencies = [
 
 [[package]]
 name = "specman"
-version = "3.0.0"
+version = "4.0.0"
 dependencies = [
  "getrandom 0.2.17",
  "handlebars",
@@ -1761,7 +1761,7 @@ dependencies = [
 
 [[package]]
 name = "specman-cli"
-version = "2.3.0"
+version = "3.0.0"
 dependencies = [
  "assert_cmd",
  "clap",
