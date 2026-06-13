@@ -1,12 +1,9 @@
 ---
 target: {{target_path}}
-branch: null
 work_type:
   feat: {}
 dependencies: []
 ---
-
-<!-- AI TODO: Set `branch` to `{target_name}/feat/{scratch_pad_name}` when this workspace uses git branches. -->
 
 # Scratch Pad — Feature — Replace With Feature Name
 

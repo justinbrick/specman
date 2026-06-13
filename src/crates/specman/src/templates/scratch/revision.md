@@ -1,13 +1,11 @@
 ---
 target: {{target_path}}
-branch: null
 work_type:
   revision:
     revised_headings: []
 dependencies: []
 ---
 
-<!-- AI TODO: Set `branch` to `{target_name}/revision/{scratch_pad_name}` when this workspace uses git branches. -->
 <!-- AI TODO: Populate `revised_headings` with spec heading fragments changed by this revision. -->
 
 # Scratch Pad — Revision — Replace With Revision Focus

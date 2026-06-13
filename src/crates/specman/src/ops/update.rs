@@ -184,13 +184,6 @@ fn update_scratch(
 ) -> Result<bool, SpecmanError> {
     let mut changed = update_identity(&mut front.identity, &update.identity);
 
-    if let Some(val) = &update.branch {
-        if front.branch.as_ref() != Some(val) {
-            front.branch = Some(val.clone());
-            changed = true;
-        }
-    }
-
     if let Some(val) = &update.work_type {
         let old_json = serde_json::to_value(&front.work_type).unwrap_or_default();
         let new_json = serde_json::to_value(&Some(val.clone())).unwrap_or_default();

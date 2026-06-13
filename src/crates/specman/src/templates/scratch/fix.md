@@ -1,13 +1,11 @@
 ---
 target: {{target_path}}
-branch: null
 work_type:
   fix:
     fixed_headings: []
 dependencies: []
 ---
 
-<!-- AI TODO: Set `branch` to `{target_name}/fix/{scratch_pad_name}` when this workspace uses git branches. -->
 <!-- AI TODO: Populate `fixed_headings` with spec heading fragments impacted by this fix. -->
 
 # Scratch Pad — Fix — Replace With Defect Identifier

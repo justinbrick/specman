@@ -56,7 +56,6 @@ mod tests {
             spec: None,
             location: None,
             target: None,
-            branch: None,
             work_type: None,
             dependencies: None,
             references: None,
@@ -351,7 +350,7 @@ mod tests {
             other => panic!("unexpected content: {other:?}"),
         };
 
-        assert!(rendered.contains("git checkout -b"));
+        assert!(!rendered.contains("git checkout"));
         assert!(rendered.contains("impl/testimpl/impl.md"));
 
         Ok(())
@@ -400,13 +399,13 @@ mod tests {
         };
 
         assert!(text.contains("spec/testspec/spec.md"));
-        assert!(text.contains("git checkout -b"));
+        assert!(!text.contains("git checkout"));
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn scratch_fix_prompt_defaults_branch() -> Result<(), Box<dyn std::error::Error>> {
+    async fn scratch_fix_prompt_defaults_target() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
         let rendered = workspace
             .server
@@ -424,7 +423,8 @@ mod tests {
         };
 
         assert!(text.contains("impl/testimpl/impl.md"));
-        assert!(text.contains("git checkout -b"));
+        // Branch management is handled by external tooling, not Specman
+        assert!(!text.contains("git checkout"));
 
         Ok(())
     }
@@ -1296,7 +1296,6 @@ version: '0.1.0'
 
         let scratch_content = r"---
 target: impl://testimpl
-branch: main
 work_type:
   feat: {}
 ---
@@ -1327,7 +1326,6 @@ version: '0.1.0'
             template_dir.join("scratch.md"),
             r"---
 target: {{target_path}}
-branch: main
 work_type:
     {{work_type_kind}}: {}
 ---

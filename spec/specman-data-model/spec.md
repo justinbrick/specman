@@ -121,20 +121,6 @@ A work type can be one of the following:
     - `fixed_headings`: a list of headings for concepts or entities impacted by the fix.
       - each fixed heading MUST be represented as a markdown fragment that exists within the implementation's referenced specifications.
 
-### Git Branches
-
-!concept-scratch-pads.git-branches:
-
-- Scratch pads SHOULD have a Git branch associated with them.
-- A branch MAY be excluded if a Git repository is not present in the SpecMan workspace.
-- Git branches MUST follow a naming scheme of: `{target_name}/{work_type}/{scratch_pad_name}`
-
-The meaning of these labels are defined below.
-
-- `target_name`: the name of the target artifact
-- `work_type`: the scratch pad [work type](#work-type)
-- `scratch_pad_name`: the name of the scratch pad
-
 ### Scratch Pad Metadata
 
 !concept-scratch-pads.metadata:
@@ -143,12 +129,16 @@ The meaning of these labels are defined below.
 - Frontmatter fields MUST be formatted as below.
 
 - `target`: the target artifact
-- `branch`: the git branch
-  - this field MAY be omitted if there is no Git workspace.
 - `work_type`: the object representing the work type
   - `draft|revision|feat|ref|fix`: a field on the object representing the work type.
 - `dependencies`: a list of [dependencies](#scratch-pad-dependencies).
   - this field MAY be omitted if this scratch pad does not depend on other scratch pads.
+
+!concept-scratch-pads.metadata.unknown-fields:
+
+- Front matter parsers MUST silently ignore any YAML front matter fields that are not defined by the governing specification.
+- Unknown fields MUST NOT cause parse errors, warnings, or validation failures.
+- This rule applies to specifications, implementations, and scratch pads alike.
 
 ### Dependency Graph Integrity
 

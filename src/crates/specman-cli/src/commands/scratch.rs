@@ -4,11 +4,10 @@ use std::path::Path;
 use clap::{Arg, ArgAction, ArgMatches, Command, ValueEnum, builder::EnumValueParser};
 use serde::Serialize;
 use specman::{
-    ArtifactId, ArtifactKind, DependencyTree,
-    ScratchFrontMatter, ScratchRefactorMetadata,
-    ScratchRevisionMetadata, ScratchWorkType, ScratchWorkloadExtras,
-    CreateResult, CreateScratchOptions, DeleteOptions, DeleteResult,
-    create_scratch_pad, delete_artifact, split_front_matter,
+    ArtifactId, ArtifactKind, CreateResult, CreateScratchOptions, DeleteOptions, DeleteResult,
+    DependencyTree, ScratchFrontMatter, ScratchRefactorMetadata, ScratchRevisionMetadata,
+    ScratchWorkType, ScratchWorkloadExtras, create_scratch_pad, delete_artifact,
+    split_front_matter,
 };
 
 use crate::commands::CommandResult;
@@ -21,7 +20,6 @@ use crate::util;
 pub struct ScratchSummary {
     pub name: String,
     pub target: Option<String>,
-    pub branch: Option<String>,
     pub work_type: Option<String>,
     pub path: String,
 }
@@ -33,16 +31,6 @@ pub enum ScratchType {
     Feat,
     Ref,
     Revision,
-}
-
-impl ScratchType {
-    fn as_key(&self) -> &'static str {
-        match self {
-            ScratchType::Feat => "feat",
-            ScratchType::Ref => "ref",
-            ScratchType::Revision => "revision",
-        }
-    }
 }
 
 pub fn command() -> Command {
@@ -112,13 +100,6 @@ fn create_scratchpad(
     let work_type_enum = matches
         .get_one::<ScratchType>("type")
         .expect("clap ensures required option");
-    let work_key = work_type_enum.as_key();
-
-    let branch = matches
-        .get_one::<String>("branch")
-        .cloned()
-        .unwrap_or_else(|| default_branch(&target, work_key, &name));
-
     let work_type = match work_type_enum {
         ScratchType::Feat => ScratchWorkType::Feat(ScratchWorkloadExtras::default()),
         ScratchType::Ref => ScratchWorkType::Refactor(ScratchRefactorMetadata::default()),
@@ -130,7 +111,6 @@ fn create_scratchpad(
         CreateScratchOptions {
             name: name.clone(),
             target,
-            branch: Some(branch),
             work_type,
             dry_run: false,
             front_matter: None,
@@ -179,14 +159,12 @@ fn delete_scratchpad(
         ScratchSummary {
             name: name.clone(),
             target: None,
-            branch: None,
             work_type: None,
             path: util::workspace_relative(session.workspace_paths.root(), &folder),
         }
     };
 
-    let impact = specman::check_deletion_impact(&session.env, &artifact)
-        .map_err(CliError::from)?;
+    let impact = specman::check_deletion_impact(&session.env, &artifact).map_err(CliError::from)?;
 
     if impact.blocked && !forced {
         return Err(CliError::new(
@@ -249,12 +227,6 @@ fn new_command() -> Command {
                 .value_name("feat|ref|revision")
                 .value_parser(EnumValueParser::<ScratchType>::new())
                 .help("Scratch pad work type"),
-        )
-        .arg(
-            Arg::new("branch")
-                .long("branch")
-                .value_name("BRANCH")
-                .help("Override the default {target}/{type}/{name} branch naming scheme"),
         )
 }
 
@@ -334,7 +306,6 @@ fn read_scratch_summary(root: &Path, path: &Path) -> Result<ScratchSummary, CliE
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
     let fm: ScratchFrontMatter = serde_yaml::from_str(split.yaml)
         .map_err(|err| CliError::new(err.to_string(), ExitStatus::Config))?;
-    let branch = fm.branch.clone();
     let work_type = fm
         .work_type
         .as_ref()
@@ -353,7 +324,6 @@ fn read_scratch_summary(root: &Path, path: &Path) -> Result<ScratchSummary, CliE
             .clone()
             .unwrap_or_else(|| infer_name_from_path(path)),
         target,
-        branch,
         work_type,
         path: util::workspace_relative(root, path),
     })
@@ -365,13 +335,4 @@ fn infer_name_from_path(path: &Path) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or("unknown")
         .to_string()
-}
-
-fn default_branch(target: &str, work_type: &str, scratch_name: &str) -> String {
-    let target_slug = target
-        .split('/')
-        .next_back()
-        .and_then(|segment| segment.split('.').next())
-        .unwrap_or(target);
-    format!("{target_slug}/{work_type}/{scratch_name}")
 }

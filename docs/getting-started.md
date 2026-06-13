@@ -88,7 +88,7 @@ Both subcommands validate locators (workspace-relative paths or HTTPS URLs), acq
    specman scratch new --name lifecycle-telemetry --target spec/workspace-lifecycle/spec.md --type revision
    ```
 
-   Scratch pads live under `.specman/scratchpad/` and must include front matter describing target, branch, and work type. The CLI currently supports `--type feat|ref|revision`; the data model also allows `draft`/`fix` for other generators.
+   Scratch pads live under `.specman/scratchpad/` and must include front matter describing target and work type. The CLI currently supports `--type feat|ref|revision`; the data model also allows `draft`/`fix` for other generators.
 
 Each command honors `--workspace <path>` overrides, emits deterministic stdout/stderr, and exits using `sysexits` codes so scripts or CI pipelines can react programmatically.
 

@@ -1,12 +1,11 @@
 ---
 target: {{target_path}}
-branch: "TODO: create branch using {target_name}/{work_type}/{scratch_pad_name}"
 work_type:
   feat: {}
 
 ---
 
-<!-- AI TODO: Update the front matter to the correct artifact, branch, and `work_type` object (`feat`, `ref`, `fix`, or `revision`) before adding contextual content. -->
+<!-- AI TODO: Update the front matter to the correct artifact and `work_type` object (`feat`, `ref`, `fix`, or `revision`) before adding contextual content. -->
 
 # Scratch Pad — Replace With Focus Area
 

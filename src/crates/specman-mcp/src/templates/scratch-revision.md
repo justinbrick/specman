@@ -38,17 +38,13 @@ Read the following dependencies before continuing:
 Steps:
 
 1. Call the MCP tool `create_artifact` to create a new revision scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
-2. After `create_artifact` returns, infer `scratch_pad_name` from the returned handle (it will look like `scratch://{scratch_pad_name}`), then create and check out a branch:
-    - Branch naming: `<target_name>/revision/<scratch_pad_name>` (example: `specman-core/revision/clarify-tokens`).
-    - If the branch does not exist yet: `git checkout -b <target_name>/revision/<scratch_pad_name>`.
-    - If it already exists: `git checkout <target_name>/revision/<scratch_pad_name>`.
-3. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following:
+2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following:
     - Proposed revision outline: the sections/headings affected, and what will change.
     - Draft wording proposals: write candidate replacement/additional paragraphs and constraint statements.
     - Compatibility notes: what existing behavior/contracts must remain true after the revision.
     - Adversarial review: intentionally misread the proposed wording to find ambiguity or loopholes; list every plausible misinterpretation.
     - Questions for the user: for each ambiguity or missing detail, ask a concrete clarifying question instead of guessing.
-4. STOP and return control to the caller.
+3. STOP and return control to the caller.
 
 ## User Input
 

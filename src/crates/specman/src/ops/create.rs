@@ -1,9 +1,9 @@
+use crate::core::env::SpecmanEnv;
+use crate::core::error::SpecmanError;
 use crate::graph::tree::{
     ArtifactId, ArtifactKind, ArtifactSummary, DependencyTree,
     normalize_persisted_reference_for_create,
 };
-use crate::core::env::SpecmanEnv;
-use crate::core::error::SpecmanError;
 use crate::metadata::frontmatter::{
     ArtifactFrontMatter, ImplementationFrontMatter, ScratchFrontMatter, ScratchWorkType,
     SpecificationFrontMatter, split_front_matter,
@@ -38,8 +38,6 @@ pub struct CreateScratchOptions {
     pub name: String,
     pub target: String,
     pub work_type: ScratchWorkType,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub branch: Option<String>,
     #[serde(default)]
     pub dry_run: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -104,18 +102,19 @@ pub fn create_specification(
     let persisted = env.persistence.persist(&artifact, &rendered)?;
 
     // Compute and save dependency tree
-    // We handle the error gracefully here or propagate it? 
+    // We handle the error gracefully here or propagate it?
     // Specman::create propagates it.
     let dependencies = match env.mapping.dependency_tree(&artifact) {
-         Ok(tree) => tree,
-         Err(SpecmanError::MissingTarget(_)) => DependencyTree::empty(ArtifactSummary {
-             id: artifact.clone(),
-             ..Default::default()
-         }),
-         Err(err) => return Err(err),
+        Ok(tree) => tree,
+        Err(SpecmanError::MissingTarget(_)) => DependencyTree::empty(ArtifactSummary {
+            id: artifact.clone(),
+            ..Default::default()
+        }),
+        Err(err) => return Err(err),
     };
 
-    env.persistence.save_dependency_tree(&artifact, &dependencies)?;
+    env.persistence
+        .save_dependency_tree(&artifact, &dependencies)?;
 
     Ok(CreateResult::Persisted(persisted))
 }
@@ -172,15 +171,16 @@ pub fn create_implementation(
     let persisted = env.persistence.persist(&artifact, &rendered)?;
 
     let dependencies = match env.mapping.dependency_tree(&artifact) {
-         Ok(tree) => tree,
-         Err(SpecmanError::MissingTarget(_)) => DependencyTree::empty(ArtifactSummary {
-             id: artifact.clone(),
-             ..Default::default()
-         }),
-         Err(err) => return Err(err),
+        Ok(tree) => tree,
+        Err(SpecmanError::MissingTarget(_)) => DependencyTree::empty(ArtifactSummary {
+            id: artifact.clone(),
+            ..Default::default()
+        }),
+        Err(err) => return Err(err),
     };
 
-    env.persistence.save_dependency_tree(&artifact, &dependencies)?;
+    env.persistence
+        .save_dependency_tree(&artifact, &dependencies)?;
 
     Ok(CreateResult::Persisted(persisted))
 }
@@ -191,8 +191,7 @@ pub fn create_scratch_pad(
 ) -> Result<CreateResult, SpecmanError> {
     // [ENSURES: concept-lifecycle-automation.requirements:CHECK]
     // [ENSURES: entity-lifecyclecontroller.requirements:CHECK]
-    let scenario =
-        TemplateScenario::WorkType(opts.work_type.kind().as_str().to_string());
+    let scenario = TemplateScenario::WorkType(opts.work_type.kind().as_str().to_string());
     let resolved = env.catalog.resolve(scenario)?;
     let artifact = ArtifactId {
         kind: ArtifactKind::ScratchPad,
@@ -228,7 +227,6 @@ pub fn create_scratch_pad(
         &opts.name,
         &opts.target,
         &opts.work_type,
-        opts.branch,
         opts.front_matter,
         &artifact_path,
         &workspace,
@@ -253,15 +251,16 @@ pub fn create_scratch_pad(
     let persisted = env.persistence.persist(&artifact, &rendered)?;
 
     let dependencies = match env.mapping.dependency_tree(&artifact) {
-         Ok(tree) => tree,
-         Err(SpecmanError::MissingTarget(_)) => DependencyTree::empty(ArtifactSummary {
-             id: artifact.clone(),
-             ..Default::default()
-         }),
-         Err(err) => return Err(err),
+        Ok(tree) => tree,
+        Err(SpecmanError::MissingTarget(_)) => DependencyTree::empty(ArtifactSummary {
+            id: artifact.clone(),
+            ..Default::default()
+        }),
+        Err(err) => return Err(err),
     };
 
-    env.persistence.save_dependency_tree(&artifact, &dependencies)?;
+    env.persistence
+        .save_dependency_tree(&artifact, &dependencies)?;
 
     Ok(CreateResult::Persisted(persisted))
 }
@@ -497,7 +496,6 @@ fn build_scratch_create_front_matter(
     name: &str,
     target: &str,
     work_type: &ScratchWorkType,
-    branch: Option<String>,
     input: Option<ScratchFrontMatter>,
     artifact_path: &std::path::Path,
     workspace: &crate::workspace::WorkspacePaths,
@@ -511,9 +509,6 @@ fn build_scratch_create_front_matter(
     }
     if fm.work_type.is_none() {
         fm.work_type = Some(work_type.clone());
-    }
-    if fm.branch.is_none() {
-        fm.branch = branch;
     }
     let value =
         serde_yaml::to_value(&fm).map_err(|err| SpecmanError::Serialization(err.to_string()))?;

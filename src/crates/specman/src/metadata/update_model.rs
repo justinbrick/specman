@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::metadata::frontmatter::{DependencyEntry, ReferenceEntry, ScratchWorkType};
 
@@ -39,7 +39,6 @@ pub struct ImplementationUpdate {
 pub struct ScratchUpdate {
     #[serde(flatten)]
     pub identity: IdentityUpdate,
-    pub branch: Option<String>,
     pub work_type: Option<ScratchWorkType>,
     pub dependencies: Option<Vec<DependencyEntry>>,
 }

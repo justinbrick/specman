@@ -344,7 +344,6 @@ pub(crate) struct UpdateArtifactVariantArgs {
 
     // Scratch specific
     pub target: Option<String>,
-    pub branch: Option<String>,
     pub work_type: Option<specman::ScratchWorkType>,
 
     // Collections
@@ -391,7 +390,6 @@ impl JsonSchema for UpdateArtifactArgs {
                 "spec": { "type": "string" },
                 "location": { "type": "string" },
                 "target": { "type": "string" },
-                "branch": { "type": "string" },
                 "work_type": { "type": "object", "additionalProperties": true },
                 "dependencies": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
                 "references": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
@@ -653,7 +651,6 @@ fn map_args_to_update(
             }
             Ok(FrontMatterUpdate::Scratch(ScratchUpdate {
                 identity,
-                branch: args.branch.clone(),
                 work_type: args.work_type.clone(),
                 dependencies: args.dependencies.clone(),
             }))
@@ -908,8 +905,6 @@ Constraints:\n\
                 validate_slug_max_words(&name, "scratch pad", 4)?;
 
                 let work_type = self.build_scratch_work_type(&kind);
-                let branch =
-                    default_branch_from_target(&target, scratch_work_type_key(&work_type), &name);
 
                 let result = specman::create_scratch_pad(
                     &env,
@@ -917,7 +912,6 @@ Constraints:\n\
                         name: name.clone(),
                         target: resolved_target,
                         work_type,
-                        branch: Some(branch),
                         dry_run: false,
                         front_matter: None,
                     },
@@ -1141,34 +1135,6 @@ fn infer_scratch_pad_name_from_intent(intent: &str) -> String {
         "scratch-pad".to_string()
     } else {
         out
-    }
-}
-
-fn default_branch_from_target(target: &str, work_type: &str, scratch_name: &str) -> String {
-    let target_slug = if let Some(rest) = target.strip_prefix("impl/") {
-        rest.split('/').next().unwrap_or(rest)
-    } else if let Some(rest) = target.strip_prefix("spec/") {
-        rest.split('/').next().unwrap_or(rest)
-    } else if let Some(rest) = target.strip_prefix(".specman/scratchpad/") {
-        rest.split('/').next().unwrap_or(rest)
-    } else {
-        target
-            .split('/')
-            .next_back()
-            .and_then(|segment| segment.split('.').next())
-            .unwrap_or(target)
-    };
-    format!("{target_slug}/{work_type}/{scratch_name}")
-}
-
-fn scratch_work_type_key(work_type: &specman::ScratchWorkType) -> &'static str {
-    use specman::ScratchWorkType;
-    match work_type {
-        ScratchWorkType::Draft(_) => "draft",
-        ScratchWorkType::Revision(_) => "revision",
-        ScratchWorkType::Feat(_) => "feat",
-        ScratchWorkType::Refactor(_) => "ref",
-        ScratchWorkType::Fix(_) => "fix",
     }
 }
 

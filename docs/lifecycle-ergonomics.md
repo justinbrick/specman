@@ -11,7 +11,7 @@ This document summarizes the lifecycle ergonomics refactor captured in `.specman
 - **Legacy helpers removed:** The older `api.rs` convenience helpers were removed; the façade is the ergonomic entrypoint.
 - **Create planning now tolerates new targets:** `DefaultLifecycleController::plan_creation` no longer fails for brand-new artifacts that don’t exist on disk yet; it plans with an empty dependency tree so callers can render/persist in one flow.
 - **CLI migrated to façade:** `specman-cli` creation and deletion flows now use the façade request types (`CreateRequest`, `DeleteRequest`, `DeletePolicy`) and map lifecycle errors deterministically to exit statuses.
-- **MCP prompt determinism restored:** Scratch prompt examples (branch/name) were made deterministic again and unit tests were updated.
+- **MCP prompt determinism restored:** Scratch prompt examples (name) were made deterministic again and unit tests were updated.
 
 ## Why It Matters
 

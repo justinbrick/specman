@@ -57,7 +57,6 @@ pub struct ScratchFrontMatter {
     #[serde(flatten)]
     pub identity: ArtifactIdentityFields,
     pub target: Option<String>,
-    pub branch: Option<String>,
     #[serde(default)]
     pub work_type: Option<ScratchWorkType>,
     #[serde(default)]
@@ -583,10 +582,11 @@ references:
     }
 
     #[test]
-    fn parses_scratch_front_matter_with_git_branch() {
-        // [ENSURES: concept-scratch-pads.git-branches:TEST]
+    fn parses_scratch_front_matter_ignores_unknown_fields() {
+        // [ENSURES: concept-scratch-pads.metadata.unknown-fields:TEST]
+        // The `branch` field was removed from the spec; implementations MUST silently ignore it.
         let yaml = r#"
-name: fix-branch-case
+name: unknown-field-case
 target: ../impl/specman-library/impl.md
 branch: feature/metadata-tightening
 work_type:
@@ -595,9 +595,11 @@ work_type:
 
         let front = ArtifactFrontMatter::from_yaml_str(yaml).expect("parse scratch front matter");
         let scratch = front.as_scratch().expect("scratch variant");
+        // The `branch` field is not part of the struct, so serde silently ignores it.
+        assert_eq!(scratch.identity.name.as_deref(), Some("unknown-field-case"));
         assert_eq!(
-            scratch.branch.as_deref(),
-            Some("feature/metadata-tightening")
+            scratch.target.as_deref(),
+            Some("../impl/specman-library/impl.md")
         );
     }
 }

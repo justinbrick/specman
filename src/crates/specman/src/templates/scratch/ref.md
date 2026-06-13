@@ -1,13 +1,11 @@
 ---
 target: {{target_path}}
-branch: null
 work_type:
   ref:
     refactored_headings: []
 dependencies: []
 ---
 
-<!-- AI TODO: Set `branch` to `{target_name}/ref/{scratch_pad_name}` when this workspace uses git branches. -->
 <!-- AI TODO: Populate `refactored_headings` with spec heading fragments impacted by this refactor. -->
 
 # Scratch Pad — Refactor — Replace With Refactor Focus
