@@ -26,7 +26,7 @@ The adapter is implemented in **Rust (2024 Edition)** (1.91.0) and reuses the `s
 ## References
 
 - [spec/specman-core/spec.md](../../spec/specman-core/spec.md) — governs dependency mapping, lifecycle automation, and metadata mutation behaviors that this adapter exposes via MCP tools.
-- [spec/specman-data-model/spec.md](../../spec/specman-data-model/spec.md) — defines artifact identifiers, workspace rules, and schema invariants mirrored in MCP tool input/output payloads.
+- [spec/specman-core/spec.md](../../spec/specman-core/spec.md) — defines artifact identifiers, workspace rules, and schema invariants mirrored in MCP tool input/output payloads.
 - [impl/specman-library/impl.md](../specman-library/impl.md) — reused Rust crate providing workspace discovery, dependency traversal, lifecycle, and schema derivation.
 - [MCP architecture overview](https://modelcontextprotocol.io/docs/learn/architecture) — external MCP guidance for initialization, tool/resource primitives, streaming, and notifications.
 

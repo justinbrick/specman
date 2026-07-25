@@ -31,7 +31,7 @@ dependencies: []
 
 - Observed: creating a `fix` scratch pad uses the generic scratch template.
 - Expected: `fix` scratch pad uses a `fix`-specific template.
-- Spec: `../../spec/specman-data-model/spec.md#work-type`
+- Spec: `../../spec/specman-core/spec.md#work-type`
 - Done when: the intended template is selected by default and validated by tests.
 
 ### Action: Capture reproduction steps and evidence

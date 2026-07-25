@@ -3,7 +3,6 @@ name: specman-cli
 version: 1.1.0
 dependencies:
 - ../specman-core/spec.md
-- ../specman-data-model/spec.md
 ---
 
 # Specification — SpecMan CLI
@@ -12,7 +11,7 @@ The SpecMan CLI defines a command-line binary that orchestrates SpecMan Core cap
 
 ## Terminology & References
 
-This document uses the normative keywords defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). Consumers SHOULD review `specman-core` and `specman-data-model` to understand the lifecycle rules, data entities, and template contracts enforced by this CLI.
+This document uses the normative keywords defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). Consumers SHOULD review [`specman-core`](../specman-core/spec.md) to understand the lifecycle rules, data entities, and template contracts enforced by this CLI.
 
 ## Concepts
 
@@ -59,7 +58,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 !concept-lifecycle-command-surface.requirements:
 
-- The CLI MUST expose create commands for specifications, implementations, and scratch pads, each of which MUST enforce the naming rules defined in the `specman-data-model` and founding specifications.
+- The CLI MUST expose create commands for specifications, implementations, and scratch pads, each of which MUST enforce the naming rules defined in [`specman-core`](../specman-core/spec.md) and the founding specification.
 - Creation commands MUST invoke the dependency mapping and template orchestration behaviors defined by `specman-core`, ensuring that generated artifacts include compliant front matter and section scaffolding.
 - Delete commands MUST refuse to proceed when dependency analysis reveals downstream consumers unless the operator explicitly supplies `--force`; forced deletions MUST still print the blocking dependency tree, require explicit confirmation (flag or prompt), and MUST record in the command result that dependencies were overridden.
 - All lifecycle commands MUST persist results to the canonical workspace paths (`spec/`, `impl/`, `.specman/scratchpad/`) returned by workspace discovery, and MUST error when filesystem writes fail.
@@ -119,7 +118,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 !concept-lifecycle-command-surface.commands.spec-new:
 
-- MUST create a new specification using the mandated templates and MUST validate names according to `specman-data-model` before writing to disk.
+- MUST create a new specification using the mandated templates and MUST validate names according to [`specman-core`](../specman-core/spec.md) before writing to disk.
 - Generated files MUST be persisted to `spec/{name}/spec.md`, and the command MUST refuse to overwrite an existing specification unless a future option explicitly allows it.
 - The following arguments MUST be honored in the listed precedence/order:
 
@@ -146,7 +145,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 ##### `impl` command group
 
 - Scope: operations governing implementation artifacts stored under `impl/`.
-- Commands in this group MUST reuse workspace discovery results so paths resolve relative to the active SpecMan workspace and MUST enforce the implementation naming constraints defined by `specman-data-model` and the founding specification.
+- Commands in this group MUST reuse workspace discovery results so paths resolve relative to the active SpecMan workspace and MUST enforce the implementation naming constraints defined by [`specman-core`](../specman-core/spec.md) and the founding specification.
 
 ###### `impl ls`
 
@@ -185,7 +184,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 !concept-lifecycle-command-surface.commands.scratch-group:
 
 - Scope: scratch pad lifecycle operations rooted at `.specman/scratchpad/`.
-- Commands MUST enforce the scratch pad naming rules (`specman-data-model`), ensure each pad records a valid work type (`feat`, `ref`, or `revision`), and MUST keep the `target` field aligned with a specification or dependency locator.
+- Commands MUST enforce the scratch pad naming rules defined in [`specman-core`](../specman-core/spec.md), ensure each pad records a valid work type (`feat`, `ref`, or `revision`), and MUST keep the `target` field aligned with a specification or dependency locator.
 
 ###### `scratch ls`
 
@@ -249,7 +248,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 !concept-data-model-activation.requirements:
 
-- The CLI MUST bundle a SpecMan data-model implementation (adapter) as an internal library so every installation has a compliant default aligned with the major version of `specman-data-model` declared in this specification.
+- The CLI MUST bundle a SpecMan Core implementation (adapter) as an internal library so every installation has a compliant default aligned with the major version of [`specman-core`](../specman-core/spec.md) declared in this specification.
 - The bundled adapter MUST be the only supported adapter; the CLI MUST reject workspace configuration overrides that attempt to register alternative adapters and MUST emit an actionable error that reiterates the bundled-only policy.
 - CLI commands MUST serialize entities exactly as defined in the data model before persisting or emitting them, and MUST surface validation errors from the adapter verbatim to the caller.
 - If the bundled adapter fails to initialize or becomes incompatible with the workspace data, the CLI MUST fail the command and provide remediation guidance (for example, reinstalling the CLI or aligning workspace data with the supported adapter version).

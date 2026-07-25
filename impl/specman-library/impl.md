@@ -3,13 +3,11 @@ spec: ../../spec/specman-core/spec.md
 name: specman-library
 version: 2.2.0
 location: ../../src/crates/specman
-references:
-- ref: ../../spec/specman-data-model/spec.md
 ---
 
 # Implementation — SpecMan Library Rust Crate
 
-The `specman-library` implementation delivers the reusable library surface defined in [SpecMan Core](../../spec/specman-core/spec.md) by packaging deterministic helpers inside a dedicated Rust crate rooted at `src/crates/specman`. Each module honors the constraints from the [SpecMan Data Model](../../spec/specman-data-model/spec.md) so downstream tools can consume uniform structures regardless of host environment.
+The `specman-library` implementation delivers the reusable library surface defined in [SpecMan Core](../../spec/specman-core/spec.md) by packaging deterministic helpers inside a dedicated Rust crate rooted at `src/crates/specman`. Each module honors the data-model constraints defined in Part 1 of that specification so downstream tools can consume uniform structures regardless of host environment.
 
 ## Implementation Stack
 
@@ -33,7 +31,7 @@ Key behaviors:
 - **CommonMark link discovery:** Extracts inline links (`[text](dest)`) and defined reference links (`[text][id]` + `[id]: dest`). Image destinations are ignored.
 - **Destination classification:** Distinguishes workspace filesystem targets, `https://` URLs, fragment-only links (`#slug`), and unsupported destinations.
 - **Workspace boundary enforcement:** Resolves filesystem destinations relative to the current document directory and rejects any path that escapes the workspace root.
-- **Fragment validation:** Validates fragments against heading slugs computed using the SpecMan slug algorithm defined in [Concept: Markdown Slugs](../../spec/specman-data-model/spec.md#concept-markdown-slugs).
+- **Fragment validation:** Validates fragments against heading slugs computed using the SpecMan slug algorithm defined in [Concept: Markdown Slugs](../../spec/specman-core/spec.md#concept-markdown-slugs).
 - **Transitive validation:** When enabled, recursively validates linked Markdown documents up to `max_documents`, and validates cross-document fragments (`other.md#slug`) against the target document's headings.
 - **Optional HTTPS reachability:** When configured, can perform network checks for `https://` destinations.
 
@@ -649,7 +647,7 @@ _Checklist completed or moved._
 
 ### Artifact-Specific Front Matter Schemas
 
-- `src/crates/specman/src/front_matter.rs` now models specification, implementation, and scratch metadata via dedicated structs (`SpecificationFrontMatter`, `ImplementationFrontMatter`, `ScratchFrontMatter`) plus the `ArtifactFrontMatter` enum. Each struct derives `Serialize`, `Deserialize`, and `JsonSchema`, and their doc comments cite the relevant paragraphs in [SpecMan Data Model](../../spec/specman-data-model/spec.md) to satisfy the Stage 4 comment-alignment requirement.
+- `src/crates/specman/src/front_matter.rs` now models specification, implementation, and scratch metadata via dedicated structs (`SpecificationFrontMatter`, `ImplementationFrontMatter`, `ScratchFrontMatter`) plus the `ArtifactFrontMatter` enum. Each struct derives `Serialize`, `Deserialize`, and `JsonSchema`, and their doc comments cite the relevant paragraphs in [SpecMan Core](../../spec/specman-core/spec.md) to satisfy the Stage 4 comment-alignment requirement.
 - The new `ScratchWorkType` enum encodes the draft/revision/feat/ref/fix discriminators exactly as defined in the data model. A manual `JsonSchema` implementation ensures schema consumers see a single-key object that mirrors the YAML shape (`work_type: { feat: {} }`, etc.), preserving deterministic serialization for Stage 5.
 - Downstream consumers (dependency traversal, metadata mutator, and CLI summaries) no longer deserialize ad-hoc `RawFrontMatter` maps. Instead they call `ArtifactFrontMatter::from_yaml_value`, match on the artifact variant, and rely on typed fields (`identity`, `dependencies`, `references`, `work_type`) for validation. This keeps lifecycle code focused on orchestration while the front-matter module owns schema fidelity.
 - CLI summaries (`spec`, `implementation`, `scratch` commands) now use the typed structs to surface names, versions, branches, targets, and work types without re-parsing YAML manually, eliminating the duplicated `serde_yaml::Value` logic noted in Stage 5 planning.
@@ -795,6 +793,6 @@ impl ScratchPadProfile {
 - **Build & Testing:** Run `cargo build -p specman` and `cargo test -p specman` from the `src` directory to exercise the workspace crate with Rust 1.91. Clippy and fmt gates should run in CI to enforce style and catch regressions.
 - **Configuration:** Template locators are read from environment variables (`SPECMAN_TEMPLATE_ROOT`) or CLI flags before falling back to repository-relative defaults, satisfying the extensibility guidance from [Template Orchestration](../../spec/specman-core/spec.md#concept-template-orchestration).
 - **Lifecycle Automation:** Delete operations must call `dependency_tree` first and abort when downstream edges exist, returning the serialized tree to the caller as mandated by [Lifecycle Automation](../../spec/specman-core/spec.md#concept-lifecycle-automation).
-- **Observability:** Each public function logs structured events (entity name, version, dependency counts) so operators can trace execution and audit compliance with the [SpecMan Data Model](../../spec/specman-data-model/spec.md#concept-implementations).
+- **Observability:** Each public function logs structured events (entity name, version, dependency counts) so operators can trace execution and audit compliance with the [SpecMan Core](../../spec/specman-core/spec.md#concept-implementations).
 
 Together, these notes ensure the implementation remains compliant with the SpecMan Data Model sections covering Implementations, Implementing Language, References, APIs, and Metadata while providing actionable guidance for practitioners running the crate.
