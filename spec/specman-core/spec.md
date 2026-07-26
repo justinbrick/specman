@@ -1,6 +1,5 @@
 ---
 name: specman-core
-version: "3.0.0"
 dependencies:
   - ../../docs/founding-spec.md
   - https://spec.commonmark.org/0.31.2/
@@ -8,7 +7,7 @@ dependencies:
 
 # Specification — SpecMan Core
 
-The SpecMan Core specification defines both the canonical data model and the platform capabilities that guarantee consistent interactions with SpecMan artifacts. Part 1 establishes the foundational data structures — workspaces, scratch pads, specifications, and implementations — along with their metadata, naming, and layout rules. Part 2 builds on those structures to define the behavioral guarantees implementers MUST honor: workspace discovery, dependency mapping, reference validation, template orchestration, lifecycle automation, structure indexing, metadata mutation, compliance reporting, and workspace status.
+The SpecMan Core specification defines both the canonical data model and the platform capabilities that guarantee consistent interactions with SpecMan artifacts. Part 1 establishes the foundational data structures — workspaces, scratch pads, project manifests, specifications, implementations, git references, and SpecMan installing — along with their metadata, naming, and layout rules. Part 2 builds on those structures to define the behavioral guarantees implementers MUST honor: workspace discovery, dependency mapping, reference validation, template orchestration, lifecycle automation, structure indexing, metadata mutation, compliance reporting, workspace status, and SpecMan installing.
 
 ## Terminology & References
 
@@ -22,7 +21,7 @@ This specification references the [founding specification](../../docs/founding-s
 
 ## Concept: SpecMan Workspace
 
-A SpecMan workspace is the directory in which SpecMan tooling can be used.
+A SpecMan workspace is the directory in which SpecMan tooling can be used. Each workspace corresponds to exactly one git repository containing exactly one SpecMan project (either a specification or an implementation).
 
 ### SpecMan Dot Folder
 
@@ -33,6 +32,13 @@ A SpecMan workspace is the directory in which SpecMan tooling can be used.
 - Implementations SHOULD treat the nearest ancestor directory containing a `.specman` folder as the workspace root when tools are invoked from within a subdirectory.
 - Tools MAY search parent directories for a `.specman` folder.
 - When multiple `.specman` folders are found along the ancestry chain, the nearest one to the current working directory SHOULD be selected as the active workspace root.
+
+!concept-specman-workspace.git-co-location:
+
+- The `.specman/` directory and a `.git/` directory MUST exist at the same directory level.
+- Tooling MUST verify that a git repository exists at the workspace root before performing initialization or validation operations.
+- If no git repository exists, tooling MUST fail with a descriptive error instructing the user to run `git init` first.
+- Tooling MUST NOT support monorepo layouts (multiple `specman.json` files under a single `.git/` directory). Each SpecMan project requires its own dedicated git repository.
 
 ## Concept: Scratch Pads
 
@@ -160,7 +166,7 @@ A work type can be one of the following:
 - Each specification MUST categorize their content into [headings](https://spec.commonmark.org/0.31.2/#atx-headings).
 
 - Each heading within a specification MUST be unique to the implementation itself.
-- Specifications SHOULD include a top-level heading titled "Terminology & References" placed near the top of the file (immediately below the main title or any YAML frontmatter).
+- Specifications SHOULD include a top-level heading titled "Terminology & References" placed near the top of the file (immediately below the main title).
   - This heading SHOULD include a reference to RFC 2119 and a short statement indicating how the RFC 2119 normative keywords (for example, MUST, SHOULD, MAY, etc.) are to be interpreted for that document.
   - Other statements or notes SHOULD be added to this heading regarding referenced documents, but MAY be omitted or relocated under other headings as necessary.
 
@@ -279,18 +285,16 @@ Constraint identifiers are not part of standard Markdown heading/link semantics;
 
 !concept-specifications.layout.filesystem:
 
-- Each specification MUST be stored in a folder designated specifically for that specification.
-
-- Specification folders MUST be stored in a top level directory named `spec`.
-- Specification folders MUST NOT be nested inside other specification folders.
-- The base specification document must be located in that folder, under `spec.md`.
+- Each specification lives at the root of its own git repository. There is no requirement for a dedicated `spec/` subdirectory since the repository itself is the specification project.
+- The primary specification document MUST be specified by the `spec.index` field in `specman.json`.
+  - If `spec.index` is not set, tooling MUST default to `spec.md` at the repository root.
+- Tooling MUST scan the document referenced by `spec.index` for constraint groups, concepts, entities, and other specification content.
 
 Example:
 
 - [workspace](#concept-specman-workspace)/
-  - spec/
-    - {spec_name}/
-      - spec.md
+  - spec.md
+  - specman.json  (contains `"spec": { "index": "spec.md" }`)
 
 ### Standalone Specifications
 
@@ -300,8 +304,7 @@ Example:
 
 - A specification MAY NOT require a reference to an implementation to be used.
   - For example, when a specification defines usage in a common format that can be used without requiring explicit implementation details (e.g. CLI commands)
-- When a specification does not require an implementation, this SHOULD be recorded in the spec's top-of-file YAML frontmatter using a boolean field named `requires_implementation`.
-  - If `requires_implementation` is omitted, implementations and tooling MUST treat the value as `true` by default.
+- When a specification does not require an implementation, this SHOULD be indicated by the absence of any `impl` implementations referencing it in the dependency graph. Tooling MAY infer standalone status from the lack of referencing implementations.
 
 ### Specification Dependencies
 
@@ -313,39 +316,25 @@ Example:
   - If the dependency is an external resource, it MUST be available in a plaintext format, in such a way that it could be read through a code editor.
   - Tooling MAY omit processing external dependencies outside of presenting the content if they are not formatted in markdown.
 - Specifications MUST NOT declare implementations as dependencies. Referencing an implementation would leak technical details into the specification layer and violates the separation between requirements and execution.
-- Each dependency item MUST be represented as one of the following forms:
-  - A string: a local file path or a URL to another specification document.
-  - An object with two fields:
-    - `ref` (string): a local file path or a URL pointing to the dependency.
-    - `optional` (boolean): when true, indicates this dependency is optional.
+- Each dependency on another SpecMan specification MUST be expressed as a [GitReference](#entity-gitreference) in the `spec.references` array of `specman.json`.
+- Dependencies on external (non-SpecMan) resources MAY be expressed as URLs in the Markdown body or as additional fields in `specman.json`.
 
 If a concept or key entity is referenced from one of the dependencies, it SHOULD be marked with an [inline link](https://spec.commonmark.org/0.31.2/#inline-link).
 
 ### Specification Metadata
 
-!concept-specifications.metadata.frontmatter:
+!concept-specifications.metadata.project-manifest:
 
-- Specifications SHOULD have front-matter at the beginning of the document to declare the above data.
-- The frontmatter fields MUST be formatted as listed below.
+- Specification project-level metadata MUST be stored in a `specman.json` file at the repository root, as defined in [Concept: Project Manifest (specman.json)](#concept-project-manifest-specmanjson).
+- The `specman.json` file MUST contain a `spec` object (not `impl`).
+- Specification Markdown documents (`spec.md`) contain the specification body. All project-level metadata fields defined by this specification MUST reside in `specman.json`.
+- Tooling that parses specifications MUST read project metadata from `specman.json`, not from Markdown frontmatter.
 
-- `name`: the [specification name](../../docs/founding-spec.md#specification-name)
-  - if this field is omitted, processors MUST use the parent directory as the name.
-- `version`: the [specification version](../../docs/founding-spec.md#specification-version)
-- `dependencies`: a list of [`dependency`](#specification-dependencies)
+!concept-specifications.metadata.versioning:
 
-Example:
-
-```yaml
----
-name: spec-name
-version: "1.0.0"
-dependencies:
-  - ../other-spec.md
-  - https://example.com/specs/founding-spec.md
-  - ref: ../maybe-optional.md
-    optional: true
----
-```
+- SpecMan does NOT define an explicit version field in project metadata.
+- Authors MUST use git tags to mark versions of their specifications.
+- Tooling MAY read git tags to determine artifact versions for display or compatibility purposes, but MUST NOT require a version field in `specman.json`.
 
 ## Concept: Implementations
 
@@ -360,10 +349,10 @@ dependencies:
 
 !concept-implementations.specification-coverage.requirements:
 
-- Each implementation MUST declare exactly one core specification that it implements. This contract is represented by the REQUIRED `spec` field in the implementation's front matter.
-- Implementations MAY implement multiple specifications. Every additional specification MUST be listed in the implementation `references` array with `type: specification`, and each entry MUST correspond to functionality the implementation actively plans to deliver.
-- When a core specification references other specifications, the implementation MUST either implement the referenced specifications itself or determine whether compliant implementations already exist. If such an implementation exists, it SHOULD be referenced and reused as the implementation model instead of reinventing it.
-- Specifications included in the implementation references list MUST be intended for implementation. Specifications needed only for background context SHOULD remain in the specification dependency graph rather than the implementation's references.
+- Each implementation MUST declare the specifications it implements via the `impl.implements` array in `specman.json`, as defined in [Entity: ImplProject](#entity-implproject).
+- Each entry in `implements` MUST contain a [GitReference](#entity-gitreference) pointing to a specification repository.
+- When a core specification references other specifications, the implementation MUST either implement the referenced specifications itself (by adding them to `implements`) or determine whether compliant implementations already exist. If such an implementation exists, it SHOULD be referenced via `utilizes` instead of reinventing it.
+- Specifications included in the `implements` list MUST be intended for implementation. Specifications needed only for background context SHOULD remain in the specification dependency graph rather than the implementation's `implements`.
 
 ### Implementation Headings
 
@@ -378,47 +367,16 @@ dependencies:
 
 !concept-implementations.layout.filesystem:
 
-- Implementation documents MUST be stored in folders.
-
-- Implementation folders MUST be stored in a parent folder named `impl`.
-- The root implementation folder MUST be inside of a SpecMan workspace.
-- The base implementation document MUST be stored under `impl.md`.
-- Related documents MAY be stored inside of the implementation folder.
+- Each implementation lives at the root of its own git repository. There is no requirement for a dedicated `impl/` subdirectory since the repository itself is the implementation project.
+- The base implementation document MUST be stored under `impl.md` at the repository root.
+- Related documents MAY be stored inside the repository.
   - Related documents MUST be human-readable files, with no binary representation. (e.g. markdown, json, yml)
 
 Example:
 
 - [workspace](#concept-specman-workspace)/
-  - impl/
-    - {impl_name}/
-      - impl.md
-
-### Implementation Locators
-
-!concept-implementations.locators.model:
-
-Implementation locators describe where implementation code lives and how it is published.
-
-- The `location` front-matter field MUST point to the root folder of the implementation's code. It MAY be a workspace-relative path or a URL, and MUST remain inside the detected workspace when a workspace exists.
-- These locators are distinct from SpecMan locator schemes (`spec://`, `impl://`, `scratch://`); see [Locator Schemes](#locator-schemes) for scheme semantics.
-
-### Locator Schemes
-
-!concept-implementations.locator-schemes.resolution:
-
-SpecMan locator schemes provide canonical handles for specifications, implementations, and scratch pads.
-
-- Supported schemes MUST be `spec://{artifact}`, `impl://{artifact}`, and `scratch://{artifact}`. Each handle identifies the canonical artifact and MUST be unique within a workspace.
-- Locator handles MUST be treated as **client inputs and client-facing identifiers**, not artifact content.
-  - Specifications, implementations, and scratch pads MUST NOT contain `spec://` / `impl://` / `scratch://` handles in front matter, metadata, or body content.
-  - Artifact-to-artifact references stored inside files MUST be expressed as workspace-relative paths or HTTPS URLs.
-  - Clients (for example the CLI, MCP adapters, or APIs) MAY accept locator handles as user input and MAY emit locator handles in responses, but they MUST normalize handles to canonical paths before persisting anything into an artifact.
-- Resolution rules:
-  - `spec://{artifact}` MUST resolve to `spec/{artifact}/spec.md` under the workspace root.
-  - `impl://{artifact}` MUST resolve to `impl/{artifact}/impl.md` under the workspace root.
-  - `scratch://{artifact}` MUST resolve to `.specman/scratchpad/{artifact}/scratch.md` under the workspace root.
-- Clients MUST resolve locator handles using the active workspace root (via workspace discovery or an explicit workspace context).
-- If a workspace root cannot be inferred or the resolved path would fall outside the workspace boundary, resolution MUST fail with a descriptive error instead of guessing.
+  - impl.md
+  - specman.json
 
 ### Implementation References
 
@@ -426,12 +384,9 @@ SpecMan locator schemes provide canonical handles for specifications, implementa
 
 !concept-implementations.references.model:
 
-- Implementations MAY reference external artifacts relied upon by the implementation. This is functionally equivalent to [specification dependencies](#specification-dependencies), but MUST be expressed exclusively as a list of objects.
-- These objects MUST adhere to the listed fields below.
-
-- `ref`: local path or URL to target artifact
-- `type`: the type of artifact. MUST be one of ("implementation", "specification").
-- `optional`: a boolean value indicating whether this reference is optional.
+- Implementations declare relationships to other artifacts through the `impl.implements` and `impl.utilizes` arrays in `specman.json`.
+- `implements`: specifications this implementation targets. Each entry MUST be an [ImplementsEntry](#entity-implementsentry) containing a [GitReference](#entity-gitreference) that points to a specification.
+- `utilizes`: other implementations this implementation depends on. Each entry MUST be a [UtilizesEntry](#entity-utilizesentry) containing a [GitReference](#entity-gitreference) that points to an implementation.
 
 ### Implementation APIs
 
@@ -452,28 +407,127 @@ SpecMan locator schemes provide canonical handles for specifications, implementa
 
 ### Implementation Metadata
 
-!concept-implementations.metadata.frontmatter:
+!concept-implementations.metadata.project-manifest:
 
-- Implementations MUST specify YAML frontmatter at the top of the document.
-- The frontmatter fields MUST be formatted as listed below.
+- Implementation project-level metadata MUST be stored in a `specman.json` file at the repository root, as defined in [Concept: Project Manifest (specman.json)](#concept-project-manifest-specmanjson).
+- The `specman.json` file MUST contain an `impl` object (not `spec`).
+- Implementation Markdown documents (`impl.md`) contain the implementation body. All project-level metadata fields defined by this specification MUST reside in `specman.json`.
+- Tooling that parses implementations MUST read project metadata from `specman.json`, not from Markdown frontmatter.
 
-- `spec`: a local path or URL to the target specification
-- `name`: the [implementation name](../../docs/founding-spec.md#implementation-name)
-  - if this field is omitted, processors MUST use the parent directory as the implementation name.
-- `location`: the location of the source code as defined in [implementation locators](#implementation-locators)
+!concept-implementations.metadata.versioning:
 
-Example:
-
-```yaml
----
-spec: ../path/to/spec.md
-name: implementation-name
-version: "1.0.0"
-location: ../path/to/code
----
-```
+- SpecMan does NOT define an explicit version field in project metadata.
+- Authors MUST use git tags to mark versions of their implementations.
+- Tooling MAY read git tags to determine artifact versions for display or compatibility purposes, but MUST NOT require a version field in `specman.json`.
 
 ---
+
+---
+
+## Concept: Project Manifest (specman.json)
+
+The project manifest is a JSON file named `specman.json` that lives at the root of a SpecMan-governed git repository. It is the single authoritative source for all project-level metadata.
+
+!concept-project-manifest.location:
+
+- The `specman.json` file MUST reside at the repository root (the same directory that contains the `.git/` and `.specman/` directories).
+- The `specman.json` file MUST NOT be added to any `.gitignore` file within the repository.
+- Implementations that perform initialization MUST ensure a git repository exists at the same level as the `specman.json` file they create or validate.
+  - If no git repository exists, the implementation MUST fail with a descriptive error instructing the user to run `git init` first.
+
+!concept-project-manifest.formatting:
+
+- The `specman.json` file MUST be valid JSON as defined by RFC 8259.
+- The `specman.json` file MUST be UTF-8 encoded.
+- The `specman.json` file SHOULD include a top-level `$schema` field referencing the canonical SpecMan JSON Schema. The schema is defined in [`specman.schema.json`](specman.schema.json), colocated with this specification.
+- The canonical `$schema` value is the URL for [this schema](specman.schema.json).
+
+!concept-project-manifest.mutual-exclusion:
+
+- A `specman.json` file MUST contain exactly one of `spec` or `impl` at the top level.
+- If `spec` is present, `impl` MUST be absent (not present as a key).
+- If `impl` is present, `spec` MUST be absent (not present as a key).
+- Neither `spec` nor `impl` may be `null`.
+
+!concept-project-manifest.versioning:
+
+- SpecMan does NOT define an explicit version field in project metadata.
+- Authors MUST use git tags to mark versions of their specifications and implementations.
+- Tooling MAY read git tags to determine artifact versions for display or compatibility purposes, but MUST NOT require a version field in `specman.json`.
+
+## Entity: GitReference
+
+A GitReference identifies a SpecMan artifact (specification or implementation) via its git repository.
+
+!entity-gitreference.fields:
+
+- `alias` (string, REQUIRED): A local name for the referenced artifact. This is the handle used to refer to the dependency in local path resolution and symlink naming. The alias SHOULD be stable across versions of the referencing project.
+- `url` (string, REQUIRED): The git remote URL. MUST be either an SSH git link (e.g., `git@gitservice.com:owner/repo.git`) or an HTTPS git link (e.g., `https://gitservice.com/owner/repo.git`). The URL MUST be usable as an argument to `git clone`.
+- `ref` (string, REQUIRED): A reference to a specific commit. The value is either a full commit hash or a git tag name. Branches are never consulted; the implementation resolves tags to commit hashes before any clone or checkout operation. If a tag name is supplied, implementations MUST resolve it to its commit hash via `git ls-remote` before use.
+
+!entity-gitreference.tag-resolution:
+
+- If `ref` is a tag name (i.e., it is not a 40-character hex string), implementations MUST resolve it to a commit hash using `git ls-remote --tags {url} {ref}` before performing any clone.
+- If tag resolution fails, the implementation MUST fail with a descriptive error.
+
+!entity-gitreference.identity-matching:
+
+- For the purpose of determining whether two `GitReference` values refer to the same artifact, implementations MUST compare the git host and path extracted from `url` (e.g., `example.com/owner/repo`), ignoring the scheme (SSH vs HTTPS) and the `.git` suffix.
+
+## Entity: SpecManProject
+
+The top-level structure of a `specman.json` file.
+
+!entity-specmanproject.fields:
+
+- `$schema` (string, OPTIONAL): A relative file URL pointing to the canonical SpecMan JSON Schema (`specman.schema.json`, colocated with this specification). When present, implementers SHOULD validate the document against this schema before processing.
+- `name` (string, REQUIRED): The project name. MAY be any UTF-8 string. This is a free-form human-readable name; the founding specification's naming rules (lowercase, hyphen-separated, max 4 words, no verbs) do NOT apply to this field.
+- `description` (string, OPTIONAL): A human-readable description of the project.
+- `tags` (array of string, OPTIONAL): Tags for categorization. MAY be absent or an empty array, but MUST NOT be null.
+- `spec` (object, OPTIONAL): Present if and only if this project is a specification. See [Entity: SpecProject](#entity-specproject).
+- `impl` (object, OPTIONAL): Present if and only if this project is an implementation. See [Entity: ImplProject](#entity-implproject).
+
+!entity-specmanproject.mutual-exclusion:
+
+- Exactly one of `spec` or `impl` MUST be present.
+- The other MUST be absent (not present as a key).
+- Neither `spec` nor `impl` may be `null`.
+
+## Entity: SpecProject
+
+Represents a specification project within `specman.json`.
+
+!entity-specproject.fields:
+
+- `index` (string, REQUIRED): The workspace-relative path to the main Markdown document for this specification. The file MUST exist at the specified path. This is the document that SpecMan tooling scans for constraint groups, concepts, entities, and other specification content. For now, this MUST be the only document scanned for constraint groups.
+- `references` (array of GitReference, OPTIONAL): A list of dependencies on other specifications. Each entry MUST be a [GitReference](#entity-gitreference). This field MAY be absent or an empty array, but MUST NOT be null.
+
+## Entity: ImplProject
+
+Represents an implementation project within `specman.json`.
+
+!entity-implproject.fields:
+
+- `implements` (array of ImplementsEntry, REQUIRED): The specifications this implementation targets. MUST contain at least one entry.
+- `utilizes` (array of UtilizesEntry, OPTIONAL): Other implementations this implementation depends on. MAY be absent or an empty array, but MUST NOT be null.
+
+## Entity: ImplementsEntry
+
+Describes one specification being implemented.
+
+!entity-implementsentry.fields:
+
+- `ref` (GitReference, REQUIRED): The specification being implemented. The referenced artifact MUST be a specification.
+- `constraints` (array of string, OPTIONAL): A list of regex patterns. Each constraint group identifier from the target specification is tested against the full dot-delimited constraint group identifier (e.g., `concept-slug.category`). If a constraint group matches at least one regex, it MUST be included in compliance checking. If no regex matches a constraint group, that constraint group MUST NOT be tracked by specman tooling. If this field is absent or an empty array, implementations MUST treat it as functionally equivalent to `[".*"]` (i.e., all constraint groups are included). This field MUST NOT be null.
+
+## Entity: UtilizesEntry
+
+Describes one implementation being utilized.
+
+!entity-utilizesentry.fields:
+
+- `ref` (GitReference, REQUIRED): The implementation being utilized. The referenced artifact MUST be an implementation.
+- `ignore_constraints` (array of string, OPTIONAL): A list of regex patterns. When evaluating compliance, constraint groups from the utilized implementation that match any of these patterns MUST be filtered out and ignored. If the utilized implementation references the same specification as the current implementation but with a different git reference (determined by matching git host and path from `url`, not by name), implementations MUST warn the user during every explicit schema validation or upon pulling dependencies. This field MAY be absent or an empty array, but MUST NOT be null.
 
 # Part 2: Core Behaviors
 
@@ -484,6 +538,7 @@ Workspace discovery ensures every SpecMan-aware tool can deterministically locat
 !concept-workspace-discovery.requirements:
 
 - The implementation MUST identify the workspace root by scanning the current directory and its ancestors for the nearest `.specman` folder, treating the containing directory as canonical.
+- The workspace root MUST also contain a `.git/` directory at the same level as `.specman/`. If `.specman/` is found but `.git/` is absent at the same level, the implementation MUST return a descriptive error.
 - When no `.specman` folder exists along the ancestry chain, the implementation MUST return a descriptive error that callers MAY surface directly to users.
 - Workspace discovery utilities MUST expose the absolute path to both the workspace root and the `.specman` directory so downstream services can reference shared metadata without recomputing filesystem state.
 - Resolved workspace metadata MUST remain consistent with the data model rules for SpecMan workspaces (see [Concept: SpecMan Workspace](#concept-specman-workspace)) and MUST reuse existing data-model entities when emitting structured results.
@@ -522,13 +577,12 @@ Dependency mapping provides visibility into upstream and downstream relationship
 - The implementation MUST construct dependency trees that enumerate upstream providers, downstream consumers, and full transitive relationships.
 - Dependency lookups MUST return results in upstream, downstream, and aggregate forms to support targeted impact analysis.
 - Tree traversal APIs SHOULD expose both hierarchical and flattened views to accommodate varied client needs.
-- Implementations MUST expose a callable dependency-tree builder that accepts a filesystem path or HTTPS URL pointing to either a specification or implementation artifact and normalizes that locator relative to the active workspace root before traversal begins.
-- The tree builder MUST parse YAML front matter (when present) for dependencies or references, recursively resolve each upstream artifact, and continue traversal until the graph is fully explored or a cycle is encountered.
-- Resolvers MUST support filesystem paths (absolute or workspace-relative), HTTPS URLs that point to Markdown specifications or implementations, and SpecMan resource handles expressed as `spec://{artifact}`, `impl://{artifact}`, or `scratch://{artifact}`. Handle semantics and normalization MUST follow the locator scheme rules defined in [Locator Schemes](#locator-schemes), including workspace discovery before traversal begins and resolution to canonical artifact identifiers.
-- Requests that supply locator schemes outside of filesystem, HTTPS, or the SpecMan resource handles (`spec://`, `impl://`, `scratch://`) MUST fail fast with a descriptive error that directs callers to use the supported schemes instead of attempting implicit rewrites.
-- Requests that reference targets outside of the detected workspace MUST fail with an error that explains the workspace boundary violation.
+- Implementations MUST expose a callable dependency-tree builder that accepts a path to a `specman.json` file, a git reference, or an alias that resolves through the global reference cache, and normalizes that locator before traversal begins.
+- The tree builder MUST parse `specman.json` for `spec.references` (for specifications) or `impl.implements` and `impl.utilizes` (for implementations), recursively resolve each upstream artifact, and continue traversal until the graph is fully explored or a cycle is encountered.
+- Resolvers MUST resolve git references by looking them up in the local project's `.specman/ref/` symlink directory first, then in the global cache at `$HOME/.specman/ref/`. If a reference is not found locally, the resolver MAY trigger a clone via [SpecMan Installing](#concept-specman-installing).
+- The locator schemes `spec://`, `impl://`, and `scratch://` are REMOVED from this specification. Implementations MUST NOT accept or resolve these schemes. Any request using these schemes MUST fail with a descriptive error.
 - Cycle detection MUST terminate traversal immediately and return a descriptive error that includes the partial tree gathered so far so callers can remediate invalid dependency graphs.
-- When a referenced dependency or implementation lacks front matter metadata, or when the dependency resolves to HTML or other plaintext without metadata, the tree builder MUST still add the artifact to the dependency set using the best available identifier (path or URL) and annotate the entry to indicate metadata was unavailable.
+- When a referenced dependency or implementation lacks a `specman.json`, or when the dependency cannot be resolved, the tree builder MUST still add the artifact to the dependency set using the best available identifier and annotate the entry to indicate metadata was unavailable.
 
 ## Concept: Reference Validation
 
@@ -537,7 +591,7 @@ Reference validation ensures that references embedded in Markdown artifacts — 
 !concept-reference-validation.requirements:
 
 - The implementation MUST expose a callable reference-validation capability that accepts a locator to a Markdown artifact and returns structured validation results.
-  - Artifact locators MAY use filesystem paths, HTTPS URLs, or SpecMan resource handles (`spec://{artifact}` / `impl://{artifact}` / `scratch://{artifact}`) as input to the validator.
+  - Artifact locators MUST use filesystem paths or HTTPS URLs. The `spec://`, `impl://`, and `scratch://` schemes are REMOVED and MUST NOT be accepted as input.
 - The validator MUST parse Markdown using CommonMark-compatible rules to identify links and their destinations, including:
   - inline links (`[text](destination)`),
   - full/collapsed/shortcut reference links resolved through link reference definitions, and
@@ -547,8 +601,7 @@ Reference validation ensures that references embedded in Markdown artifacts — 
   - workspace-filesystem (a filesystem path that resolves inside the active workspace),
   - HTTPS URL, or
   - unsupported/unknown.
-- SpecMan resource handles (`spec://{artifact}`, `impl://{artifact}`, `scratch://{artifact}`) are client-side identifiers and MUST NOT be stored as Markdown link destinations inside SpecMan artifacts.
-  - If such a handle is encountered in a Markdown link destination, the validator MUST report it as invalid and MUST NOT attempt to resolve or "validate" the target.
+- The schemes `spec://`, `impl://`, and `scratch://` are REMOVED from this specification. If any of these schemes is encountered in a Markdown link destination, the validator MUST report it as invalid and MUST NOT attempt to resolve or "validate" the target.
 - If a destination uses a scheme outside the supported set for Markdown references (workspace-filesystem paths and HTTPS URLs), the validator MUST report it as invalid and MUST NOT attempt implicit rewrites.
 - When validating filesystem destinations, the validator MUST resolve them relative to the source artifact's directory.
   - The validator MUST normalize the resolved path and MUST enforce workspace-boundary rules (it MUST NOT allow traversal outside the workspace root after normalization).
@@ -599,7 +652,7 @@ Template orchestration governs how reusable content is discovered and rendered.
 !concept-template-orchestration.token-contract:
 
 - The effective template descriptor defines a closed token set; lifecycle or MCP clients MUST reject substitutions for tokens that are not declared by the descriptor.
-- Token substitution covers Markdown body content only. YAML front matter MUST be produced or mutated by lifecycle workflows after template rendering, not by injecting `{{token}}` placeholders inside front matter.
+- Token substitution covers Markdown body content only. Project metadata (`specman.json` for specs/impls, YAML front matter for scratch pads) MUST be produced or mutated by lifecycle workflows after template rendering, not by injecting `{{token}}` placeholders.
 - When callers supply token data, the implementation MUST surface validation errors verbatim whenever a required token is missing or an unknown token is supplied.
 
 ## Concept: Deterministic Execution
@@ -621,20 +674,20 @@ Lifecycle automation standardizes creation and deletion workflows for specificat
 - Lifecycle operations MUST enforce template usage for all new specifications, implementations, and scratch pads so generated artifacts remain data-model compliant.
 - Implementations MUST expose user-facing deletion workflows for specifications, implementations, and scratch pads so that every artifact type can be removed with the same rigor applied to creation.
 - Creation tooling MUST cover all three artifact types (specifications, implementations, scratch pads) and MUST enforce the naming and metadata rules defined by Part 1 of this specification and the [founding specification](../../docs/founding-spec.md).
-- Creation workflows MUST persist generated Markdown artifacts and supporting metadata into the canonical workspace locations (`spec/{name}/spec.md`, `impl/{name}/impl.md`, `.specman/scratchpad/{slug}/scratch.md`) using the paths returned by workspace discovery.
+- Creation workflows MUST persist generated Markdown artifacts and supporting metadata into the canonical workspace locations (the path specified by `spec.index` for specifications, `impl.md` at the repository root for implementations, `.specman/scratchpad/{slug}/scratch.md` for scratch pads) using the paths returned by workspace discovery.
 - When a pointer file downloads content from an HTTPS locator, Lifecycle automation MUST route the rendered template through the `.specman/cache/templates/` store before writing artifacts so repeated invocations reuse the cached copy unless the pointer or upstream content changes.
-- Persistence helpers MUST write the rendered template output (with all required tokens populated) together with its front matter or metadata; persisting additional representations of entities, concepts, or other runtime data structures is out of scope for this specification.
+- Persistence helpers MUST write the rendered template output (with all required tokens populated) together with its project metadata; persisting additional representations of entities, concepts, or other runtime data structures is out of scope for this specification.
 - Lifecycle automation MUST provide direct integrations with the metadata mutation capabilities described in [Concept: Metadata Mutation](#concept-metadata-mutation).
 - Deletion workflows MUST reuse dependency mapping services, refuse to proceed when dependent artifacts exist, and MUST return a dependency tree describing all impacted consumers whenever a removal is blocked.
 - Deletion workflows MUST ensure the targeted artifact and any associated metadata or scratch pad directories are removed from their canonical workspace locations once safety checks pass.
 - Scratch pad creation workflows MUST offer selectable profiles aligned with defined scratch pad types and MUST leverage corresponding templates.
 - Lifecycle controllers MUST expose a persistence interface that can round-trip newly created artifacts back onto disk and SHOULD surface explicit errors if the filesystem write fails so callers can remediate workspace permissions.
 
-!concept-lifecycle-automation.frontmatter-generation:
+!concept-lifecycle-automation.metadata-generation:
 
-- Creation workflows MUST generate or merge YAML front matter after template rendering so that every artifact persists the metadata mandated by Part 1 and governing specifications.
-- Templates MUST NOT embed YAML front matter; lifecycle automation and metadata mutation workflows are the authoritative mechanisms for writing and updating metadata.
-- Metadata mutation helpers MUST update the YAML front matter in-place without rewriting the Markdown body and MUST continue to enforce the workspace-boundary and locator-validation rules defined elsewhere in this specification.
+- Creation workflows MUST generate or merge a `specman.json` file after template rendering so that every artifact persists the metadata mandated by Part 1 and governing specifications.
+- Templates MUST NOT embed `specman.json` content; lifecycle automation and metadata mutation workflows are the authoritative mechanisms for writing and updating metadata.
+- Metadata mutation helpers MUST update the `specman.json` in-place and MUST continue to enforce the workspace-boundary and git-reference validation rules defined elsewhere in this specification.
 
 ## Concept: SpecMan Structure
 
@@ -696,28 +749,30 @@ Rendering the markdown content allows for readers to properly understand all pos
 
 ## Concept: Metadata Mutation
 
-Metadata mutation ensures YAML front matter for specifications, implementations, and scratch pads can be updated without rewriting the surrounding Markdown content.
+Metadata mutation ensures `specman.json` for specifications and implementations, and YAML front matter for scratch pads, can be updated without rewriting unrelated content.
 
 !concept-metadata-mutation.requirements:
 
 - Implementations MUST expose metadata mutation interfaces that accept a structured update object corresponding to the artifact type (specification, implementation, or scratch pad).
-- The update object MUST strictly define the fields eligible for mutation on that artifact type; it MUST NOT allow arbitrary key-value insertion into the front matter.
-- Mutation operations MUST apply updates by merging the provided structure into the existing front matter (Partial Update semantics):
-  - If a field is omitted from the update object, the existing value in the front matter MUST remain unchanged.
+- For specifications and implementations, the update object MUST operate on the `specman.json` file.
+- For scratch pads, the update object MUST operate on the YAML front matter of `scratch.md` (scratch pads remain workspace-local and are not part of the git repository model).
+- The update object MUST strictly define the fields eligible for mutation on that artifact type; it MUST NOT allow arbitrary key-value insertion.
+- Mutation operations MUST apply updates by merging the provided structure into the existing metadata (Partial Update semantics):
+  - If a field is omitted from the update object, the existing value MUST remain unchanged.
   - Scalar fields (strings, numbers, booleans) present in the update object MUST replace the existing values.
-- For list-valued fields (such as dependencies or references), the update object MUST provide dedicated properties to add or remove items without requiring the caller to provide the full list:
-  - The interface MUST support `add_{field}` properties (e.g., `add_dependencies`) to append unique items to the list.
-  - The interface MUST support `remove_{field}` properties (e.g., `remove_dependencies`) to remove items from the list.
-  - The interface MAY support the base field name (e.g., `dependencies`) to perform a full replacement (set) of the list.
+- For list-valued fields, the update object MUST provide dedicated properties to add or remove items without requiring the caller to provide the full list:
+  - The interface MUST support `add_{field}` properties to append unique items to the list.
+  - The interface MUST support `remove_{field}` properties to remove items from the list.
+  - The interface MAY support the base field name to perform a full replacement (set) of the list.
 - Implementations MUST NOT require callers to construct a list of abstract "operation" commands (e.g., `{"op": "add", ...}`). Instead, the API surface MUST be a strongly-typed or schema-validated structure.
-- Metadata mutation helpers MUST reuse the locator normalization, workspace-boundary enforcement, and supported-scheme validation rules defined for dependency traversal before applying edits.
-- Metadata mutation operations MUST rewrite only the YAML front matter block and MUST either persist the updated artifact to its canonical path or return the full document with body content unchanged.
+- Metadata mutation helpers MUST reuse git-reference resolution and workspace-boundary enforcement rules before applying edits.
+- Metadata mutation operations MUST persist the updated `specman.json` or scratch pad YAML front matter and MUST return the full updated document.
 
 !concept-metadata-mutation.scope.supported-fields:
 
 - Metadata mutation MUST be supported for specification, implementation, and scratch pad artifacts.
-- For specifications, metadata mutation MUST support updating the `version` field and adding/removing entries in the `dependencies` list.
-- For implementations, metadata mutation MUST support updating the `version` field, updating language fields, and adding/removing entries in the `references` list.
+- For specifications, metadata mutation MUST support updating `name`, `description`, `tags`, and adding/removing entries in the `spec.references` list.
+- For implementations, metadata mutation MUST support updating `name`, `description`, `tags`, and adding/removing entries in the `impl.implements` and `impl.utilizes` lists.
 - For scratch pads, metadata mutation MUST support updating any YAML front matter fields except `target`.
   - Scratch pad `target` MUST be treated as immutable; attempts to change it MUST fail with a descriptive error.
 
@@ -737,7 +792,7 @@ Validation scanning defines how tooling discovers anchors within an implementati
 
 !concept-validation-scanning.scope:
 
-- Tooling MUST resolve the implementation's source code root using the `location` field defined in the implementation metadata.
+- Tooling MUST resolve the implementation's source code root as the workspace root (the directory containing `.specman/` and `specman.json`).
 - The scanner MUST recursively traverse the source directory to identify files for analysis.
 
 !concept-validation-scanning.filtering:
@@ -753,10 +808,10 @@ Compliance reporting exposes the relationship between specification constraints 
 !concept-compliance-reporting.interface:
 
 - Implementations MUST provide an interface or surface to generate compliance reports.
-- The reporting tool MUST resolve the target specification from the implementation's `spec` metadata.
-- The tool MUST extract all constraint groups from the resolved specification and its transitive specification dependencies.
-- The tool MUST scan the implementation's source location for validation tags.
-- The reporting tool MUST scope structural indexing to the implementation, its governing specification, and those specification dependencies; unrelated workspace artifacts (including scratch pads) MUST be ignored and MUST NOT cause compliance report failures.
+- The reporting tool MUST resolve the target specification(s) from the implementation's `specman.json` `impl.implements` array.
+- The tool MUST extract all constraint groups from the resolved specification(s) and their transitive specification dependencies.
+- The tool MUST scan the implementation's source location (the workspace root) for validation tags.
+- The reporting tool MUST scope structural indexing to the implementation, its governing specification(s), and those specification dependencies; unrelated workspace artifacts (including scratch pads) MUST be ignored and MUST NOT cause compliance report failures.
 
 !concept-compliance-reporting.coverage:
 
@@ -779,21 +834,20 @@ Workspace status provides a holistic health check of the workspace, aggregating 
 
 - The implementation MUST expose a workspace status capability that scans specifications, implementations, and scratch pads within the active workspace.
 - The status check MUST accept a configuration (e.g., flags or options) to enable or disable specific validation categories. Supported categories MUST include at least:
-  - `structure`: Validates YAML front matter and basic artifact validity.
+  - `structure`: Validates `specman.json` and basic artifact validity.
   - `references`: Validates inline links, dependencies, and external URLs.
   - `cycles`: Validates the dependency graph for cycles.
   - `compliance`: Validates implementation anchor coverage.
   - `scratchpads`: Includes scratch pads in the validation set.
 - Implementations SHOULD enable all validation categories by default unless explicitly disabled by the user.
-- When `structure` validation is enabled, the status check MUST validate that every scanned artifact has valid YAML front matter conforming to this specification.
+- When `structure` validation is enabled, the status check MUST validate that every scanned artifact has a valid `specman.json` conforming to this specification.
 - When `references` validation is enabled, the status check MUST perform reference validation on all artifacts, ensuring that:
   - All inline links to workspace files resolve to existing files.
   - All inline links to HTTP(S) resources are valid URLs (connectivity checks MAY be optional or configurable).
-  - All artifact dependencies (in specifications) and references (in implementations) resolve to existing, valid artifacts.
-  - The `location` path in implementation metadata resolves to an existing directory on the filesystem.
+  - All artifact dependencies (specification `references`) and implementation `implements`/`utilizes` resolve to existing, valid artifacts.
 - When `cycles` validation is enabled, the status check MUST construct the full dependency graph and verify that no cyclic dependencies exist between specifications.
 - When `compliance` validation is enabled, the status check MUST verify compliance coverage for every implementation:
-  - It MUST extract all constraint groups from the implementation's governing specification (and transitive dependencies).
+  - It MUST extract all constraint groups from the implementation's governing specification(s) (and transitive dependencies).
   - It MUST scan the implementation's source code for validation anchors.
   - It MUST report a failure if any mandatory constraint group lacks a corresponding validation anchor.
 - When `scratchpads` validation is enabled, the status check MUST apply the other enabled checks to scratch pad artifacts; if disabled, scratch pads MUST be ignored.
@@ -802,6 +856,61 @@ Workspace status provides a holistic health check of the workspace, aggregating 
   - A secondary, distinct section for Scratch Pad validation results (if enabled), which MUST NOT affect the global pass/fail status of the workspace.
   - A comprehensive list of all validation errors, warnings, and missing compliance anchors, grouped by artifact.
 - The status check SHOULD NOT halt on the first error; it MUST attempt to collect all discoverable errors in the workspace.
+
+## Concept: SpecMan Installing
+
+SpecMan Installing is the process of resolving all git-referenced dependencies for a project and making them available locally. It delegates all git operations to the user's `git` CLI, piggybacking on the user's existing authentication and configuration.
+
+!concept-specman-installing.git-delegation:
+
+- Implementations MUST use the user's `git` command for all remote operations (clone, fetch, ls-remote).
+- Implementations MUST NOT implement their own git transport or authentication.
+- Implementations MUST respect the user's existing git configuration (credentials, SSH keys, `.gitconfig` settings).
+
+!concept-specman-installing.recursive-resolution:
+
+- Installing MUST recursively resolve all transitively referenced artifacts.
+- The recursion depth MUST NOT exceed 10 levels.
+- If recursion exceeds 10 levels, the install MUST fail with a descriptive error listing the dependency chain that caused the overflow.
+
+!concept-specman-installing.symlink-structure:
+
+- After resolving references, implementations MUST create symlinks under the project's `.specman/ref/` directory.
+- Each symlink name MUST be the `alias` from the corresponding [GitReference](#entity-gitreference).
+- Each symlink MUST point to the corresponding directory in the global reference cache (`$HOME/.specman/ref/{ref_name}`).
+- If a symlink with the same alias already exists, implementations MUST update it to point to the resolved reference.
+
+## Concept: Global Reference Cache
+
+SpecMan maintains a global cache of cloned references under the user's home directory to avoid redundant clones across projects.
+
+!concept-global-reference-cache.location:
+
+- The global cache root MUST be `$HOME/.specman/ref/`.
+- Each cloned artifact MUST be stored under `$HOME/.specman/ref/{ref_name}/`.
+
+!concept-global-reference-cache.naming:
+
+- The reference directory name (`ref_name`) MUST be computed as: `{host}_{path}_{hash}`, where:
+  - `host` is the domain of the git server (e.g., `github.com`).
+  - `path` is the repository path with the `.git` suffix stripped (e.g., `owner/repo`).
+  - `hash` is the full git commit hash of the resolved reference.
+- All three components MUST be joined with underscore (`_`) separators.
+- Example: for `https://github.com/owner/spec-repo.git` at commit `abc123def456...`, the ref_name is `github.com_owner/spec-repo_abc123def456...`.
+
+!concept-global-reference-cache.clone-rules:
+
+- Before cloning, implementations MUST resolve any tag reference to a commit hash (see [Entity: GitReference](#entity-gitreference)).
+- Implementations MUST clone the repository into the global cache using `git clone`.
+- After cloning, implementations MUST checkout the exact commit hash.
+- Each unique `(host, path, hash)` tuple MUST produce exactly one cache directory. Implementations MUST check for an existing directory before cloning and reuse it if present.
+
+!concept-global-reference-cache.cleanup:
+
+- The global cache MAY accumulate unused entries over time.
+- Implementations MAY provide a cleanup command that removes cache entries not referenced by any known project.
+- Implementations MUST NOT automatically delete cache entries without explicit user action.
+
 
 ---
 
@@ -897,7 +1006,7 @@ Configuration object for the workspace status capability.
 
 !entity-workspacestatusconfig.schema:
 
-- `structure` (boolean, required): Enable structure validation (front matter, versioning). Default: `true`.
+- `structure` (boolean, required): Enable structure validation (`specman.json`). Default: `true`.
 - `references` (boolean, required): Enable reference validation. Default: `true`.
 - `cycles` (boolean, required): Enable dependency cycle detection. Default: `true`.
 - `compliance` (boolean, required): Enable compliance checks (anchors). Default: `true`.
@@ -923,7 +1032,7 @@ Validation results for a single artifact.
 
 !entity-artifactstatus.schema:
 
-- `structure_errors` (array<string>): Errors related to file structure or front matter.
+- `structure_errors` (array<string>): Errors related to `specman.json` or scratch pad front matter.
 - `reference_errors` (array<ReferenceValidationIssue>): Errors from reference validation.
 - `compliance_missing` (array<string>): Missing compliance constraints (implementations only).
 - `compliance_orphans` (array<ValidationTag>): Orphaned compliance tags (implementations only).
