@@ -317,7 +317,6 @@ mod tests {
             .server
             .scratch_feat_prompt(Parameters(ScratchImplPromptArgs {
                 target: "testimpl".to_string(),
-                request: "Plan a small feature".to_string(),
             }))
             .await?
             .pop()
@@ -341,7 +340,6 @@ mod tests {
             .server
             .scratch_ref_prompt(Parameters(ScratchImplPromptArgs {
                 target: "testimpl".to_string(),
-                request: "Plan a refactor".to_string(),
             }))
             .await?
             .pop()
@@ -366,7 +364,6 @@ mod tests {
             .server
             .scratch_revision_prompt(Parameters(ScratchSpecPromptArgs {
                 target: "testspec".to_string(),
-                request: "Revise the spec".to_string(),
             }))
             .await?
             .pop()
@@ -391,7 +388,6 @@ mod tests {
             .server
             .scratch_fix_prompt(Parameters(ScratchImplPromptArgs {
                 target: "testimpl".to_string(),
-                request: "Fix a bug".to_string(),
             }))
             .await?
             .pop()
@@ -491,7 +487,6 @@ mod tests {
                 .server
                 .scratch_feat_prompt(Parameters(ScratchImplPromptArgs {
                     target: "testimpl".to_string(),
-                    request: "Plan a small feature".to_string(),
                 }))
                 .await?,
         );
@@ -510,7 +505,6 @@ mod tests {
                 .server
                 .scratch_revision_prompt(Parameters(ScratchSpecPromptArgs {
                     target: "testspec".to_string(),
-                    request: "Revise the spec".to_string(),
                 }))
                 .await?,
         );
@@ -529,7 +523,6 @@ mod tests {
                 .server
                 .impl_prompt(Parameters(ImplPromptArgs {
                     spec: "spec://testspec".to_string(),
-                    request: "Implement the spec".to_string(),
                 }))
                 .await?,
         );
@@ -548,7 +541,6 @@ mod tests {
                 .server
                 .migration_prompt(Parameters(MigrationPromptArgs {
                     target: "testspec".to_string(),
-                    codebase: "Migrate a legacy service".to_string(),
                 }))
                 .await?,
         );
@@ -576,7 +568,6 @@ mod tests {
                     .server
                     .scratch_feat_prompt(Parameters(ScratchImplPromptArgs {
                         target: "testimpl".to_string(),
-                        request: "Plan a small feature".to_string(),
                     }))
                     .await?,
             ),
@@ -586,7 +577,6 @@ mod tests {
                     .server
                     .scratch_ref_prompt(Parameters(ScratchImplPromptArgs {
                         target: "testimpl".to_string(),
-                        request: "Plan a refactor".to_string(),
                     }))
                     .await?,
             ),
@@ -596,7 +586,6 @@ mod tests {
                     .server
                     .scratch_revision_prompt(Parameters(ScratchSpecPromptArgs {
                         target: "testspec".to_string(),
-                        request: "Revise the spec".to_string(),
                     }))
                     .await?,
             ),
@@ -606,7 +595,6 @@ mod tests {
                     .server
                     .scratch_fix_prompt(Parameters(ScratchImplPromptArgs {
                         target: "testimpl".to_string(),
-                        request: "Fix a bug".to_string(),
                     }))
                     .await?,
             ),
@@ -615,7 +603,7 @@ mod tests {
                 workspace
                     .server
                     .spec_prompt(Parameters(SpecPromptArgs {
-                        request: "Define a new specification".to_string(),
+                        name: "testspec".to_string(),
                     }))
                     .await?,
             ),
@@ -625,7 +613,6 @@ mod tests {
                     .server
                     .impl_prompt(Parameters(ImplPromptArgs {
                         spec: "testspec".to_string(),
-                        request: "Implement the spec".to_string(),
                     }))
                     .await?,
             ),
@@ -635,7 +622,6 @@ mod tests {
                     .server
                     .migration_prompt(Parameters(MigrationPromptArgs {
                         target: "testspec".to_string(),
-                        codebase: "Migrate a legacy service".to_string(),
                     }))
                     .await?,
             ),
@@ -680,7 +666,6 @@ mod tests {
                 .server
                 .migration_prompt(Parameters(MigrationPromptArgs {
                     target: "testspec".to_string(),
-                    codebase: "Migrate a legacy service".to_string(),
                 }))
                 .await?,
         );

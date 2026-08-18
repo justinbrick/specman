@@ -11,13 +11,7 @@ Your task is to create the scratch pad artifact and then fill it out with a conc
 
 You are applying user suggestions to revise the specification referenced by {{target_path}} using a scratch pad.
 
-## Request
-
-The user wants to make the following revision:
-
-{{request}}
-
-If the request above is missing any of the information you need (which sections/headings change and why, or new constraints), you MUST ask the user clarifying questions before proceeding. Continue prompting until you have enough to proceed.
+Immediately query the user about the revision they want to make — which sections/headings will change, why, and any new constraints. Keep asking clarifying questions until you have enough to proceed.
 
 ## Standards Quick Reference (Standalone)
 
@@ -45,7 +39,7 @@ Read the following dependencies before continuing:
 
 ## Steps
 
-1. If any prerequisite information is unclear, prompt the user for clarification and wait for their answer.
+1. Query the user about the revision request and keep prompting until everything is clear.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following:
     - Proposed revision outline: the sections/headings affected, and what will change.
     - Draft wording proposals: write candidate replacement/additional paragraphs and constraint statements.

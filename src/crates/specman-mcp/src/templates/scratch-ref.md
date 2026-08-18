@@ -11,13 +11,7 @@ Your task is to create the scratch pad artifact and then fill it out with a refa
 
 Target: {{target_path}}
 
-## Request
-
-The user wants to plan a refactor with the following guidance:
-
-{{request}}
-
-If the request above is missing any of the information you need (motivation, scope, or constraints), you MUST ask the user clarifying questions before proceeding. Continue prompting until you have enough to proceed.
+Immediately query the user about the refactor they want to plan — its motivation, scope, and any constraints. Keep asking clarifying questions until you have enough to proceed.
 
 Dependencies:
 
@@ -25,7 +19,7 @@ Dependencies:
 
 ## Steps
 
-1. If any detail is unclear, prompt the user for clarification and wait for their answer.
+1. Query the user about the refactor guidance and keep prompting until everything is clear.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following (do not refactor yet):
     - Current-state inventory: key modules, data flows, and pain points motivating the refactor.
     - Refactor options: list at least 2 viable approaches; compare pros/cons, complexity, and migration risk.

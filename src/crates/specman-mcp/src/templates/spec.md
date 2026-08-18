@@ -1,14 +1,8 @@
 # Specification Creation
 
-You are creating a SpecMan specification and must use the MCP tool `create_specification` to instantiate the canonical specification template, preserving each HTML comment directive until its instruction is satisfied.
+You are creating a SpecMan specification named {{name}} and must use the MCP tool `create_specification` to instantiate the canonical specification template, preserving each HTML comment directive until its instruction is satisfied.
 
-## Request
-
-The user wants the specification to define the following:
-
-{{request}}
-
-If the request above is missing any of the information you need to author a correct, unambiguous specification (objectives, scope boundaries, key concepts/entities, or constraints), you MUST ask the user clarifying questions before proceeding. Continue prompting until you have enough to proceed.
+Immediately query the user about what they want this specification to define — its goals, scope boundaries, key concepts and entities, and any constraints. Keep asking clarifying questions until you have enough information to author an unambiguous specification.
 
 ## Standards Quick Reference (Standalone)
 
@@ -28,11 +22,11 @@ If the request above is missing any of the information you need to author a corr
 
 Before interpreting any inputs, complete these reading prerequisites:
 
-- Decide what dependencies (if any) this new specification should declare based on the request above and any existing specs in the workspace that it must build on.
+- Decide what dependencies (if any) this new specification should declare based on what the user describes and any existing specs in the workspace that it must build on.
 
 Steps:
 
-1. If any prerequisite information is unclear, prompt the user for clarification and wait for their answer.
+1. Query the user about what the specification must define, and keep prompting until every requirement is clear.
 2. Open the created specification artifact and fill it out:
     - Declare dependencies (if any) and ensure they are necessary and sufficient.
     - Define Concepts and Entities (use the required heading prefixes) and write normative requirements using RFC 2119 keywords.
@@ -45,4 +39,4 @@ Steps:
 
 ## Tool Calls
 
-Only once the user has answered every clarifying question and no unclear areas remain, call the MCP tool `create_specification` to create the new specification artifact, following the tool-call schema exposed by the current environment (do not rely on older examples that enumerate specific fields). Then fill it out per the steps above.
+Only once the user has answered every clarifying question and no unclear areas remain, call the MCP tool `create_specification` to create the new specification artifact (named {{name}}), following the tool-call schema exposed by the current environment (do not rely on older examples that enumerate specific fields). Then fill it out per the steps above.

@@ -2,13 +2,7 @@
 
 You are documenting an implementation and must use the MCP tool `create_implementation` to instantiate the canonical implementation template, ensuring it complies with the SpecMan Data Model and realizes the specification at {{target_path}} while keeping every HTML comment directive until fulfilled.
 
-## Request
-
-The user wants the implementation to cover the following requirements, scope, and constraints:
-
-{{request}}
-
-If the request above is missing any of the information you need (scope, target modules/components, interfaces, error handling, or external integrations), you MUST ask the user clarifying questions before proceeding. Continue prompting until you have enough to proceed.
+Immediately query the user about what they want this implementation to cover — its requirements, scope, and constraints, including target modules/components, interfaces, error handling, and external integrations. Keep asking clarifying questions until you have enough information to proceed.
 
 ## Prerequisites
 
@@ -20,7 +14,7 @@ Read the following dependencies before continuing:
 
 ## Steps
 
-1. If any prerequisite information is unclear, prompt the user for clarification and wait for their answer.
+1. Query the user about the implementation requirements and keep prompting until everything is clear.
 2. Open the created implementation artifact and fill it out:
     - Break down how the implementation should work: modules/components, key types, interfaces, error handling, data flow, and external integrations.
     - Provide a staged implementation plan (milestones) that could be executed later, including where tests/docs should be added.

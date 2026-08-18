@@ -263,8 +263,8 @@ Prompt catalog tooling defines how MCP clients obtain deterministic prompts for 
 - Prompt-catalog tools MUST emit prompts that clearly identify the artifact class and, for scratch pads, the selected work type.
 - Prompts MUST instruct operators or downstream AI systems to review the target specification and all of its dependencies before authoring changes and MUST remind them to preserve HTML comment directives until satisfied.
 - Each prompt response MUST cite the effective template source resolved via SpecMan Core template orchestration (workspace overrides first, then packaged defaults) so clients know which scaffold is authoritative.
-- Prompts MUST capture what the user wants to accomplish through required prompt arguments (for example the specification request, implementation requirements, scratch-pad revision/feature/refactor/fix request, or migration codebase description) and MUST interweave those argument values directly into the prompt body. Prompts MUST NOT rely on a trailing free-form user-input section to be filled in by the operator.
-- When the argument values supplied are insufficient to author the requested artifact or change, the prompt MUST instruct the operator or downstream AI system to query the user for the missing information and to keep prompting until every unclear area is resolved. Lifecycle tool calls MUST be described as valid only after all such clarifying questions have been answered.
+- Every prompt MUST accept exactly one required argument that identifies the target artifact or, for a new specification, the name of the specification to create (a `target`/`spec`/`implementation` locator, or a `name`). Prompts MUST NOT accept free-form intent text as arguments; instead each prompt MUST instruct the operator or downstream AI system to immediately query the user for what they want to accomplish, relevant to that prompt's artifact class or work type.
+- Prompts MUST instruct the operator or downstream AI system to keep querying the user until every requirement is clear. Lifecycle tool calls MUST be described as valid only after all such clarifying questions have been answered.
 
 !concept-prompt-catalog.scope:
 

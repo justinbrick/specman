@@ -29,16 +29,12 @@ const IMPL_TEMPLATE: &str = include_str!("templates/impl.md");
 const MIGRATION_TEMPLATE: &str = include_str!("templates/migration.md");
 const COMPLIANCE_TEMPLATE: &str = include_str!("templates/compliance.md");
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ScratchImplPromptArgs {
     #[schemars(
         description = "Implementation target. A bare name (e.g. 'specman-mcp-rust') is interpreted as 'impl://specman-mcp-rust'. You may also pass an explicit locator (impl://..., spec://..., scratch://...) or a workspace-relative path."
     )]
     pub target: String,
-    #[schemars(
-        description = "What the user wants to accomplish. For 'feat', describe the feature to plan. For 'fix', describe the bug (observed vs. expected behavior, reproduction clues). For 'ref', describe the refactor motivation and constraints. This text is interwoven directly into the prompt."
-    )]
-    pub request: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
@@ -49,42 +45,34 @@ pub struct CompliancePromptArgs {
     pub implementation: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ScratchSpecPromptArgs {
     #[schemars(
         description = "Specification target. A bare name (e.g. 'founding-spec') is interpreted as 'spec://founding-spec'. You may also pass an explicit locator (spec://..., impl://..., scratch://...) or a workspace-relative path."
     )]
     pub target: String,
-    #[schemars(
-        description = "The revision the user wants to make to the specification: what sections/constraints will change and why. This text is interwoven directly into the prompt."
-    )]
-    pub request: String,
 }
 
 /// Arguments for rendering the migration prompt that guides converting external code into SpecMan artifacts.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct MigrationPromptArgs {
     #[schemars(
         description = "Migration target specification (may be newly created). A bare name (e.g. 'specman-core') is interpreted as 'spec://specman-core'. You may also pass an explicit locator (spec://..., impl://..., scratch://...) or a workspace-relative path; the value is not validated for existence."
     )]
     pub target: String,
-    #[schemars(
-        description = "Description of the non-SpecMan codebase to migrate: where it lives, what it does, and the migration goal. This text is interwoven directly into the prompt."
-    )]
-    pub codebase: String,
 }
 
 /// Arguments for rendering a prompt that creates a new specification.
 ///
-/// New specifications do not have stable dependency context until the author defines it,
-/// so prompt intentionally accepts no dependency-prefill arguments; it instead captures the
-/// user's specification intent directly so the prompt is self-contained.
+/// A new specification has no dependency context yet, so the only required argument is its
+/// identifier (name). The prompt instructs the agent to query the user for what the specification
+/// should define.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SpecPromptArgs {
     #[schemars(
-        description = "What the user wants the new specification to define: goals, scope, and any known constraints. This text is interwoven directly into the prompt."
+        description = "Specification name/slug (lowercase, digits, hyphens). This identifies the new specification to create."
     )]
-    pub request: String,
+    pub name: String,
 }
 
 /// Arguments for rendering a prompt that creates a new implementation from a governing specification.
@@ -94,10 +82,6 @@ pub struct ImplPromptArgs {
         description = "Governing specification. A bare name (e.g. 'specman-core') is interpreted as 'spec://specman-core'. You may also pass an explicit locator (spec://...) or a workspace-relative path."
     )]
     pub spec: String,
-    #[schemars(
-        description = "Implementation requirements, scope, and constraints the user wants documented. This text is interwoven directly into the prompt."
-    )]
-    pub request: String,
 }
 
 pub(crate) struct ResolvedTarget {
@@ -117,7 +101,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ScratchImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(SCRATCH_FEAT_TEMPLATE, &args.target, "impl", &args.request)
+        self.render_scratch_prompt(SCRATCH_FEAT_TEMPLATE, &args.target, "impl")
     }
 
     #[prompt(
@@ -128,7 +112,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ScratchImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(SCRATCH_REF_TEMPLATE, &args.target, "impl", &args.request)
+        self.render_scratch_prompt(SCRATCH_REF_TEMPLATE, &args.target, "impl")
     }
 
     #[prompt(
@@ -139,12 +123,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ScratchSpecPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(
-            SCRATCH_REVISION_TEMPLATE,
-            &args.target,
-            "spec",
-            &args.request,
-        )
+        self.render_scratch_prompt(SCRATCH_REVISION_TEMPLATE, &args.target, "spec")
     }
 
     #[prompt(
@@ -155,7 +134,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<ScratchImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_scratch_prompt(SCRATCH_FIX_TEMPLATE, &args.target, "impl", &args.request)
+        self.render_scratch_prompt(SCRATCH_FIX_TEMPLATE, &args.target, "impl")
     }
 
     #[prompt(
@@ -167,7 +146,7 @@ impl SpecmanMcpServer {
         Parameters(args): Parameters<MigrationPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
         // [ENSURES: concept-prompt-catalog.migration-prompts]
-        self.render_migration_prompt(MIGRATION_TEMPLATE, &args.target, &args.codebase)
+        self.render_migration_prompt(MIGRATION_TEMPLATE, &args.target)
     }
 
     #[prompt(
@@ -190,7 +169,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<SpecPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        self.render_spec_prompt(SPEC_TEMPLATE, &args.request)
+        self.render_spec_prompt(SPEC_TEMPLATE, &args.name)
     }
 
     #[prompt(
@@ -202,7 +181,7 @@ impl SpecmanMcpServer {
         Parameters(args): Parameters<ImplPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
         let spec_locator = coerce_reference(&args.spec, "spec");
-        self.render_impl_prompt(IMPL_TEMPLATE, &spec_locator, &args.request)
+        self.render_impl_prompt(IMPL_TEMPLATE, &spec_locator)
     }
 }
 
@@ -232,7 +211,6 @@ impl SpecmanMcpServer {
         template: &str,
         target_reference: &str,
         default_scheme: &str,
-        request: &str,
     ) -> Result<Vec<PromptMessage>, McpError> {
         let locator = coerce_reference(target_reference, default_scheme);
         info!(locator = %locator, "rendering scratch prompt");
@@ -245,7 +223,6 @@ impl SpecmanMcpServer {
             ("{{target_path}}", resolved.handle.clone()),
             ("{{context}}", context),
             ("{{dependencies}}", dependencies),
-            ("{{request}}", request.trim().to_string()),
         ];
 
         let rendered = apply_tokens(template, &replacements)?;
@@ -255,15 +232,14 @@ impl SpecmanMcpServer {
         )])
     }
 
-    /// Render the specification-creation prompt. Since a new specification has no canonical locator yet,
-    /// callers may optionally provide an existing locator (`seed_target`) to prefill dependency context.
+    /// Render the specification-creation prompt.
     fn render_spec_prompt(
         &self,
         template: &str,
-        request: &str,
+        name: &str,
     ) -> Result<Vec<PromptMessage>, McpError> {
         debug!("rendering spec prompt");
-        let replacements = vec![("{{request}}", request.trim().to_string())];
+        let replacements = vec![("{{name}}", name.trim().to_string())];
         let rendered = apply_tokens(template, &replacements)?;
         // [ENSURES: concept-prompt-catalog.responses:CHECK]
         Ok(vec![PromptMessage::new_text(
@@ -277,7 +253,6 @@ impl SpecmanMcpServer {
         &self,
         template: &str,
         spec_locator: &str,
-        request: &str,
     ) -> Result<Vec<PromptMessage>, McpError> {
         info!(spec_locator = %spec_locator, "rendering impl prompt");
         let resolved = self.resolve_target(spec_locator)?;
@@ -290,7 +265,6 @@ impl SpecmanMcpServer {
             ("{{target_spec_path}}", resolved.handle.clone()),
             ("{{context}}", context),
             ("{{dependencies}}", dependencies),
-            ("{{request}}", request.trim().to_string()),
         ];
 
         let rendered = apply_tokens(template, &replacements)?;
@@ -305,16 +279,12 @@ impl SpecmanMcpServer {
         &self,
         template: &str,
         target_reference: &str,
-        codebase: &str,
     ) -> Result<Vec<PromptMessage>, McpError> {
         // Migration target may not exist yet; normalize without resolving.
         let locator = coerce_reference(target_reference, "spec");
         info!(locator = %locator, "rendering migration prompt");
 
-        let replacements = vec![
-            ("{{target_path}}", locator),
-            ("{{codebase}}", codebase.trim().to_string()),
-        ];
+        let replacements = vec![("{{target_path}}", locator)];
 
         let rendered = apply_tokens(template, &replacements)?;
         Ok(vec![PromptMessage::new_text(

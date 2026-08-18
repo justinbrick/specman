@@ -11,13 +11,7 @@ Your task is to create the scratch pad artifact and then fill it out with a conc
 
 Target: {{target_path}}
 
-## Request
-
-The user wants to plan the following feature:
-
-{{request}}
-
-If the request above is missing any of the information you need (goals, non-goals, acceptance criteria, or constraints), you MUST ask the user clarifying questions before proceeding. Continue prompting until you have enough to proceed.
+Immediately query the user about the feature they want to plan — its goals, non-goals, acceptance criteria, and constraints. Keep asking clarifying questions until you have enough to proceed.
 
 Dependencies:
 
@@ -25,7 +19,7 @@ Dependencies:
 
 ## Steps
 
-1. If any requirement is unclear, prompt the user for clarification and wait for their answer.
+1. Query the user about the feature requirements and keep prompting until everything is clear.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following:
     - Feature requirements breakdown: goals, non-goals, acceptance criteria, edge cases, and constraints.
     - Implementation breakdown: outline the major components/modules, data structures, APIs, and execution flow; include a staged implementation plan (milestones) that could be executed later.

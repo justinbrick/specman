@@ -11,13 +11,7 @@ Your task is to create the scratch pad artifact and then fill it out with a fix 
 
 Target: {{target_path}}
 
-## Request
-
-The user wants to plan a fix for the following problem:
-
-{{request}}
-
-If the request above is missing any of the information you need (observed vs. expected behavior or reproduction clues), you MUST ask the user clarifying questions before proceeding. Continue prompting until you have enough to proceed.
+Immediately query the user about the problem they want to fix — the observed vs. expected behavior and any reproduction clues. Keep asking clarifying questions until you have enough to proceed.
 
 Dependencies:
 
@@ -25,7 +19,7 @@ Dependencies:
 
 ## Steps
 
-1. If any detail is unclear, prompt the user for clarification and wait for their answer.
+1. Query the user about the fix details and keep prompting until everything is clear.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following (do not implement yet):
     - Observed behavior vs expected behavior; reproduction notes; scope of impact.
     - Candidate fixes: list at least 2 plausible approaches; for each, note risks, blast radius, and required changes.

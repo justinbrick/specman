@@ -2,17 +2,11 @@
 
 You are migrating non-SpecMan code and resources into SpecMan artifacts for the target specification {{target_path}}.
 
-## Codebase
-
-The codebase to migrate:
-
-{{codebase}}
-
-If the description above does not give you enough context to understand what the code does and what the migration should preserve, you MUST ask the user clarifying questions before proceeding.
+Immediately query the user about the codebase they want to migrate — where it lives, what it does, and what the migration goal is. Keep asking clarifying questions until you understand what must be preserved and produced.
 
 ## Steps (follow in order)
 
-1. If any prerequisite information is unclear (source location, scope of the migration, or target artifact goals), prompt the user for clarification and wait for their answer.
+1. Query the user about the source code and migration objectives, and keep prompting until everything is clear.
 2. Execute the migration phases in sequence, recording progress in the scratch pad, specification, and implementation materials:
    - Phase 1 - Enumerate sources: list all source files, modules, and assets that must be scanned.
    - Phase 2 - Extract findings: read the codebase and capture candidate concepts, entities, and constraints; note uncertainties as questions instead of guessing.
