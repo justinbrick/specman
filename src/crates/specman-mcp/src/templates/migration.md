@@ -2,19 +2,29 @@
 
 You are migrating non-SpecMan code and resources into SpecMan artifacts for the target specification {{target_path}}.
 
-Steps (follow in order):
+## Codebase
+
+The codebase to migrate:
+
+{{codebase}}
+
+If the description above does not give you enough context to understand what the code does and what the migration should preserve, you MUST ask the user clarifying questions before proceeding.
+
+## Steps (follow in order)
+
+1. If any prerequisite information is unclear (source location, scope of the migration, or target artifact goals), prompt the user for clarification and wait for their answer.
+2. Execute the migration phases in sequence, recording progress in the scratch pad, specification, and implementation materials:
+   - Phase 1 - Enumerate sources: list all source files, modules, and assets that must be scanned.
+   - Phase 2 - Extract findings: read the codebase and capture candidate concepts, entities, and constraints; note uncertainties as questions instead of guessing.
+   - Phase 3 - Draft/update specification: produce or revise the specification using the findings, keeping HTML directives intact and mapping back to dependencies.
+   - Phase 4 - Generate implementation documentation: after the specification draft is produced, outline implementation notes and traceability for downstream work.
+3. Do not reference or link to other scratch pads; duplicate any necessary instructions inline. Keep the output textual-only.
+
+## Tool Calls
+
+Only once the user has answered every clarifying question and no unclear areas remain, run the following tool calls in order:
 
 1. Call the MCP tool `create_specification` to create the specification artifact for this migration (target: {{target_path}}). Preserve every HTML comment directive in the generated template until the instruction is satisfied.
 2. Immediately call `create_revision` to create a revision scratch pad targeting that specification (target: the specification handle or path). Use the canonical scratch pad location and do not begin migration work until the scratch pad exists.
 3. Call `create_implementation` to create an implementation targeting that specification. Keep HTML directives intact and align the implementation scope with the specification you just created.
 4. Call `create_feature` to create a feature scratch pad targeting the implementation. Fill that scratch pad with a plan for reading the source code and documenting the implementation in accordance with the specification; do not edit any code while doing this scratch work.
-5. Execute the migration phases in sequence, recording progress in the scratch pad, specification, and implementation materials:
-   - Phase 1 - Enumerate sources: list all source files, modules, and assets that must be scanned.
-   - Phase 2 - Extract findings: read the codebase and capture candidate concepts, entities, and constraints; note uncertainties as questions instead of guessing.
-   - Phase 3 - Draft/update specification: produce or revise the specification using the findings, keeping HTML directives intact and mapping back to dependencies.
-   - Phase 4 - Generate implementation documentation: after the specification draft is produced, outline implementation notes and traceability for downstream work.
-6. Do not reference or link to other scratch pads; duplicate any necessary instructions inline. Keep the output textual-only.
-
-## User Input
-
-- Provide migration context and goals here. Keep this section at the bottom so user input stays isolated from the prompt structure.

@@ -11,13 +11,21 @@ Your task is to create the scratch pad artifact and then fill it out with a fix 
 
 Target: {{target_path}}
 
+## Request
+
+The user wants to plan a fix for the following problem:
+
+{{request}}
+
+If the request above is missing any of the information you need (observed vs. expected behavior or reproduction clues), you MUST ask the user clarifying questions before proceeding. Continue prompting until you have enough to proceed.
+
 Dependencies:
 
 {{context}}
 
-Steps:
+## Steps
 
-1. Call the MCP tool `create_fix` to create a new fix scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
+1. If any detail is unclear, prompt the user for clarification and wait for their answer.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following (do not implement yet):
     - Observed behavior vs expected behavior; reproduction notes; scope of impact.
     - Candidate fixes: list at least 2 plausible approaches; for each, note risks, blast radius, and required changes.
@@ -27,6 +35,6 @@ Steps:
     - Open questions: list any ambiguous areas or missing details as questions to ask the user (do not guess).
 3. STOP and return control to the caller.
 
-## User Input
+## Tool Calls
 
-- Provide the fix details, reproduction clues, and constraints here. Keep this section at the bottom so user input stays isolated from the prompt structure.
+Only once the user has answered every clarifying question and no unclear areas remain, call the MCP tool `create_fix` to create a new fix scratch pad artifact for the given target, following the tool-call schema exposed by the current environment. Then fill it out per the steps above.

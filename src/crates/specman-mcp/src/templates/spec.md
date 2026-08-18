@@ -2,6 +2,14 @@
 
 You are creating a SpecMan specification and must use the MCP tool `create_specification` to instantiate the canonical specification template, preserving each HTML comment directive until its instruction is satisfied.
 
+## Request
+
+The user wants the specification to define the following:
+
+{{request}}
+
+If the request above is missing any of the information you need to author a correct, unambiguous specification (objectives, scope boundaries, key concepts/entities, or constraints), you MUST ask the user clarifying questions before proceeding. Continue prompting until you have enough to proceed.
+
 ## Standards Quick Reference (Standalone)
 
 ### Headings checklist (Concepts & Entities)
@@ -20,11 +28,11 @@ You are creating a SpecMan specification and must use the MCP tool `create_speci
 
 Before interpreting any inputs, complete these reading prerequisites:
 
-- Decide what dependencies (if any) this new specification should declare based on the User Input and any existing specs in the workspace that it must build on.
+- Decide what dependencies (if any) this new specification should declare based on the request above and any existing specs in the workspace that it must build on.
 
 Steps:
 
-1. Call the MCP tool `create_specification` to create a new specification artifact, following the tool-call schema exposed by the current environment (do not rely on older examples that enumerate specific fields).
+1. If any prerequisite information is unclear, prompt the user for clarification and wait for their answer.
 2. Open the created specification artifact and fill it out:
     - Declare dependencies (if any) and ensure they are necessary and sufficient.
     - Define Concepts and Entities (use the required heading prefixes) and write normative requirements using RFC 2119 keywords.
@@ -35,6 +43,6 @@ Steps:
     - For each ambiguity, propose a clarifying rewrite and ask the user any necessary questions.
 4. STOP and return control to the caller.
 
-## User Input
+## Tool Calls
 
-- Provide the specification request and constraints here. Keep this section at the bottom so user input stays isolated from the prompt structure.
+Only once the user has answered every clarifying question and no unclear areas remain, call the MCP tool `create_specification` to create the new specification artifact, following the tool-call schema exposed by the current environment (do not rely on older examples that enumerate specific fields). Then fill it out per the steps above.

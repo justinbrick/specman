@@ -11,6 +11,14 @@ Your task is to create the scratch pad artifact and then fill it out with a conc
 
 You are applying user suggestions to revise the specification referenced by {{target_path}} using a scratch pad.
 
+## Request
+
+The user wants to make the following revision:
+
+{{request}}
+
+If the request above is missing any of the information you need (which sections/headings change and why, or new constraints), you MUST ask the user clarifying questions before proceeding. Continue prompting until you have enough to proceed.
+
 ## Standards Quick Reference (Standalone)
 
 ### Specification-structure reminders (apply to the revised spec)
@@ -35,9 +43,9 @@ Read the following dependencies before continuing:
 
 {{context}}
 
-Steps:
+## Steps
 
-1. Call the MCP tool `create_revision` to create a new revision scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
+1. If any prerequisite information is unclear, prompt the user for clarification and wait for their answer.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following:
     - Proposed revision outline: the sections/headings affected, and what will change.
     - Draft wording proposals: write candidate replacement/additional paragraphs and constraint statements.
@@ -46,6 +54,6 @@ Steps:
     - Questions for the user: for each ambiguity or missing detail, ask a concrete clarifying question instead of guessing.
 3. STOP and return control to the caller.
 
-## User Input
+## Tool Calls
 
-- Provide the revision request and constraints here. Keep this section at the bottom so user input stays isolated from the prompt structure.
+Only once the user has answered every clarifying question and no unclear areas remain, call the MCP tool `create_revision` to create a new revision scratch pad artifact for the given target, following the tool-call schema exposed by the current environment. Then fill it out per the steps above.

@@ -38,9 +38,6 @@ mod tests {
     use crate::resources::{
         artifact_handle, artifact_path, resource_templates, resources_from_inventory,
     };
-    use crate::tools::PersistenceMode;
-
-
 
     #[tokio::test]
     async fn list_resources_includes_handles() -> Result<(), Box<dyn std::error::Error>> {
@@ -320,6 +317,7 @@ mod tests {
             .server
             .scratch_feat_prompt(Parameters(ScratchImplPromptArgs {
                 target: "testimpl".to_string(),
+                request: "Plan a small feature".to_string(),
             }))
             .await?
             .pop()
@@ -343,6 +341,7 @@ mod tests {
             .server
             .scratch_ref_prompt(Parameters(ScratchImplPromptArgs {
                 target: "testimpl".to_string(),
+                request: "Plan a refactor".to_string(),
             }))
             .await?
             .pop()
@@ -367,6 +366,7 @@ mod tests {
             .server
             .scratch_revision_prompt(Parameters(ScratchSpecPromptArgs {
                 target: "testspec".to_string(),
+                request: "Revise the spec".to_string(),
             }))
             .await?
             .pop()
@@ -391,6 +391,7 @@ mod tests {
             .server
             .scratch_fix_prompt(Parameters(ScratchImplPromptArgs {
                 target: "testimpl".to_string(),
+                request: "Fix a bug".to_string(),
             }))
             .await?
             .pop()
@@ -490,6 +491,7 @@ mod tests {
                 .server
                 .scratch_feat_prompt(Parameters(ScratchImplPromptArgs {
                     target: "testimpl".to_string(),
+                    request: "Plan a small feature".to_string(),
                 }))
                 .await?,
         );
@@ -508,6 +510,7 @@ mod tests {
                 .server
                 .scratch_revision_prompt(Parameters(ScratchSpecPromptArgs {
                     target: "testspec".to_string(),
+                    request: "Revise the spec".to_string(),
                 }))
                 .await?,
         );
@@ -526,6 +529,7 @@ mod tests {
                 .server
                 .impl_prompt(Parameters(ImplPromptArgs {
                     spec: "spec://testspec".to_string(),
+                    request: "Implement the spec".to_string(),
                 }))
                 .await?,
         );
@@ -544,6 +548,7 @@ mod tests {
                 .server
                 .migration_prompt(Parameters(MigrationPromptArgs {
                     target: "testspec".to_string(),
+                    codebase: "Migrate a legacy service".to_string(),
                 }))
                 .await?,
         );
@@ -571,6 +576,7 @@ mod tests {
                     .server
                     .scratch_feat_prompt(Parameters(ScratchImplPromptArgs {
                         target: "testimpl".to_string(),
+                        request: "Plan a small feature".to_string(),
                     }))
                     .await?,
             ),
@@ -580,6 +586,7 @@ mod tests {
                     .server
                     .scratch_ref_prompt(Parameters(ScratchImplPromptArgs {
                         target: "testimpl".to_string(),
+                        request: "Plan a refactor".to_string(),
                     }))
                     .await?,
             ),
@@ -589,6 +596,7 @@ mod tests {
                     .server
                     .scratch_revision_prompt(Parameters(ScratchSpecPromptArgs {
                         target: "testspec".to_string(),
+                        request: "Revise the spec".to_string(),
                     }))
                     .await?,
             ),
@@ -598,6 +606,7 @@ mod tests {
                     .server
                     .scratch_fix_prompt(Parameters(ScratchImplPromptArgs {
                         target: "testimpl".to_string(),
+                        request: "Fix a bug".to_string(),
                     }))
                     .await?,
             ),
@@ -605,7 +614,9 @@ mod tests {
                 "spec",
                 workspace
                     .server
-                    .spec_prompt(Parameters(SpecPromptArgs {}))
+                    .spec_prompt(Parameters(SpecPromptArgs {
+                        request: "Define a new specification".to_string(),
+                    }))
                     .await?,
             ),
             (
@@ -614,6 +625,7 @@ mod tests {
                     .server
                     .impl_prompt(Parameters(ImplPromptArgs {
                         spec: "testspec".to_string(),
+                        request: "Implement the spec".to_string(),
                     }))
                     .await?,
             ),
@@ -623,6 +635,7 @@ mod tests {
                     .server
                     .migration_prompt(Parameters(MigrationPromptArgs {
                         target: "testspec".to_string(),
+                        codebase: "Migrate a legacy service".to_string(),
                     }))
                     .await?,
             ),
@@ -667,6 +680,7 @@ mod tests {
                 .server
                 .migration_prompt(Parameters(MigrationPromptArgs {
                     target: "testspec".to_string(),
+                    codebase: "Migrate a legacy service".to_string(),
                 }))
                 .await?,
         );
@@ -751,7 +765,10 @@ mod tests {
     fn tool_input_schemas_are_flat_objects() {
         fn assert_top_level_object(schema: &impl serde::Serialize, label: &str) {
             let value = serde_json::to_value(schema).expect("schema serializes");
-            let ty = value.get("type").and_then(|v| v.as_str()).unwrap_or_default();
+            let ty = value
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
             assert_eq!(ty, "object", "{label} top-level type must be 'object'");
             assert!(
                 value.get("properties").is_some(),
@@ -918,8 +935,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_implementation_normalizes_target()
-    -> Result<(), Box<dyn std::error::Error>> {
+    async fn create_implementation_normalizes_target() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
 
         let Json(result) = workspace
@@ -1143,7 +1159,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_implementation_rejects_kind_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+    async fn update_implementation_rejects_kind_mismatch() -> Result<(), Box<dyn std::error::Error>>
+    {
         let workspace = TestWorkspace::create()?;
 
         let err = match workspace
@@ -1198,14 +1215,16 @@ mod tests {
         };
 
         assert!(
-            err.message.contains("HTTPS locators are not supported for scratch pads"),
+            err.message
+                .contains("HTTPS locators are not supported for scratch pads"),
             "unexpected error: {err:?}"
         );
         Ok(())
     }
 
     #[tokio::test]
-    async fn update_specification_rejects_https_persist() -> Result<(), Box<dyn std::error::Error>> {
+    async fn update_specification_rejects_https_persist() -> Result<(), Box<dyn std::error::Error>>
+    {
         let workspace = TestWorkspace::create()?;
 
         let err = match workspace
