@@ -85,6 +85,7 @@ The adapter exposes a focused subset of SpecMan functionality as MCP tools/promp
 - All tools use flat input structs with `#[derive(JsonSchema)]` — no handcrafted schemas, no tagged unions.
 - MCP sampling and elicitation are NOT used; all inputs are supplied directly by the caller.
 - Current prompt surface: `feat`, `ref`, `revision`, `fix`, `spec`, `impl`, `migration`, `compliance`.
+  - Prompts are identifier-driven: each prompt accepts exactly one required argument identifying the target artifact (a `target`/`spec`/`implementation` locator) or, for `spec`, the name of the new specification to create, and the rendered prompt instructs the agent to immediately query the user for what they want to accomplish rather than accepting free-text intent as an argument. There is no trailing free-form user-input section; the agent keeps querying the user until the request is unambiguous before running lifecycle tool calls.
   - `migration` renders deterministic guidance to create the target specification via lifecycle automation, then create a revision scratch pad for that spec before running the four mandated migration phases (enumerate sources, extract findings, draft/update specification, generate implementation documentation).
   - `compliance` instructs the agent to retrieve `impl://{artifact}/compliance` and handle any missing constraints.
 

@@ -263,6 +263,8 @@ Prompt catalog tooling defines how MCP clients obtain deterministic prompts for 
 - Prompt-catalog tools MUST emit prompts that clearly identify the artifact class and, for scratch pads, the selected work type.
 - Prompts MUST instruct operators or downstream AI systems to review the target specification and all of its dependencies before authoring changes and MUST remind them to preserve HTML comment directives until satisfied.
 - Each prompt response MUST cite the effective template source resolved via SpecMan Core template orchestration (workspace overrides first, then packaged defaults) so clients know which scaffold is authoritative.
+- Every prompt MUST accept exactly one required argument that identifies the target artifact or, for a new specification, the name of the specification to create (a `target`/`spec`/`implementation` locator, or a `name`). Prompts MUST NOT accept free-form intent text as arguments; instead each prompt MUST instruct the operator or downstream AI system to immediately query the user for what they want to accomplish, relevant to that prompt's artifact class or work type.
+- Prompts MUST instruct the operator or downstream AI system to keep querying the user until every requirement is clear. Lifecycle tool calls MUST be described as valid only after all such clarifying questions have been answered.
 
 !concept-prompt-catalog.scope:
 
@@ -273,6 +275,8 @@ Prompt catalog tooling defines how MCP clients obtain deterministic prompts for 
 
 - Prompt arguments for `create_revision` MUST auto-complete only specification targets and MUST NOT suggest implementation handles.
 - Prompt arguments for `create_feature`, `create_refactor`, and `create_fix` MUST auto-complete only implementation targets and MUST NOT suggest specification handles.
+- The `impl` prompt's `spec` argument MUST auto-complete only specification handles, and the `migration` prompt's `target` argument MUST auto-complete only specification handles; neither MUST suggest implementation handles.
+- The `feat`, `ref`, and `fix` prompt `target` arguments MUST auto-complete only implementation handles, and the `compliance` prompt's `implementation` argument MUST auto-complete only implementation handles.
 - Where prompt arguments accept handle values, suggestions MUST resolve to canonical `spec://` or `impl://` handles, while human-readable labels MAY be provided as auxiliary metadata.
 
 !concept-prompt-catalog.migration-prompts:

@@ -11,13 +11,15 @@ Your task is to create the scratch pad artifact and then fill it out with a conc
 
 Target: {{target_path}}
 
+Immediately query the user about the feature they want to plan — its goals, non-goals, acceptance criteria, and constraints. Keep asking clarifying questions until you have enough to proceed.
+
 Dependencies:
 
 {{context}}
 
-Steps:
+## Steps
 
-1. Call the MCP tool `create_feature` to create a new feature scratch pad artifact for the given target, following the tool-call schema exposed by the current environment.
+1. Query the user about the feature requirements and keep prompting until everything is clear.
 2. Open the created scratch pad artifact (use the returned handle/path) and fill it out with the following:
     - Feature requirements breakdown: goals, non-goals, acceptance criteria, edge cases, and constraints.
     - Implementation breakdown: outline the major components/modules, data structures, APIs, and execution flow; include a staged implementation plan (milestones) that could be executed later.
@@ -26,6 +28,6 @@ Steps:
     - Open questions: list any ambiguous design choices or missing information as questions to ask the user (do not guess).
 3. STOP and return control to the caller.
 
-## User Input
+## Tool Calls
 
-- Provide the feature requirements and any constraints here. Keep this section at the bottom so user input stays isolated from the prompt structure.
+Only once the user has answered every clarifying question and no unclear areas remain, call the MCP tool `create_feature` to create a new feature scratch pad artifact for the given target, following the tool-call schema exposed by the current environment. Then fill it out per the steps above.

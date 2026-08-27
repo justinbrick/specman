@@ -38,9 +38,6 @@ mod tests {
     use crate::resources::{
         artifact_handle, artifact_path, resource_templates, resources_from_inventory,
     };
-    use crate::tools::PersistenceMode;
-
-
 
     #[tokio::test]
     async fn list_resources_includes_handles() -> Result<(), Box<dyn std::error::Error>> {
@@ -605,7 +602,9 @@ mod tests {
                 "spec",
                 workspace
                     .server
-                    .spec_prompt(Parameters(SpecPromptArgs {}))
+                    .spec_prompt(Parameters(SpecPromptArgs {
+                        name: "testspec".to_string(),
+                    }))
                     .await?,
             ),
             (
@@ -751,7 +750,10 @@ mod tests {
     fn tool_input_schemas_are_flat_objects() {
         fn assert_top_level_object(schema: &impl serde::Serialize, label: &str) {
             let value = serde_json::to_value(schema).expect("schema serializes");
-            let ty = value.get("type").and_then(|v| v.as_str()).unwrap_or_default();
+            let ty = value
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
             assert_eq!(ty, "object", "{label} top-level type must be 'object'");
             assert!(
                 value.get("properties").is_some(),
@@ -918,8 +920,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_implementation_normalizes_target()
-    -> Result<(), Box<dyn std::error::Error>> {
+    async fn create_implementation_normalizes_target() -> Result<(), Box<dyn std::error::Error>> {
         let workspace = TestWorkspace::create()?;
 
         let Json(result) = workspace
@@ -1143,7 +1144,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_implementation_rejects_kind_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+    async fn update_implementation_rejects_kind_mismatch() -> Result<(), Box<dyn std::error::Error>>
+    {
         let workspace = TestWorkspace::create()?;
 
         let err = match workspace
@@ -1198,14 +1200,16 @@ mod tests {
         };
 
         assert!(
-            err.message.contains("HTTPS locators are not supported for scratch pads"),
+            err.message
+                .contains("HTTPS locators are not supported for scratch pads"),
             "unexpected error: {err:?}"
         );
         Ok(())
     }
 
     #[tokio::test]
-    async fn update_specification_rejects_https_persist() -> Result<(), Box<dyn std::error::Error>> {
+    async fn update_specification_rejects_https_persist() -> Result<(), Box<dyn std::error::Error>>
+    {
         let workspace = TestWorkspace::create()?;
 
         let err = match workspace
