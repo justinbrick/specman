@@ -7,7 +7,7 @@ dependencies:
 
 # Specification — SpecMan Core
 
-The SpecMan Core specification defines both the canonical data model and the platform capabilities that guarantee consistent interactions with SpecMan artifacts. Part 1 establishes the foundational data structures — workspaces, scratch pads, project manifests, specifications, implementations, git references, and SpecMan installing — along with their metadata, naming, and layout rules. Part 2 builds on those structures to define the behavioral guarantees implementers MUST honor: workspace discovery, dependency mapping, reference validation, template orchestration, lifecycle automation, structure indexing, metadata mutation, compliance reporting, workspace status, and SpecMan installing.
+The SpecMan Core specification defines both the canonical data model and the platform capabilities that guarantee consistent interactions with SpecMan artifacts. Part 1 establishes the foundational data structures — workspaces, project manifests, specifications, implementations, git references, and SpecMan installing — along with their metadata, naming, and layout rules. Part 2 builds on those structures to define the behavioral guarantees implementers MUST honor: workspace discovery, dependency mapping, reference validation, template orchestration, lifecycle automation, structure indexing, metadata mutation, compliance reporting, workspace status, and SpecMan installing.
 
 ## Terminology & References
 
@@ -39,116 +39,6 @@ A SpecMan workspace is the directory in which SpecMan tooling can be used. Each 
 - Tooling MUST verify that a git repository exists at the workspace root before performing initialization or validation operations.
 - If no git repository exists, tooling MUST fail with a descriptive error instructing the user to run `git init` first.
 - Tooling MUST NOT support monorepo layouts (multiple `specman.json` files under a single `.git/` directory). Each SpecMan project requires its own dedicated git repository.
-
-## Concept: Scratch Pads
-
-Scratch pads are working documents that track in-progress efforts for SpecMan-aware tooling.
-
-!concept-scratch-pads.naming:
-
-- Each scratch pad MUST reside in its own subdirectory whose name is all lowercase, uses hyphen separators, contains no more than four words, and MAY include verbs.
-  - This will act as the **scratch pad name**.
-- Scratch pads MAY be deleted when they are no longer being used, but MUST first confirm that no other scratch pads declare a dependency on them.
-
-### Scratch Pad Location
-
-!concept-scratch-pads.location:
-
-- Each scratch pad MUST be stored in it's own folder.
-- Scratch pad folders MUST NOT be nested within eachother.
-- Each scratch pad folder MUST be stored in a root folder, `scratchpad`.
-  - This root folder MUST be located under the [Specman dot folder](#specman-dot-folder).
-- The primary scratch pad document inside each subdirectory MUST be named `scratch.md`.
-- Each scratch pad folder MAY contain various other documents or files, to assist in making changes.
-
-Example:
-
-- .specman/
-  - scratchpad/
-    - scratch-pad-name/
-      - scratch.md
-
-### Target Artifact
-
-!concept-scratch-pads.target-artifact:
-
-- A scratch pad MUST have a target artifact associated with it.
-
-- The artifact MUST be either a specification or an implementation.
-- This artifact MUST be a relative file path, or a URL if the artifact is external.
-
-### Scratch Pad Dependencies
-
-!concept-scratch-pads.dependencies:
-
-- Scratch pads MAY declare dependencies on other scratch pads when the downstream work requires the upstream analysis (for example, a refactor scratch pad depending on a revision scratch pad).
-- Scratch pad dependencies MUST reference other scratch pads only; specifications and implementations continue to be expressed through the `target` field.
-- A scratch pad MUST NOT be deleted while another scratch pad depends on it.
-
-### Scratch Pad Content
-
-!concept-scratch-pads.content:
-
-- There MUST be specific content included inside of a scratch pad, for readability sake.
-
-- A scratch pad MUST contain a notes section.
-  - This is to allow for any AI to resume from little to no context.
-- A scratch pad SHOULD have a tasks file.
-  - The tasks file will serve as a list of tasks to be completed before the the scratch pad may be considered completed.
-  - If present, the tasks file MUST be located under the directory containing the `scratch.md` file, and MUST be labelled `tasks.md`.
-
-### Work Type
-
-!concept-scratch-pads.work-type:
-
-- A scratch pad MUST specify its work type, which specifies what kind of actions are being taken.
-
-- A scratch pad MUST only have one work type.
-- Work types MUST be represented as objects, to store data unique to the work type.
-  - If the work type does not have any data, it SHOULD be represented as an empty object.
-
-A work type can be one of the following:
-
-- `revision`: a change to the specification
-  - The target artifact MUST be a specification. The specification MUST NOT be an external reference.
-  - Implies potential refactoring required for all referencing implementations.
-  - One or more extra scratch pads MAY be created as a result of a revision.
-- `feat`: an introduction of a feature
-  - The target artifact MUST be an implementation.
-  - SHOULD be used to introduce new functionality via implementations.
-- `ref`: a refactor of an implementation
-  - The target artifact MUST be an implementation.
-  - Implies potential refactoring required for downstream implementations.
-- `fix`: a correction applied to an implementation to address defects without modifying specifications
-  - The target artifact MUST be an implementation and MUST NOT be a specification or external reference.
-  - SHOULD be used when the implementation needs remediation (bug fixes, defects) independent of specification updates.
-
-### Scratch Pad Metadata
-
-!concept-scratch-pads.metadata:
-
-- Scratch pads MUST have front matter metadata to represent the above data.
-- Frontmatter fields MUST be formatted as below.
-
-- `target`: the target artifact
-- `work_type`: the object representing the work type
-  - `revision|feat|ref|fix`: a field on the object representing the work type.
-- `dependencies`: a list of [dependencies](#scratch-pad-dependencies).
-  - this field MAY be omitted if this scratch pad does not depend on other scratch pads.
-
-!concept-scratch-pads.metadata.unknown-fields:
-
-- Front matter parsers MUST silently ignore any YAML front matter fields that are not defined by the governing specification.
-- Unknown fields MUST NOT cause parse errors, warnings, or validation failures.
-- This rule applies to specifications, implementations, and scratch pads alike.
-
-### Dependency Graph Integrity
-
-!concept-scratch-pads.dependency-graph-integrity.requirements:
-
-- The combined dependency graph spanning specifications, implementations, and scratch pads MUST remain acyclic.
-- Tooling SHOULD validate the dependency graph whenever artifacts are added or updated, and MUST reject or flag any change that would introduce a cycle.
-- Authors SHOULD restructure work or adjust dependencies to remove cycles before publishing updates.
 
 ## Concept: Specifications
 
@@ -286,9 +176,10 @@ Constraint identifiers are not part of standard Markdown heading/link semantics;
 !concept-specifications.layout.filesystem:
 
 - Each specification lives at the root of its own git repository. There is no requirement for a dedicated `spec/` subdirectory since the repository itself is the specification project.
-- The primary specification document MUST be specified by the `spec.index` field in `specman.json`.
-  - If `spec.index` is not set, tooling MUST default to `spec.md` at the repository root.
-- Tooling MUST scan the document referenced by `spec.index` for constraint groups, concepts, entities, and other specification content.
+- The primary specification document MUST be specified by the `spec.index` field in `specman.json` when that field is present.
+  - The `spec.index` field is OPTIONAL and, when present, MUST NOT be null.
+  - If `spec.index` is absent, tooling MUST NOT assume a default filename such as `spec.md`.
+- When `spec.index` is present, tooling MUST scan the referenced document for constraint groups, concepts, entities, and other specification content.
 
 Example:
 
@@ -481,7 +372,7 @@ The top-level structure of a `specman.json` file.
 !entity-specmanproject.fields:
 
 - `$schema` (string, OPTIONAL): A relative file URL pointing to the canonical SpecMan JSON Schema (`specman.schema.json`, colocated with this specification). When present, implementers SHOULD validate the document against this schema before processing.
-- `name` (string, REQUIRED): The project name. MAY be any UTF-8 string. This is a free-form human-readable name; the founding specification's naming rules (lowercase, hyphen-separated, max 4 words, no verbs) do NOT apply to this field.
+- `name` (string, REQUIRED): The project name. MAY be any UTF-8 string. This is a free-form human-readable name.
 - `description` (string, OPTIONAL): A human-readable description of the project.
 - `tags` (array of string, OPTIONAL): Tags for categorization. MAY be absent or an empty array, but MUST NOT be null.
 - `spec` (object, OPTIONAL): Present if and only if this project is a specification. See [Entity: SpecProject](#entity-specproject).
@@ -499,7 +390,7 @@ Represents a specification project within `specman.json`.
 
 !entity-specproject.fields:
 
-- `index` (string, REQUIRED): The workspace-relative path to the main Markdown document for this specification. The file MUST exist at the specified path. This is the document that SpecMan tooling scans for constraint groups, concepts, entities, and other specification content. For now, this MUST be the only document scanned for constraint groups.
+- `index` (string, OPTIONAL): The workspace-relative path to the main Markdown document for this specification. When present, the value MUST NOT be null and MUST reference an existing file; this is the document that SpecMan tooling scans for constraint groups, concepts, entities, and other specification content. When absent, tooling MUST NOT assume a default filename. For now, this MUST be the only document scanned for constraint groups.
 - `references` (array of GitReference, OPTIONAL): A list of dependencies on other specifications. Each entry MUST be a [GitReference](#entity-gitreference). This field MAY be absent or an empty array, but MUST NOT be null.
 
 ## Entity: ImplProject
@@ -550,7 +441,7 @@ Workspace discovery ensures every SpecMan-aware tool can deterministically locat
 - The initializer MUST accept both workspace-root paths and `.specman` directory paths as valid inputs; in either case it MUST return normalized absolute paths for both the workspace root and `.specman` directory without redundant ancestor search.
 - The initializer MUST validate that the supplied path is (or contains) a `.specman` directory; if validation fails, it MUST either create `.specman` (when allowed by the invocation) or return a descriptive error suitable for direct user display, and it MUST NOT fall back to scanning unrelated ancestor paths.
 - When creation is requested and a `.specman` directory is absent at the provided root, the initializer MUST create the `.specman` directory at that root, enforce workspace-boundary rules, and then return normalized paths; it MUST NOT create nested `.specman` directories beneath an existing workspace.
-- The implementation MUST expose a library-level workspace creator that provisions `.specman` at an explicit path (including required subdirectories such as `scratchpad/` and `cache/` when defined), performs the same validation as the initializer, and keeps the operation idempotent so future workspace-owned files can be added by the implementation rather than by ad-hoc folder creation.
+- The implementation MUST expose a library-level workspace creator that provisions `.specman` at an explicit path (including required subdirectories such as `ref/` and `cache/` when defined), performs the same validation as the initializer, and keeps the operation idempotent so future workspace-owned files can be added by the implementation rather than by ad-hoc folder creation.
 - The initializer MUST reject relative paths and paths that imply nested workspace creation; callers MUST supply the intended workspace root explicitly rather than relying on automatic ascent from arbitrary subpaths.
 - The initializer MAY reuse discovery caches only when the cached workspace root matches the normalized result for the supplied path; otherwise it MUST revalidate (and, if needed, create) the `.specman` directory before returning paths.
 
@@ -580,7 +471,6 @@ Dependency mapping provides visibility into upstream and downstream relationship
 - Implementations MUST expose a callable dependency-tree builder that accepts a path to a `specman.json` file, a git reference, or an alias that resolves through the global reference cache, and normalizes that locator before traversal begins.
 - The tree builder MUST parse `specman.json` for `spec.references` (for specifications) or `impl.implements` and `impl.utilizes` (for implementations), recursively resolve each upstream artifact, and continue traversal until the graph is fully explored or a cycle is encountered.
 - Resolvers MUST resolve git references by looking them up in the local project's `.specman/ref/` symlink directory first, then in the global cache at `$HOME/.specman/ref/`. If a reference is not found locally, the resolver MAY trigger a clone via [SpecMan Installing](#concept-specman-installing).
-- The locator schemes `spec://`, `impl://`, and `scratch://` are REMOVED from this specification. Implementations MUST NOT accept or resolve these schemes. Any request using these schemes MUST fail with a descriptive error.
 - Cycle detection MUST terminate traversal immediately and return a descriptive error that includes the partial tree gathered so far so callers can remediate invalid dependency graphs.
 - When a referenced dependency or implementation lacks a `specman.json`, or when the dependency cannot be resolved, the tree builder MUST still add the artifact to the dependency set using the best available identifier and annotate the entry to indicate metadata was unavailable.
 
@@ -591,7 +481,7 @@ Reference validation ensures that references embedded in Markdown artifacts — 
 !concept-reference-validation.requirements:
 
 - The implementation MUST expose a callable reference-validation capability that accepts a locator to a Markdown artifact and returns structured validation results.
-  - Artifact locators MUST use filesystem paths or HTTPS URLs. The `spec://`, `impl://`, and `scratch://` schemes are REMOVED and MUST NOT be accepted as input.
+  - Artifact locators MUST use filesystem paths or HTTPS URLs.
 - The validator MUST parse Markdown using CommonMark-compatible rules to identify links and their destinations, including:
   - inline links (`[text](destination)`),
   - full/collapsed/shortcut reference links resolved through link reference definitions, and
@@ -601,7 +491,6 @@ Reference validation ensures that references embedded in Markdown artifacts — 
   - workspace-filesystem (a filesystem path that resolves inside the active workspace),
   - HTTPS URL, or
   - unsupported/unknown.
-- The schemes `spec://`, `impl://`, and `scratch://` are REMOVED from this specification. If any of these schemes is encountered in a Markdown link destination, the validator MUST report it as invalid and MUST NOT attempt to resolve or "validate" the target.
 - If a destination uses a scheme outside the supported set for Markdown references (workspace-filesystem paths and HTTPS URLs), the validator MUST report it as invalid and MUST NOT attempt implicit rewrites.
 - When validating filesystem destinations, the validator MUST resolve them relative to the source artifact's directory.
   - The validator MUST normalize the resolved path and MUST enforce workspace-boundary rules (it MUST NOT allow traversal outside the workspace root after normalization).
@@ -632,8 +521,8 @@ Template orchestration governs how reusable content is discovered and rendered.
 
 - Templates MUST declare substitution tokens using double braces (`{{token_name}}`), and rendering engines MUST refuse to materialize output until every declared token is supplied.
 - Template consumers MUST accept locator inputs expressed as absolute filesystem paths, workspace-relative paths rooted at the discovered workspace, HTTPS URLs, or packaged-default identifiers bundled with the runtime.
-- When creating specifications, implementations, or scratch pads, the orchestrator MUST search for workspace-managed overrides under `.specman/templates/` in the following order: (1) artifact-specific Markdown files (for example `.specman/templates/spec.md`, `.specman/templates/impl.md`, or `.specman/templates/scratch.md` plus any nested directories the workspace defines), (2) uppercase pointer files (`SPEC`, `IMPL`, `SCRATCH`) whose contents resolve to workspace-relative paths or HTTPS URLs, and (3) packaged defaults embedded with the SpecMan Core runtime. Packaged defaults MUST be versioned with the runtime, remain read-only, and MAY be delivered via resources compiled into the binary or co-located artifacts inside the packaged application.
-- Implementations MUST expose pointer-file lifecycle helpers for every artifact profile so callers can add new `SPEC`, `IMPL`, or `SCRATCH` pointer files, update (set) their target locators, or remove them without editing the filesystem manually.
+- When creating specifications or implementations, the orchestrator MUST search for workspace-managed overrides under `.specman/templates/` in the following order: (1) artifact-specific Markdown files (for example `.specman/templates/spec.md` and `.specman/templates/impl.md` plus any nested directories the workspace defines), (2) uppercase pointer files (`SPEC` and `IMPL`) whose contents resolve to workspace-relative paths or HTTPS URLs, and (3) packaged defaults embedded with the SpecMan Core runtime. Packaged defaults MUST be versioned with the runtime, remain read-only, and MAY be delivered via resources compiled into the binary or co-located artifacts inside the packaged application.
+- Implementations MUST expose pointer-file lifecycle helpers for every artifact profile so callers can add new `SPEC` or `IMPL` pointer files, update (set) their target locators, or remove them without editing the filesystem manually.
 - Pointer update operations MUST persist uppercase pointer files under `.specman/templates/`, enforce the same locator validation rules defined for runtime resolution (workspace-bound filesystem paths and reachable HTTPS Markdown), and MUST refresh any `.specman/cache/templates/` entries referencing the affected locator before signaling success.
 - Pointer removal operations MUST delete the targeted pointer file, purge cached remote content that referenced it, and MUST document the resulting fallback search order so clients know which template source will be used next. When the removal would leave the orchestration layer without any valid template source, the helper MUST fail with a descriptive error instead of leaving an invalid pointer state.
 - Pointer-file lifecycle helpers MUST surface structured success and failure results — including validation errors or fallback descriptions — so CLI layers and APIs can relay operator-facing guidance without re-parsing filesystem state.
@@ -641,7 +530,7 @@ Template orchestration governs how reusable content is discovered and rendered.
 - When a pointer file references an HTTPS resource, the fetched Markdown MUST be cached under `.specman/cache/templates/` using deterministic filenames (for example, hashing the URL). Cache entries MUST store the downloaded content verbatim together with the source locator and last-refresh metadata, and they MUST be reused for subsequent invocations until the pointer file content or remote resource changes.
 - Template orchestration MUST refresh cached remote content whenever the pointer file changes or the remote server signals a new version (for example via `ETag` or `Last-Modified`). If refresh attempts fail, tooling MUST fall back to the last known-good cache entry before reverting to packaged defaults.
 - Template rendering workflows MUST preserve HTML comment directives present in the source templates until each directive is satisfied. After fulfilling a directive, tooling MAY remove or replace the associated comment but MUST NOT drop unsatisfied instructions.
-- Special-purpose template functions SHOULD exist for common scenarios such as creating specifications, implementations, and scratch pads together with their work-type variants.
+- Special-purpose template functions SHOULD exist for common scenarios such as creating specifications and implementations.
 - Template metadata (required tokens, locator provenance, cache path) MAY be cached for the duration of a command invocation but MUST include the workspace root and template version in the cache key. Tooling MUST NOT reuse metadata caches across different workspaces unless both the template version and workspace identifier match.
 
 !concept-template-orchestration.ai-instruction-directives:
@@ -652,7 +541,7 @@ Template orchestration governs how reusable content is discovered and rendered.
 !concept-template-orchestration.token-contract:
 
 - The effective template descriptor defines a closed token set; lifecycle or MCP clients MUST reject substitutions for tokens that are not declared by the descriptor.
-- Token substitution covers Markdown body content only. Project metadata (`specman.json` for specs/impls, YAML front matter for scratch pads) MUST be produced or mutated by lifecycle workflows after template rendering, not by injecting `{{token}}` placeholders.
+- Token substitution covers Markdown body content only. Project metadata (`specman.json` for specs/impls) MUST be produced or mutated by lifecycle workflows after template rendering, not by injecting `{{token}}` placeholders.
 - When callers supply token data, the implementation MUST surface validation errors verbatim whenever a required token is missing or an unknown token is supplied.
 
 ## Concept: Deterministic Execution
@@ -666,21 +555,20 @@ Deterministic execution codifies behavioral guarantees so downstream consumers c
 
 ## Concept: Lifecycle Automation
 
-Lifecycle automation standardizes creation and deletion workflows for specifications, implementations, and scratch pads.
+Lifecycle automation standardizes creation and deletion workflows for specifications and implementations.
 
 !concept-lifecycle-automation.requirements:
 
 - Automated creation flows MUST require an associated template locator and MUST validate that required tokens are supplied.
-- Lifecycle operations MUST enforce template usage for all new specifications, implementations, and scratch pads so generated artifacts remain data-model compliant.
-- Implementations MUST expose user-facing deletion workflows for specifications, implementations, and scratch pads so that every artifact type can be removed with the same rigor applied to creation.
-- Creation tooling MUST cover all three artifact types (specifications, implementations, scratch pads) and MUST enforce the naming and metadata rules defined by Part 1 of this specification and the [founding specification](../../docs/founding-spec.md).
-- Creation workflows MUST persist generated Markdown artifacts and supporting metadata into the canonical workspace locations (the path specified by `spec.index` for specifications, `impl.md` at the repository root for implementations, `.specman/scratchpad/{slug}/scratch.md` for scratch pads) using the paths returned by workspace discovery.
+- Lifecycle operations MUST enforce template usage for all new specifications and implementations so generated artifacts remain data-model compliant.
+- Implementations MUST expose user-facing deletion workflows for specifications and implementations so that every artifact type can be removed with the same rigor applied to creation.
+- Creation tooling MUST cover both artifact types (specifications and implementations) and MUST enforce the naming and metadata rules defined by Part 1 of this specification and the [founding specification](../../docs/founding-spec.md).
+- Creation workflows MUST persist generated Markdown artifacts and supporting metadata into the canonical workspace locations (the path specified by `spec.index` for specifications and `impl.md` at the repository root for implementations) using the paths returned by workspace discovery.
 - When a pointer file downloads content from an HTTPS locator, Lifecycle automation MUST route the rendered template through the `.specman/cache/templates/` store before writing artifacts so repeated invocations reuse the cached copy unless the pointer or upstream content changes.
 - Persistence helpers MUST write the rendered template output (with all required tokens populated) together with its project metadata; persisting additional representations of entities, concepts, or other runtime data structures is out of scope for this specification.
 - Lifecycle automation MUST provide direct integrations with the metadata mutation capabilities described in [Concept: Metadata Mutation](#concept-metadata-mutation).
 - Deletion workflows MUST reuse dependency mapping services, refuse to proceed when dependent artifacts exist, and MUST return a dependency tree describing all impacted consumers whenever a removal is blocked.
-- Deletion workflows MUST ensure the targeted artifact and any associated metadata or scratch pad directories are removed from their canonical workspace locations once safety checks pass.
-- Scratch pad creation workflows MUST offer selectable profiles aligned with defined scratch pad types and MUST leverage corresponding templates.
+- Deletion workflows MUST ensure the targeted artifact and any associated metadata are removed from their canonical workspace locations once safety checks pass.
 - Lifecycle controllers MUST expose a persistence interface that can round-trip newly created artifacts back onto disk and SHOULD surface explicit errors if the filesystem write fails so callers can remediate workspace permissions.
 
 !concept-lifecycle-automation.metadata-generation:
@@ -701,7 +589,6 @@ To make sure that entities can be easily searched, implementations MUST index do
 
 - Implementations MUST index all markdown documents
 - HTML documents MAY optionally be indexed.
-- Scratch pad markdown artifacts MUST be included in structure indexing and validation outputs.
 
 !concept-specman-structure.indexing.headings:
 
@@ -749,13 +636,12 @@ Rendering the markdown content allows for readers to properly understand all pos
 
 ## Concept: Metadata Mutation
 
-Metadata mutation ensures `specman.json` for specifications and implementations, and YAML front matter for scratch pads, can be updated without rewriting unrelated content.
+Metadata mutation ensures `specman.json` for specifications and implementations can be updated without rewriting unrelated content.
 
 !concept-metadata-mutation.requirements:
 
-- Implementations MUST expose metadata mutation interfaces that accept a structured update object corresponding to the artifact type (specification, implementation, or scratch pad).
+- Implementations MUST expose metadata mutation interfaces that accept a structured update object corresponding to the artifact type (specification or implementation).
 - For specifications and implementations, the update object MUST operate on the `specman.json` file.
-- For scratch pads, the update object MUST operate on the YAML front matter of `scratch.md` (scratch pads remain workspace-local and are not part of the git repository model).
 - The update object MUST strictly define the fields eligible for mutation on that artifact type; it MUST NOT allow arbitrary key-value insertion.
 - Mutation operations MUST apply updates by merging the provided structure into the existing metadata (Partial Update semantics):
   - If a field is omitted from the update object, the existing value MUST remain unchanged.
@@ -766,15 +652,13 @@ Metadata mutation ensures `specman.json` for specifications and implementations,
   - The interface MAY support the base field name to perform a full replacement (set) of the list.
 - Implementations MUST NOT require callers to construct a list of abstract "operation" commands (e.g., `{"op": "add", ...}`). Instead, the API surface MUST be a strongly-typed or schema-validated structure.
 - Metadata mutation helpers MUST reuse git-reference resolution and workspace-boundary enforcement rules before applying edits.
-- Metadata mutation operations MUST persist the updated `specman.json` or scratch pad YAML front matter and MUST return the full updated document.
+- Metadata mutation operations MUST persist the updated `specman.json` and MUST return the full updated document.
 
 !concept-metadata-mutation.scope.supported-fields:
 
-- Metadata mutation MUST be supported for specification, implementation, and scratch pad artifacts.
+- Metadata mutation MUST be supported for specification and implementation artifacts.
 - For specifications, metadata mutation MUST support updating `name`, `description`, `tags`, and adding/removing entries in the `spec.references` list.
 - For implementations, metadata mutation MUST support updating `name`, `description`, `tags`, and adding/removing entries in the `impl.implements` and `impl.utilizes` lists.
-- For scratch pads, metadata mutation MUST support updating any YAML front matter fields except `target`.
-  - Scratch pad `target` MUST be treated as immutable; attempts to change it MUST fail with a descriptive error.
 
 ## Concept: Validation Anchors
 
@@ -809,9 +693,9 @@ Compliance reporting exposes the relationship between specification constraints 
 
 - Implementations MUST provide an interface or surface to generate compliance reports.
 - The reporting tool MUST resolve the target specification(s) from the implementation's `specman.json` `impl.implements` array.
-- The tool MUST extract all constraint groups from the resolved specification(s) and their transitive specification dependencies.
+- The tool MUST extract all constraint groups from the resolved specification(s) only. Constraint groups from transitive specification dependencies MUST NOT be included in compliance evaluation.
 - The tool MUST scan the implementation's source location (the workspace root) for validation tags.
-- The reporting tool MUST scope structural indexing to the implementation, its governing specification(s), and those specification dependencies; unrelated workspace artifacts (including scratch pads) MUST be ignored and MUST NOT cause compliance report failures.
+- The reporting tool MUST scope structural indexing to the implementation, its governing specification(s), and those specification dependencies; unrelated artifacts MUST be ignored and MUST NOT cause compliance report failures.
 
 !concept-compliance-reporting.coverage:
 
@@ -832,13 +716,12 @@ Workspace status provides a holistic health check of the workspace, aggregating 
 
 !concept-workspace-status.requirements:
 
-- The implementation MUST expose a workspace status capability that scans specifications, implementations, and scratch pads within the active workspace.
+- The implementation MUST expose a workspace status capability that scans specifications and implementations within the active workspace.
 - The status check MUST accept a configuration (e.g., flags or options) to enable or disable specific validation categories. Supported categories MUST include at least:
   - `structure`: Validates `specman.json` and basic artifact validity.
   - `references`: Validates inline links, dependencies, and external URLs.
   - `cycles`: Validates the dependency graph for cycles.
   - `compliance`: Validates implementation anchor coverage.
-  - `scratchpads`: Includes scratch pads in the validation set.
 - Implementations SHOULD enable all validation categories by default unless explicitly disabled by the user.
 - When `structure` validation is enabled, the status check MUST validate that every scanned artifact has a valid `specman.json` conforming to this specification.
 - When `references` validation is enabled, the status check MUST perform reference validation on all artifacts, ensuring that:
@@ -847,13 +730,11 @@ Workspace status provides a holistic health check of the workspace, aggregating 
   - All artifact dependencies (specification `references`) and implementation `implements`/`utilizes` resolve to existing, valid artifacts.
 - When `cycles` validation is enabled, the status check MUST construct the full dependency graph and verify that no cyclic dependencies exist between specifications.
 - When `compliance` validation is enabled, the status check MUST verify compliance coverage for every implementation:
-  - It MUST extract all constraint groups from the implementation's governing specification(s) (and transitive dependencies).
+  - It MUST extract all constraint groups from the implementation's governing specification(s) only; constraint groups from transitive specification dependencies MUST NOT be included.
   - It MUST scan the implementation's source code for validation anchors.
   - It MUST report a failure if any mandatory constraint group lacks a corresponding validation anchor.
-- When `scratchpads` validation is enabled, the status check MUST apply the other enabled checks to scratch pad artifacts; if disabled, scratch pads MUST be ignored.
 - The status check MUST return an aggregated report containing:
   - A primary section for Specifications and Implementations, determining the global pass/fail status.
-  - A secondary, distinct section for Scratch Pad validation results (if enabled), which MUST NOT affect the global pass/fail status of the workspace.
   - A comprehensive list of all validation errors, warnings, and missing compliance anchors, grouped by artifact.
 - The status check SHOULD NOT halt on the first error; it MUST attempt to collect all discoverable errors in the workspace.
 
@@ -942,7 +823,7 @@ Metadata describing how templates are located and rendered.
 
 !entity-templatedescriptor.requirements:
 
-- MUST record the locator URI or absolute path and the intended template scenario (specification, implementation, scratch pad, or derivative work type).
+- MUST record the locator URI or absolute path and the intended template scenario (specification or implementation).
 - SHOULD list required substitution tokens so callers MAY validate inputs before rendering.
 - MAY reference helper functions that provide contextual data during template expansion.
 - When a cached remote template is used, the descriptor MUST record the cache file path and validator metadata supplied by the associated `TemplateCache` entry.
@@ -959,25 +840,15 @@ Cache store that retains remote template content referenced by pointer files.
 
 ## Entity: LifecycleController
 
-Controller responsible for enforcing lifecycle policies across specifications, implementations, and scratch pads.
+Controller responsible for enforcing lifecycle policies across specifications and implementations.
 
 !entity-lifecyclecontroller.requirements:
 
 - MUST orchestrate create and delete operations for every artifact type, delegating to dependency mapping and templating subsystems.
 - MUST terminate deletion attempts that would orphan dependents and MUST return the blocking dependency tree to the caller.
-- MUST expose deletion entry points that mirror creation workflows so operators have symmetrical controls for specifications, implementations, and scratch pads.
+- MUST expose deletion entry points that mirror creation workflows so operators have symmetrical controls for specifications and implementations.
 - SHOULD integrate auditing hooks that capture lifecycle events for compliance tracking.
 - MUST surface explicit errors when filesystem persistence fails (for example, permissions or missing directories) so callers can remediate issues without corrupting the workspace.
-
-## Entity: ScratchPadProfile
-
-Defines the characteristics and template linkages for scratch pad variants.
-
-!entity-scratchpadprofile.requirements:
-
-- MUST enumerate available scratch pad types alongside their required templates.
-- SHOULD expose optional configuration fields to tailor scratch pad content to team workflows.
-- MAY reuse `TemplateDescriptor` instances to avoid duplication across related profiles.
 
 ## Entity: Validation Tag
 
@@ -1010,7 +881,6 @@ Configuration object for the workspace status capability.
 - `references` (boolean, required): Enable reference validation. Default: `true`.
 - `cycles` (boolean, required): Enable dependency cycle detection. Default: `true`.
 - `compliance` (boolean, required): Enable compliance checks (anchors). Default: `true`.
-- `scratchpads` (boolean, required): Include scratch pads in validation. Default: `true`.
 
 ## Entity: WorkspaceStatusReport
 
@@ -1020,7 +890,6 @@ The aggregated result of a workspace status check.
 
 - `global_status` (string, enum: `Pass` | `Fail`): Overall workspace status.
 - `spec_impl_status` (string, enum: `Pass` | `Fail`): Status for specification and implementation artifacts.
-- `scratchpad_status` (string, enum: `Pass` | `Fail`): Status for scratch pad artifacts.
 - `artifacts` (map<ArtifactId, ArtifactStatus>): Detailed status per artifact.
 - `cycle_errors` (array<string>): Global errors related to dependency cycles.
 - `structure_errors` (array<string>): Global errors related to workspace structure.
@@ -1032,7 +901,7 @@ Validation results for a single artifact.
 
 !entity-artifactstatus.schema:
 
-- `structure_errors` (array<string>): Errors related to `specman.json` or scratch pad front matter.
+- `structure_errors` (array<string>): Errors related to `specman.json`.
 - `reference_errors` (array<ReferenceValidationIssue>): Errors from reference validation.
 - `compliance_missing` (array<string>): Missing compliance constraints (implementations only).
 - `compliance_orphans` (array<ValidationTag>): Orphaned compliance tags (implementations only).
@@ -1058,5 +927,3 @@ Migration guides MAY accompany minor releases to help downstream integrators ado
 Implementers MAY provide caching or indexing strategies for dependency trees when doing so preserves freshness guarantees.
 
 Template repositories SHOULD be discoverable through configuration so administrators CAN extend or swap template sources without code changes.
-
-Scratch pad workflows MAY integrate with collaboration tooling (e.g., team workspaces) to streamline drafting phases.

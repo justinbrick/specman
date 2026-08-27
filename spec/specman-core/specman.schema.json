@@ -93,13 +93,10 @@
         },
         "SpecProject": {
             "type": "object",
-            "required": [
-                "index"
-            ],
             "properties": {
                 "index": {
                     "type": "string",
-                    "description": "The workspace-relative path to the main Markdown document for this specification. The file must exist at the specified path. This is the only document scanned for constraint groups."
+                    "description": "OPTIONAL. The workspace-relative path to the main Markdown document for this specification. When present, the value MUST NOT be null and MUST reference an existing file; this is the only document scanned for constraint groups. When absent, tooling MUST NOT assume a default filename."
                 },
                 "references": {
                     "type": "array",

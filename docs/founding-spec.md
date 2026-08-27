@@ -17,27 +17,8 @@ Specifications are a set of requirements that must be met for a system or a conc
 A specification MAY define other specifications as dependencies, to be used as a framework or define concepts.
 
 - A specification MAY have one or more dependencies.
-- A dependency MAY be marked as optional.
 - Dependencies MUST NOT create a circular dependency graph.
 - The specification MUST NOT mutate, or otherwise contradict, the contents of any dependencies.
-
-### Specification Name
-
-A specification MUST have a friendly name that can be used to refer to the specification.
-
-- The name MUST be four words or less.
-    - Each word MUST be separated with hyphens.
-- The name MUST NOT contain verbs (e.g. add, edit, implement).
-- The name SHOULD contain keywords of the feature being defined by the specification.
-- The name SHOULD be in all lowercase.
-- The name MUST be unique.
-
-### Specification Version
-
-A specification MUST have a version that can be used to mark changes.
-
-- The version MUST be a [semantic version](https://semver.org/).
-- The version MUST start at 1.0.0.
 
 ### Specification Content
 
@@ -77,23 +58,6 @@ Concepts are abstract ideas that describe the functions of a system.
 An implementation is, as the name suggests, an implementation of a specification. 
 
 - An implementation SHOULD use keywords or terms that are specific to the language that it is implementing in, and MAY include more technical details about its structure.
-- An implementation MUST declare its targeted specification - the specification which it is implementing.
-- An implementation MUST have the same name as its targeted specification.
-
-### Implementation Name
-
-An implementation MUST have a friendly name that can be used to refer to the implementation.
-
-- The implementation name MUST follow the same formatting guidelines as the specification name.
-- The implementation name MUST append or prepend a keyword representing the [implementing language](#implementing-language) name, or an underlying technology being used in the implementation.
-- Implementation names MUST be unique and MUST NOT collide with any specification or other implementation names.
-
-### Implementation Version
-
-An implementation MUST have a version that can be used to mark changes.
-
-- The version MUST be a [semantic version](https://semver.org/).
-- The version MUST start at 1.0.0.
 
 ### Implementing Language
 
