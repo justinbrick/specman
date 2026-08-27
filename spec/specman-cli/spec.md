@@ -58,7 +58,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 
 !concept-lifecycle-command-surface.requirements:
 
-- The CLI MUST expose create commands for specifications, implementations, and scratch pads, each of which MUST enforce the naming rules defined in [`specman-core`](../specman-core/spec.md) and the founding specification.
+- The CLI MUST expose create commands for specifications, implementations, and scratch pads, each of which MUST enforce the naming rules defined in [`specman-core`](../specman-core/spec.md).
 - Creation commands MUST invoke the dependency mapping and template orchestration behaviors defined by `specman-core`, ensuring that generated artifacts include compliant front matter and section scaffolding.
 - Delete commands MUST refuse to proceed when dependency analysis reveals downstream consumers unless the operator explicitly supplies `--force`; forced deletions MUST still print the blocking dependency tree, require explicit confirmation (flag or prompt), and MUST record in the command result that dependencies were overridden.
 - All lifecycle commands MUST persist results to the canonical workspace paths (`spec/`, `impl/`, `.specman/scratchpad/`) returned by workspace discovery, and MUST error when filesystem writes fail.
@@ -145,7 +145,7 @@ This document uses the normative keywords defined in [RFC 2119](https://www.rfc-
 ##### `impl` command group
 
 - Scope: operations governing implementation artifacts stored under `impl/`.
-- Commands in this group MUST reuse workspace discovery results so paths resolve relative to the active SpecMan workspace and MUST enforce the implementation naming constraints defined by [`specman-core`](../specman-core/spec.md) and the founding specification.
+- Commands in this group MUST reuse workspace discovery results so paths resolve relative to the active SpecMan workspace and MUST enforce the implementation naming constraints defined by [`specman-core`](../specman-core/spec.md).
 
 ###### `impl ls`
 

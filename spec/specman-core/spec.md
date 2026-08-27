@@ -1,7 +1,6 @@
 ---
 name: specman-core
 dependencies:
-  - ../../docs/founding-spec.md
   - https://spec.commonmark.org/0.31.2/
 ---
 
@@ -12,8 +11,6 @@ The SpecMan Core specification defines both the canonical data model and the pla
 ## Terminology & References
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
-
-This specification references the [founding specification](../../docs/founding-spec.md) for background and rationale on the topics and entities discussed herein.
 
 ---
 
@@ -42,7 +39,7 @@ A SpecMan workspace is the directory in which SpecMan tooling can be used. Each 
 
 ## Concept: Specifications
 
-> Reference: [founding specification — Specifications](../../docs/founding-spec.md#specifications)
+A specification is a set of requirements that must be met for a system or a concept to exist in its full form and in full compliance.
 
 !concept-specifications.formatting:
 
@@ -79,13 +76,28 @@ CommonMark does not define fragment identifiers for headings. SpecMan defines a 
 
 Tooling MAY implement additional compatibility layers for specific renderers, but when SpecMan tooling generates or validates intra-document links it MUST use the algorithm defined above.
 
+### Specification Content
+
+!concept-specifications.content:
+
+- The content of a specification SHOULD be declarative in nature.
+- The content MUST remain free of implementation-specific details.
+- The content MAY include references to implementations that are associated with a specification's dependencies.
+
 ### Specification Concepts and Entities
 
-> Reference: [founding specification — Concepts](../../docs/founding-spec.md#concepts) and [Key Entities](../../docs/founding-spec.md#key-entities)
+Concepts are abstract ideas that describe the functions of a system. Key entities are descriptions of data that exists within a system.
 
 !concept-specifications.concepts-and-entities.structure:
 
 - Each concept or key entity SHOULD have its own [heading](#specification-headings).
+- A specification MUST define one or more concepts.
+- A concept MAY begin with a short description or statement.
+- A specification MAY define one or more key entities.
+- Key entities SHOULD NOT describe individual fields.
+- Concepts and key entities MAY have one or more constraints, limiting scope or behavior.
+- Concepts MAY reference other concepts or key entities.
+- Key entities MAY reference other key entities.
 
 #### Concept: Concept & Entity Headings
 
@@ -199,8 +211,6 @@ Example:
 
 ### Specification Dependencies
 
-> Reference: [founding specification — Dependencies](../../docs/founding-spec.md#dependencies)
-
 !concept-specifications.dependencies:
 
 - Dependencies MUST be either another specification or an external resource that contains documentation detailing a specification.
@@ -209,6 +219,8 @@ Example:
 - Specifications MUST NOT declare implementations as dependencies. Referencing an implementation would leak technical details into the specification layer and violates the separation between requirements and execution.
 - Each dependency on another SpecMan specification MUST be expressed as a [GitReference](#entity-gitreference) in the `spec.references` array of `specman.json`.
 - Dependencies on external (non-SpecMan) resources MAY be expressed as URLs in the Markdown body or as additional fields in `specman.json`.
+- Dependencies MUST NOT create a circular dependency graph.
+- A specification MUST NOT mutate or otherwise contradict the contents of any dependency.
 
 If a concept or key entity is referenced from one of the dependencies, it SHOULD be marked with an [inline link](https://spec.commonmark.org/0.31.2/#inline-link).
 
@@ -229,12 +241,13 @@ If a concept or key entity is referenced from one of the dependencies, it SHOULD
 
 ## Concept: Implementations
 
-> Reference: [founding specification — Implementation](../../docs/founding-spec.md#implementation)
+An implementation is, as the name suggests, an implementation of a specification.
 
 !concept-implementations.formatting:
 
 - Implementations MUST be authored as Markdown documents to support consistent rendering, review, and automated processing.
 - Implementations MUST contain human-readable content.
+- An implementation SHOULD use keywords or terms that are specific to the language that it is implementing in, and MAY include more technical details about its structure.
 
 ### Specification Coverage
 
@@ -269,22 +282,64 @@ Example:
   - impl.md
   - specman.json
 
-### Implementation References
+### Implementing Language
 
-> Reference: [founding specification — References](../../docs/founding-spec.md#references)
+!concept-implementations.implementing-language:
+
+- An implementation MUST declare its implementing language — the language which the implementation uses for defining concrete code.
+- An implementing language identifier SHOULD be specified as a short string. The identifier SHOULD be the one at the end of source files for the language.
+  - If there is no well known file identifier, the short name SHOULD be anything that properly identifies the language.
+- An implementation MUST have one primary implementing language.
+- An implementation MAY have one or more secondary implementing languages.
+- An implementing language SHOULD be either a GPL (general-purpose language) or a DSL (domain-specific language).
+- If the implementing language has multiple versions, an implementation MUST define the language version in the form of `{language_identifier}@{version}`.
+
+Examples:
+
+| Implementing Language | Language Identifier |
+| - | - |
+| Rust | rs |
+| C# | cs |
+| C++ | cpp |
+| Javascript | js |
+| JmesPath | jmespath |
+
+### Implementation References
 
 !concept-implementations.references.model:
 
 - Implementations declare relationships to other artifacts through the `impl.implements` and `impl.utilizes` arrays in `specman.json`.
 - `implements`: specifications this implementation targets. Each entry MUST be an [ImplementsEntry](#entity-implementsentry) containing a [GitReference](#entity-gitreference) that points to a specification.
 - `utilizes`: other implementations this implementation depends on. Each entry MUST be a [UtilizesEntry](#entity-utilizesentry) containing a [GitReference](#entity-gitreference) that points to an implementation.
+- An implementation SHOULD prefer referencing the specification over its implementation when:
+  - The implementation of a specification is irrelevant to the current implementation being defined.
+  - The specification defines access to the underlying implementation in a format usable by the implementation being defined.
+
+### Libraries
+
+!concept-implementations.libraries:
+
+- An implementation MAY reference one or more libraries.
+- A library reference MUST include a listed version number or tag (e.g., "1.0.0", "latest").
+- A library reference MUST be in the format of `name@version`.
+
+### Data Models
+
+!concept-implementations.data-models:
+
+- An implementation MAY have one or more data models, defining [key entities](#specification-concepts-and-entities) as concrete implementations.
+- Each key entity in a specification SHOULD have a corresponding data model.
+- An existing data model implementation in the implementing language MAY be preferred over a self-defined data model when:
+  - The existing data model meets all key entity constraints, or can be constrained outside of the direct implementation by usage of wrapper APIs.
+  - The existing data model is not deprecated.
 
 ### Implementation APIs
 
-> Reference: [founding specification — APIs](../../docs/founding-spec.md#apis)
-
 !concept-implementations.apis.documentation:
 
+- An implementation MUST define one or more API stubs.
+- API stubs SHOULD define the API signature, including inputs and outputs, in the format appropriate for the implementing language.
+- API stubs MAY include examples to demonstrate intended use.
 - APIs SHOULD have documentation clearly identifying what the code does.
   - Documentation SHOULD focus on the "what" and the "why," rather than the "how."
 - APIs signatures MUST be contained inside of a [fenced code block](https://spec.commonmark.org/0.31.2/#fenced-code-blocks).
@@ -562,7 +617,7 @@ Lifecycle automation standardizes creation and deletion workflows for specificat
 - Automated creation flows MUST require an associated template locator and MUST validate that required tokens are supplied.
 - Lifecycle operations MUST enforce template usage for all new specifications and implementations so generated artifacts remain data-model compliant.
 - Implementations MUST expose user-facing deletion workflows for specifications and implementations so that every artifact type can be removed with the same rigor applied to creation.
-- Creation tooling MUST cover both artifact types (specifications and implementations) and MUST enforce the naming and metadata rules defined by Part 1 of this specification and the [founding specification](../../docs/founding-spec.md).
+- Creation tooling MUST cover both artifact types (specifications and implementations) and MUST enforce the naming and metadata rules defined by Part 1 of this specification.
 - Creation workflows MUST persist generated Markdown artifacts and supporting metadata into the canonical workspace locations (the path specified by `spec.index` for specifications and `impl.md` at the repository root for implementations) using the paths returned by workspace discovery.
 - When a pointer file downloads content from an HTTPS locator, Lifecycle automation MUST route the rendered template through the `.specman/cache/templates/` store before writing artifacts so repeated invocations reuse the cached copy unless the pointer or upstream content changes.
 - Persistence helpers MUST write the rendered template output (with all required tokens populated) together with its project metadata; persisting additional representations of entities, concepts, or other runtime data structures is out of scope for this specification.

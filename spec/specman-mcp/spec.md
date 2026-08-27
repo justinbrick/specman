@@ -362,7 +362,7 @@ MCP calls interact with on-disk workspaces governed by the SpecMan Data Model.
 - Resource handles resolved via `spec://`, `impl://`, or `scratch://` MUST be normalized through workspace discovery, bound to canonical artifact paths, and rejected when they refer to artifacts outside the active workspace. Normalized handles MUST retain stable identifiers so MCP clients can reuse them across sessions.
 - `/dependencies` handles MUST be treated as derived read-only locators whose responses are generated exclusively by dependency mapping services; mutation attempts against these handles MUST fail with an MCP error explaining that only query operations are supported.
 - `/constraints` handles MUST be treated as derived read-only locators whose responses are generated exclusively by structure discovery services; mutation attempts against these handles MUST fail with an MCP error explaining that only query operations are supported.
-- Prompt catalog and lifecycle tools MUST reference template locators resolved via SpecMan Core template orchestration (workspace pointer files first, then packaged defaults) and validate that supplied names comply with the [founding specification](../../docs/founding-spec.md). MCP lifecycle tools MUST NOT perform sampling or elicitation; all inputs MUST be supplied directly by the caller.
+- Prompt catalog and lifecycle tools MUST reference template locators resolved via SpecMan Core template orchestration (workspace pointer files first, then packaged defaults) and validate that supplied names comply with [`specman-core`](../specman-core/spec.md). MCP lifecycle tools MUST NOT perform sampling or elicitation; all inputs MUST be supplied directly by the caller.
 
 ### Concept: Session Safety & Deterministic Execution
 
