@@ -10,9 +10,9 @@ use url::Url;
 
 use crate::core::error::SpecmanError;
 
-use crate::metadata::frontmatter::{self, ArtifactFrontMatter, DependencyEntry, FrontMatterKind};
 use crate::core::shared::SemVer;
-use crate::workspace::{normalize_workspace_path, WorkspaceLocator, WorkspacePaths};
+use crate::metadata::frontmatter::{self, ArtifactFrontMatter, DependencyEntry, FrontMatterKind};
+use crate::workspace::{WorkspaceLocator, WorkspacePaths, normalize_workspace_path};
 use std::fmt;
 
 /// Fetches remote artifact content (e.g., HTTPS markdown documents).
@@ -867,7 +867,6 @@ impl WorkspaceInventorySnapshot {
         })
     }
 
-
     pub fn dependents_of(&self, target: &Path) -> Vec<InventoryDependent> {
         let mut dependents = Vec::new();
         for entry in self.entries.iter() {
@@ -1244,7 +1243,9 @@ fn resolve_workspace_path(
     let normalized_path = normalize_workspace_path(&path);
     let normalized_root = normalize_workspace_path(workspace.root());
 
-    if !normalized_path.starts_with(workspace.root()) && !normalized_path.starts_with(&normalized_root) {
+    if !normalized_path.starts_with(workspace.root())
+        && !normalized_path.starts_with(&normalized_root)
+    {
         return Err(SpecmanError::Workspace(format!(
             "locator {} escapes workspace {}",
             normalized_path.display(),

@@ -64,10 +64,16 @@ pub struct MigrationPromptArgs {
 
 /// Arguments for rendering a prompt that creates a new specification.
 ///
-/// New specifications do not have stable dependency context until the author defines it,
-/// so this prompt intentionally accepts no dependency-prefill arguments.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
-pub struct SpecPromptArgs {}
+/// A new specification has no dependency context yet, so the only required argument is its
+/// identifier (name). The prompt instructs the agent to query the user for what the specification
+/// should define.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SpecPromptArgs {
+    #[schemars(
+        description = "Specification name/slug (lowercase, digits, hyphens). This identifies the new specification to create."
+    )]
+    pub name: String,
+}
 
 /// Arguments for rendering a prompt that creates a new implementation from a governing specification.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -163,8 +169,7 @@ impl SpecmanMcpServer {
         &self,
         Parameters(args): Parameters<SpecPromptArgs>,
     ) -> Result<Vec<PromptMessage>, McpError> {
-        let _ = args;
-        self.render_spec_prompt(SPEC_TEMPLATE)
+        self.render_spec_prompt(SPEC_TEMPLATE, &args.name)
     }
 
     #[prompt(
@@ -227,11 +232,15 @@ impl SpecmanMcpServer {
         )])
     }
 
-    /// Render the specification-creation prompt. Since a new specification has no canonical locator yet,
-    /// callers may optionally provide an existing locator (`seed_target`) to prefill dependency context.
-    fn render_spec_prompt(&self, template: &str) -> Result<Vec<PromptMessage>, McpError> {
+    /// Render the specification-creation prompt.
+    fn render_spec_prompt(
+        &self,
+        template: &str,
+        name: &str,
+    ) -> Result<Vec<PromptMessage>, McpError> {
         debug!("rendering spec prompt");
-        let rendered = apply_tokens(template, &[])?;
+        let replacements = vec![("{{name}}", name.trim().to_string())];
+        let rendered = apply_tokens(template, &replacements)?;
         // [ENSURES: concept-prompt-catalog.responses:CHECK]
         Ok(vec![PromptMessage::new_text(
             PromptMessageRole::User,
@@ -357,4 +366,3 @@ fn bullet_list(items: &[String]) -> String {
         items.join("\n")
     }
 }
-
